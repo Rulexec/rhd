@@ -19,13 +19,6 @@ pub enum ExecuteError {
     #[error("scenario '{scenario}' step '{step}': no default model configured")]
     NoDefaultModel { scenario: String, step: String },
 
-    #[error("scenario '{scenario}' step '{step}': command failed: {message}")]
-    CommandFailed {
-        scenario: String,
-        step: String,
-        message: String,
-    },
-
     #[error("scenario '{scenario}' step '{step}': AI request failed: {message}")]
     AiFailed {
         scenario: String,
@@ -55,17 +48,6 @@ pub async fn execute_scenario(
             Action::RunCommand(cmd) => {
                 let step_name = cmd.name.clone().unwrap_or_else(|| cmd.command.clone());
                 let result = execute_run_command(cmd, &context).await;
-                if !result.success {
-                    return Err(ExecuteError::CommandFailed {
-                        scenario: scenario_name.clone(),
-                        step: step_name,
-                        message: if result.stderr.is_empty() {
-                            format!("exit code {}", result.exit_code)
-                        } else {
-                            result.stderr.clone()
-                        },
-                    });
-                }
                 context.record_step(step_name, result);
             }
             Action::AiChat(chat) => {

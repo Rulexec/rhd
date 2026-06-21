@@ -29,10 +29,11 @@ impl Action {
 #[serde(rename_all = "camelCase")]
 pub struct RunCommandAction {
     pub name: Option<String>,
+    #[serde(rename = "cmd")]
     pub command: String,
     #[serde(default)]
     pub args: Vec<String>,
-    #[serde(default)]
+    #[serde(default, rename = "cwd")]
     pub working_dir: Option<String>,
 }
 
@@ -51,6 +52,7 @@ pub struct AiChatAction {
 #[serde(rename_all = "camelCase")]
 pub struct OutputAction {
     pub name: Option<String>,
+    #[serde(rename = "output")]
     pub text: String,
 }
 

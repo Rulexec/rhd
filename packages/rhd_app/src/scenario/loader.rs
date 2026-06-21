@@ -88,12 +88,14 @@ pub fn load_scenarios_dir(dir: &Path) -> Result<HashMap<String, Scenario>, Scena
             source,
         })?;
         let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("yaml")
-            && path.extension().and_then(|e| e.to_str()) != Some("yml")
-        {
+        if !path.is_dir() {
             continue;
         }
-        let scenario = load_scenario(&path)?;
+        let scenario_file = path.join("scenario.yaml");
+        if !scenario_file.exists() {
+            continue;
+        }
+        let scenario = load_scenario(&scenario_file)?;
         scenarios.insert(scenario.name.clone(), scenario);
     }
     Ok(scenarios)

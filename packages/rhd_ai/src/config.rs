@@ -5,7 +5,7 @@ use serde::Deserialize;
 use thiserror::Error;
 
 #[derive(Debug, Deserialize, Clone)]
-#[serde(deny_unknown_fields)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct ModelConfig {
     pub base_url: String,
     pub api_key: String,
