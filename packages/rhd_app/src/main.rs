@@ -1,3 +1,4 @@
+mod ipc;
 mod scenario;
 
 fn main() {
