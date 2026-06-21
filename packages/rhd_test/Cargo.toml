@@ -14,3 +14,4 @@ serde_json = { workspace = true }
 axum = "0.7"
 tempfile = "3"
 rand = "0.8"
+clap = { version = "4", features = ["derive"] }

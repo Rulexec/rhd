@@ -119,8 +119,10 @@ rhd run <scenario_name>
 - Field names use camelCase in YAML, snake_case in Rust structs (via `#[serde(rename_all = "camelCase")]`)
 
 ### Testing
-- E2E tests via `rhd_test` crate: `cargo run -p rhd_test`
-- `rhd_test` starts a mock OpenAI-compatible HTTP server (axum), spawns daemon, runs scenario, validates AI request payloads and output
+- E2E tests via `rhd_test` crate: `cargo run -p rhd_test [-- --seed <N> --repetitions <N>]`
+- `rhd_test` accepts `--seed` (default 42) for deterministic random generation and `--repetitions` (default 10) to run tests in loop
+- Each iteration uses seed `base_seed + i`, prints iteration seed for reproducibility on failure
+- `rhd_test` starts a mock OpenAI-compatible HTTP server (axum, reused across iterations), spawns daemon per iteration, runs scenario, validates AI request payloads and output
 - Test scenarios in `test_e2e/scenarios/<name>/scenario.yaml`
 - Test models in `test_e2e/models/*.yaml`
 
@@ -128,6 +130,11 @@ rhd run <scenario_name>
 - `cargo build` for compilation
 - `cargo test` for unit tests
 - Daemon validates models and scenarios at startup
+
+### Committing
+- Commit messages should be short and descriptive, inferred from the work completed
+- Format: lowercase, no period, concise summary of changes
+- Examples: "add seeded rng for e2e tests", "fix placeholder resolution bug", "update daemon shutdown logic"
 
 ## Important Conventions
 

@@ -2,10 +2,24 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use axum::{extract::State, routing::post, Json, Router};
-use rand::Rng;
+use clap::Parser;
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 use tokio::process::Command;
+
+#[derive(Parser)]
+#[command(name = "rhd_test", about = "E2E test runner for rhd")]
+struct Args {
+    /// Random seed for deterministic test generation
+    #[arg(long, default_value_t = 42)]
+    seed: u64,
+
+    /// Number of test repetitions
+    #[arg(long, default_value_t = 10)]
+    repetitions: u32,
+}
 
 #[derive(Debug, Deserialize)]
 struct ChatRequest {
@@ -97,17 +111,30 @@ async fn start_mock_server() -> (u16, SharedRequests, SharedResponse) {
     (port, requests, response)
 }
 
-fn create_temp_script(dir: &std::path::Path) {
+fn generate_random_string(rng: &mut impl Rng, length: usize) -> String {
+    (0..length)
+        .map(|_| {
+            let idx = rng.gen_range(0..36);
+            if idx < 10 {
+                (b'0' + idx) as char
+            } else {
+                (b'a' + idx - 10) as char
+            }
+        })
+        .collect()
+}
+
+fn create_temp_script(dir: &std::path::Path, rng: &mut impl Rng) {
+    let script_output = generate_random_string(rng, 8);
+    let script_exit_code: i32 = rng.gen_range(0..5);
     let script_path = dir.join("random_cmd.sh");
-    let script_content = r#"#!/bin/sh
-OUTPUT=$(head -c 8 /dev/urandom | base64 | head -c 8)
-echo "$OUTPUT"
-if [ $((RANDOM % 2)) -eq 0 ]; then
-  exit 0
-else
-  exit $((RANDOM % 5 + 1))
-fi
-"#;
+    let script_content = format!(
+        r#"#!/bin/sh
+echo "{}"
+exit {}
+"#,
+        script_output, script_exit_code
+    );
     std::fs::write(&script_path, script_content).unwrap();
 
     #[cfg(unix)]
@@ -131,40 +158,32 @@ async fn wait_for_socket(socket_path: &std::path::Path, timeout_secs: u64) -> bo
     false
 }
 
-fn generate_random_string(length: usize) -> String {
-    let mut rng = rand::thread_rng();
-    (0..length)
-        .map(|_| {
-            let idx = rng.gen_range(0..36);
-            if idx < 10 {
-                (b'0' + idx) as char
-            } else {
-                (b'a' + idx - 10) as char
-            }
-        })
-        .collect()
-}
+async fn run_single_test(
+    iter_seed: u64,
+    port: u16,
+    requests: SharedRequests,
+    response: SharedResponse,
+) -> (bool, String) {
+    let mut log = String::new();
+    let mut rng = StdRng::seed_from_u64(iter_seed);
 
-#[tokio::main]
-async fn main() {
-    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let workspace_root = manifest_dir.parent().unwrap().parent().unwrap();
+    let workspace_root = std::env::current_dir().unwrap();
     let rhd_bin = workspace_root.join("target/debug/rhd");
     let models_dir = workspace_root.join("test_e2e/models");
     let scenarios_dir = workspace_root.join("test_e2e/scenarios");
 
-    let (port, requests, response) = start_mock_server().await;
-    println!("Mock AI server started on port {port}");
-
-    let random_response = generate_random_string(8);
+    let random_response = generate_random_string(&mut rng, 8);
     *response.lock().unwrap() = random_response.clone();
-    println!("Random AI response: {random_response}");
+    log.push_str(&format!("  AI response: {random_response}\n"));
 
     let temp_dir = tempfile::tempdir().unwrap();
-    create_temp_script(temp_dir.path());
-    println!("Temp scripts at: {}", temp_dir.path().display());
+    create_temp_script(temp_dir.path(), &mut rng);
+    log.push_str(&format!(
+        "  Temp scripts at: {}\n",
+        temp_dir.path().display()
+    ));
 
-    let socket_path = std::env::current_dir().unwrap().join("rhd.sock");
+    let socket_path = workspace_root.join("rhd.sock");
     let _ = std::fs::remove_file(&socket_path);
 
     let mut daemon = Command::new(&rhd_bin)
@@ -175,23 +194,25 @@ async fn main() {
         .arg(&scenarios_dir)
         .env("E2E_MODEL_PORT", port.to_string())
         .env("E2E_SCRIPTS_DIR", temp_dir.path())
-        .current_dir(workspace_root)
+        .current_dir(&workspace_root)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .spawn()
         .expect("failed to spawn daemon");
 
-    println!("Daemon spawned (PID: {:?})", daemon.id());
+    log.push_str(&format!("  Daemon spawned (PID: {:?})\n", daemon.id()));
 
     if !wait_for_socket(&socket_path, 10).await {
-        eprintln!("ERROR: Daemon failed to create socket");
+        log.push_str("  FAIL: Daemon failed to create socket\n");
         daemon.kill().await.ok();
-        std::process::exit(1);
+        return (true, log);
     }
-    println!("Daemon socket ready");
+    log.push_str("  Daemon socket ready\n");
 
     let run_output = Command::new(&rhd_bin)
         .arg("run")
         .arg("rhd_test")
-        .current_dir(workspace_root)
+        .current_dir(&workspace_root)
         .output()
         .await
         .expect("failed to run scenario");
@@ -200,10 +221,10 @@ async fn main() {
     let stderr = String::from_utf8_lossy(&run_output.stderr);
     let exit_code = run_output.status.code().unwrap_or(-1);
 
-    println!("rhd run exit code: {exit_code}");
-    println!("rhd run stdout: {stdout}");
+    log.push_str(&format!("  rhd run exit code: {exit_code}\n"));
+    log.push_str(&format!("  rhd run stdout: {stdout}\n"));
     if !stderr.is_empty() {
-        println!("rhd run stderr: {stderr}");
+        log.push_str(&format!("  rhd run stderr: {stderr}\n"));
     }
 
     daemon.kill().await.ok();
@@ -212,61 +233,119 @@ async fn main() {
     let mut failed = false;
 
     if exit_code != 0 {
-        eprintln!("FAIL: expected exit code 0, got {exit_code}");
+        log.push_str(&format!(
+            "  FAIL: expected exit code 0, got {exit_code}\n"
+        ));
         failed = true;
     } else {
-        println!("PASS: exit code is 0");
+        log.push_str("  PASS: exit code is 0\n");
     }
 
     let expected_output = format!("AI said: {random_response}");
     if !stdout.contains(&expected_output) {
-        eprintln!("FAIL: output does not contain '{expected_output}'");
-        eprintln!("  actual output: {stdout}");
+        log.push_str(&format!(
+            "  FAIL: output does not contain '{expected_output}'\n"
+        ));
+        log.push_str(&format!("    actual output: {stdout}\n"));
         failed = true;
     } else {
-        println!("PASS: output contains '{expected_output}'");
+        log.push_str(&format!(
+            "  PASS: output contains '{expected_output}'\n"
+        ));
     }
 
     let recorded = requests.lock().unwrap();
     if recorded.len() != 1 {
-        eprintln!("FAIL: expected 1 AI request, got {}", recorded.len());
+        log.push_str(&format!(
+            "  FAIL: expected 1 AI request, got {}\n",
+            recorded.len()
+        ));
         failed = true;
     } else {
-        println!("PASS: exactly 1 AI request received");
+        log.push_str("  PASS: exactly 1 AI request received\n");
         let req = &recorded[0];
 
         if req.model != "test-model" {
-            eprintln!("FAIL: expected model 'test-model', got '{}'", req.model);
+            log.push_str(&format!(
+                "  FAIL: expected model 'test-model', got '{}'\n",
+                req.model
+            ));
             failed = true;
         } else {
-            println!("PASS: model is 'test-model'");
+            log.push_str("  PASS: model is 'test-model'\n");
         }
 
         if req.system_content.contains('%') {
-            eprintln!(
-                "FAIL: system prompt contains unresolved placeholders: {}",
+            log.push_str(&format!(
+                "  FAIL: system prompt contains unresolved placeholders: {}\n",
                 req.system_content
-            );
+            ));
             failed = true;
         } else {
-            println!("PASS: system prompt has no unresolved placeholders");
+            log.push_str("  PASS: system prompt has no unresolved placeholders\n");
         }
 
         if req.user_content.contains('%') {
-            eprintln!(
-                "FAIL: user message contains unresolved placeholders: {}",
+            log.push_str(&format!(
+                "  FAIL: user message contains unresolved placeholders: {}\n",
                 req.user_content
-            );
+            ));
             failed = true;
         } else {
-            println!("PASS: user message has no unresolved placeholders");
+            log.push_str("  PASS: user message has no unresolved placeholders\n");
         }
 
-        println!("  system: {}", req.system_content);
-        println!("  user: {}", req.user_content);
+        log.push_str(&format!("  system: {}\n", req.system_content));
+        log.push_str(&format!("  user: {}\n", req.user_content));
     }
 
-    if failed {
+    (failed, log)
+}
+
+#[tokio::main]
+async fn main() {
+    let args = Args::parse();
+
+    let (port, requests, response) = start_mock_server().await;
+    println!("Mock AI server started on port {port}");
+
+    let mut failures: Vec<u64> = Vec::new();
+
+    for i in 0..args.repetitions {
+        let iter_seed = args.seed + i as u64;
+
+        requests.lock().unwrap().clear();
+
+        let (failed, log) =
+            run_single_test(iter_seed, port, requests.clone(), response.clone()).await;
+
+        if failed {
+            println!(
+                "\n=== Repetition {}/{} (seed: {}) FAILED ===",
+                i + 1,
+                args.repetitions,
+                iter_seed
+            );
+            print!("{log}");
+            failures.push(iter_seed);
+        }
+    }
+
+    println!("\n=== Summary ===");
+    println!(
+        "Total: {}, Passed: {}, Failed: {}",
+        args.repetitions,
+        args.repetitions as usize - failures.len(),
+        failures.len()
+    );
+
+    if !failures.is_empty() {
+        eprintln!("Failed seeds: {:?}", failures);
+        eprintln!("\nTo reproduce first failure:");
+        eprintln!(
+            "  cargo run -p rhd_test -- --seed {} --repetitions 1",
+            failures[0]
+        );
         eprintln!("\nE2E TEST FAILED");
         std::process::exit(1);
     } else {
