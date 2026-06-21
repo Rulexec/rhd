@@ -6,6 +6,7 @@ pub struct StepResult {
     pub stdout: String,
     pub stderr: String,
     pub success: bool,
+    pub message: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -61,6 +62,7 @@ fn resolve_single(placeholder: &str, context: &ExecutionContext) -> String {
             }
         }
         "success" => result.success.to_string(),
+        "message" => result.message.clone().unwrap_or_default(),
         _ => String::new(),
     }
 }
@@ -79,6 +81,7 @@ mod tests {
                 stdout: String::new(),
                 stderr: String::new(),
                 success: false,
+                message: None,
             },
         );
         assert_eq!(resolve_placeholders("code: %testsRun.exitCode%", &ctx), "code: 1");
@@ -100,6 +103,7 @@ mod tests {
                 stdout: "out".into(),
                 stderr: "err".into(),
                 success: false,
+                message: None,
             },
         );
         assert_eq!(resolve_placeholders("%run.stdoutStderr%", &ctx), "");
@@ -115,6 +119,7 @@ mod tests {
                 stdout: "out".into(),
                 stderr: "err".into(),
                 success: true,
+                message: None,
             },
         );
         assert_eq!(resolve_placeholders("%run.stdoutStderr%", &ctx), "outerr");

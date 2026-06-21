@@ -1,6 +1,8 @@
+mod executor;
 mod loader;
 mod placeholder;
 
+pub use executor::{execute_scenario, ExecuteError, ExecuteOutput};
 pub use loader::{load_scenario, ScenarioLoadError};
 pub use placeholder::{resolve_placeholders, ExecutionContext, StepResult};
 
@@ -39,7 +41,9 @@ pub struct RunCommandAction {
 #[serde(rename_all = "camelCase")]
 pub struct AiChatAction {
     pub name: Option<String>,
-    pub prompt: String,
+    #[serde(default)]
+    pub system_prompt: Option<String>,
+    pub message: String,
     #[serde(default)]
     pub model: Option<String>,
 }
