@@ -26,10 +26,12 @@ pub enum ConfigError {
         source: std::io::Error,
     },
 
-    #[error("invalid yaml in {path}: {source}")]
+    #[error("invalid yaml in {path}:{line}:{column}: {message}")]
     YamlParse {
         path: PathBuf,
-        source: serde_yaml::Error,
+        line: usize,
+        column: usize,
+        message: String,
     },
 
     #[error("no model files found in {path}")]
@@ -73,9 +75,11 @@ pub fn load_models(models_dir: &Path) -> Result<HashMap<String, ModelConfig>, Co
             })?;
 
         let config: ModelConfig =
-            serde_yaml::from_str(&contents).map_err(|source| ConfigError::YamlParse {
+            serde_yaml::from_str(&contents).map_err(|e| ConfigError::YamlParse {
                 path: file_path.clone(),
-                source,
+                line: e.location().map(|l| l.line()).unwrap_or(0),
+                column: e.location().map(|l| l.column()).unwrap_or(0),
+                message: e.to_string(),
             })?;
 
         models.insert(model_name, config);

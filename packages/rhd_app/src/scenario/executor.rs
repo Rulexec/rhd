@@ -9,19 +9,35 @@ use super::{Action, Scenario};
 
 #[derive(Debug, Error)]
 pub enum ExecuteError {
-    #[error("no model configured for aiChat action '{action_name}'")]
-    NoModel { action_name: String },
+    #[error("scenario '{scenario}' step '{step}': unknown model '{model}'")]
+    UnknownModel {
+        scenario: String,
+        step: String,
+        model: String,
+    },
 
-    #[error("unknown model '{model}' referenced in action '{action_name}'")]
-    UnknownModel { model: String, action_name: String },
+    #[error("scenario '{scenario}' step '{step}': no default model configured")]
+    NoDefaultModel { scenario: String, step: String },
 
-    #[error("no default model configured")]
-    NoDefaultModel,
+    #[error("scenario '{scenario}' step '{step}': command failed: {message}")]
+    CommandFailed {
+        scenario: String,
+        step: String,
+        message: String,
+    },
+
+    #[error("scenario '{scenario}' step '{step}': AI request failed: {message}")]
+    AiFailed {
+        scenario: String,
+        step: String,
+        message: String,
+    },
 }
 
 #[derive(Debug)]
 pub struct ExecuteOutput {
     pub outputs: Vec<String>,
+    #[allow(dead_code)]
     pub context: ExecutionContext,
 }
 
@@ -32,20 +48,32 @@ pub async fn execute_scenario(
 ) -> Result<ExecuteOutput, ExecuteError> {
     let mut context = ExecutionContext::default();
     let mut outputs = Vec::new();
+    let scenario_name = &scenario.name;
 
     for action in &scenario.actions {
         match action {
             Action::RunCommand(cmd) => {
+                let step_name = cmd.name.clone().unwrap_or_else(|| cmd.command.clone());
                 let result = execute_run_command(cmd, &context).await;
-                if let Some(name) = &cmd.name {
-                    context.record_step(name.clone(), result);
+                if !result.success {
+                    return Err(ExecuteError::CommandFailed {
+                        scenario: scenario_name.clone(),
+                        step: step_name,
+                        message: if result.stderr.is_empty() {
+                            format!("exit code {}", result.exit_code)
+                        } else {
+                            result.stderr.clone()
+                        },
+                    });
                 }
+                context.record_step(step_name, result);
             }
             Action::AiChat(chat) => {
-                let result = execute_ai_chat(chat, &context, models, default_model).await;
-                if let Some(name) = &chat.name {
-                    context.record_step(name.clone(), result);
-                }
+                let step_name = chat.name.clone().unwrap_or_else(|| "aiChat".to_string());
+                let result =
+                    execute_ai_chat(chat, &context, models, default_model, scenario_name, &step_name)
+                        .await?;
+                context.record_step(step_name, result);
             }
             Action::Output(output) => {
                 let resolved = resolve_placeholders(&output.text, &context);
@@ -109,23 +137,18 @@ async fn execute_ai_chat(
     context: &ExecutionContext,
     models: &HashMap<String, ModelConfig>,
     default_model: Option<&str>,
-) -> StepResult {
-    let action_name = chat.name.clone().unwrap_or_default();
-
+    scenario_name: &str,
+    step_name: &str,
+) -> Result<StepResult, ExecuteError> {
     let model_name = match &chat.model {
         Some(m) => m.clone(),
         None => match default_model {
             Some(m) => m.to_string(),
             None => {
-                return StepResult {
-                    exit_code: -1,
-                    stdout: String::new(),
-                    stderr: String::new(),
-                    success: false,
-                    message: Some(format!(
-                        "no model configured for aiChat action '{action_name}'"
-                    )),
-                };
+                return Err(ExecuteError::NoDefaultModel {
+                    scenario: scenario_name.to_string(),
+                    step: step_name.to_string(),
+                });
             }
         },
     };
@@ -133,15 +156,11 @@ async fn execute_ai_chat(
     let model_config = match models.get(&model_name) {
         Some(config) => config.clone(),
         None => {
-            return StepResult {
-                exit_code: -1,
-                stdout: String::new(),
-                stderr: String::new(),
-                success: false,
-                message: Some(format!(
-                    "unknown model '{model_name}' referenced in action '{action_name}'"
-                )),
-            };
+            return Err(ExecuteError::UnknownModel {
+                scenario: scenario_name.to_string(),
+                step: step_name.to_string(),
+                model: model_name,
+            });
         }
     };
 
@@ -156,19 +175,17 @@ async fn execute_ai_chat(
     let client = OpenAiClient::new(&model_config.base_url, &model_config.api_key);
 
     match client.chat(&model_config.model, &system_prompt, &message).await {
-        Ok(response) => StepResult {
+        Ok(response) => Ok(StepResult {
             exit_code: 0,
             stdout: String::new(),
             stderr: String::new(),
             success: true,
             message: Some(response),
-        },
-        Err(err) => StepResult {
-            exit_code: -1,
-            stdout: String::new(),
-            stderr: String::new(),
-            success: false,
-            message: Some(err.to_string()),
-        },
+        }),
+        Err(err) => Err(ExecuteError::AiFailed {
+            scenario: scenario_name.to_string(),
+            step: step_name.to_string(),
+            message: err.to_string(),
+        }),
     }
 }

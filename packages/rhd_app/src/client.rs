@@ -41,8 +41,7 @@ pub async fn run_scenario(name: &str) -> Result<(), Box<dyn std::error::Error>> 
     let mut response_buf = vec![0u8; response_len];
     stream.read_exact(&mut response_buf).await?;
 
-    use rkyv::validation::validators::DefaultValidator;
-    use rkyv::{Archive, CheckBytes, Deserialize};
+    use rkyv::Deserialize;
     let archived = rkyv::check_archived_root::<IpcResponse>(&response_buf)
         .map_err(|e| format!("invalid response from daemon: {}", e))?;
     let response: IpcResponse = archived

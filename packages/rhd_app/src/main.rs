@@ -12,12 +12,20 @@ async fn main() {
     let cli = Cli::parse();
     match cli.command {
         Command::Daemon(args) => {
+            if let Err(err) = args.validate() {
+                eprintln!("error: {err}");
+                std::process::exit(1);
+            }
             if let Err(err) = run_daemon_command(args).await {
                 eprintln!("error: {err}");
                 std::process::exit(1);
             }
         }
         Command::Run(args) => {
+            if let Err(err) = args.validate() {
+                eprintln!("error: {err}");
+                std::process::exit(1);
+            }
             if let Err(err) = client::run_scenario(&args.name).await {
                 eprintln!("error: {err}");
                 std::process::exit(1);

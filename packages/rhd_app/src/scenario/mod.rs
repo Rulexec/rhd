@@ -2,9 +2,8 @@ mod executor;
 mod loader;
 mod placeholder;
 
-pub use executor::{execute_scenario, ExecuteError, ExecuteOutput};
-pub use loader::{load_scenario, load_scenarios_dir, ScenarioLoadError};
-pub use placeholder::{resolve_placeholders, ExecutionContext, StepResult};
+pub use executor::execute_scenario;
+pub use loader::load_scenarios_dir;
 
 use serde::Deserialize;
 
@@ -60,6 +59,7 @@ pub struct OutputAction {
 pub struct Scenario {
     pub name: String,
     #[serde(default)]
+    #[allow(dead_code)]
     pub description: Option<String>,
     pub actions: Vec<Action>,
 }
