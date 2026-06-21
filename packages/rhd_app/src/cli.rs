@@ -37,6 +37,8 @@ pub struct DaemonArgs {
     pub scenarios_dir: PathBuf,
     #[arg(long)]
     pub default_model: Option<String>,
+    #[arg(long, default_value_t = false)]
+    pub verbose: bool,
 }
 
 impl DaemonArgs {

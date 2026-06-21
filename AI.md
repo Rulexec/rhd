@@ -135,6 +135,7 @@ rhd run <scenario_name>
 - Commit messages should be short and descriptive, inferred from the work completed
 - Format: lowercase, no period, concise summary of changes
 - Examples: "add seeded rng for e2e tests", "fix placeholder resolution bug", "update daemon shutdown logic"
+- Always use `git add -A` to stage all changes before committing
 
 ## Important Conventions
 

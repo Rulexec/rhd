@@ -13,12 +13,14 @@ struct DaemonState {
     scenarios: HashMap<String, Scenario>,
     models: HashMap<String, ModelConfig>,
     default_model: Option<String>,
+    verbose: bool,
 }
 
 pub async fn run_daemon(
     scenarios: HashMap<String, Scenario>,
     models: HashMap<String, ModelConfig>,
     default_model: Option<String>,
+    verbose: bool,
 ) -> std::io::Result<()> {
     let sock_path = Path::new("rhd.sock");
     if let Err(err) = std::fs::remove_file(sock_path) {
@@ -35,6 +37,7 @@ pub async fn run_daemon(
         scenarios,
         models,
         default_model,
+        verbose,
     });
 
     let mut sigterm = signal(SignalKind::terminate())?;
@@ -114,6 +117,9 @@ fn handle_request(request: IpcRequest, state: &DaemonState) -> IpcResponse {
             let scenario = match state.scenarios.get(&name) {
                 Some(s) => s,
                 None => {
+                    if state.verbose {
+                        eprintln!("[verbose] unknown scenario: {name}");
+                    }
                     return IpcResponse::Error {
                         message: format!("unknown scenario: {name}"),
                     }
@@ -123,13 +129,19 @@ fn handle_request(request: IpcRequest, state: &DaemonState) -> IpcResponse {
                 scenario,
                 &state.models,
                 state.default_model.as_deref(),
+                state.verbose,
             ));
             match result {
                 Ok(output) => IpcResponse::Success {
                     output: output.outputs.join("\n"),
                 },
-                Err(err) => IpcResponse::Error {
-                    message: err.to_string(),
+                Err(err) => {
+                    if state.verbose {
+                        eprintln!("[verbose] scenario execution error: {err}");
+                    }
+                    IpcResponse::Error {
+                        message: err.to_string(),
+                    }
                 },
             }
         }
