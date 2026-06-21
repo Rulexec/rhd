@@ -12,5 +12,6 @@ tokio = { workspace = true }
 serde = { workspace = true }
 serde_yaml = { workspace = true }
 rkyv = { workspace = true }
+thiserror = { workspace = true }
 rhd_ai = { path = "../rhd_ai" }
 rhd_util = { path = "../rhd_util" }
