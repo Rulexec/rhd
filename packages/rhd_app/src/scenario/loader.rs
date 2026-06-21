@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::Path;
 
 use thiserror::Error;
@@ -59,4 +60,27 @@ fn validate_scenario(scenario: &Scenario) -> Result<(), ScenarioLoadError> {
     }
 
     Ok(())
+}
+
+pub fn load_scenarios_dir(dir: &Path) -> Result<HashMap<String, Scenario>, ScenarioLoadError> {
+    let mut scenarios = HashMap::new();
+    let entries = dir.read_dir().map_err(|source| ScenarioLoadError::Io {
+        path: dir.display().to_string(),
+        source,
+    })?;
+    for entry in entries {
+        let entry = entry.map_err(|source| ScenarioLoadError::Io {
+            path: dir.display().to_string(),
+            source,
+        })?;
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("yaml")
+            && path.extension().and_then(|e| e.to_str()) != Some("yml")
+        {
+            continue;
+        }
+        let scenario = load_scenario(&path)?;
+        scenarios.insert(scenario.name.clone(), scenario);
+    }
+    Ok(scenarios)
 }

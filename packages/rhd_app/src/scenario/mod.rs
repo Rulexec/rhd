@@ -3,7 +3,7 @@ mod loader;
 mod placeholder;
 
 pub use executor::{execute_scenario, ExecuteError, ExecuteOutput};
-pub use loader::{load_scenario, ScenarioLoadError};
+pub use loader::{load_scenario, load_scenarios_dir, ScenarioLoadError};
 pub use placeholder::{resolve_placeholders, ExecutionContext, StepResult};
 
 use serde::Deserialize;
