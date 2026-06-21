@@ -65,3 +65,38 @@ pub struct Scenario {
     pub description: Option<String>,
     pub actions: Vec<Action>,
 }
+
+impl Scenario {
+    pub fn apply_env_vars(&mut self) {
+        for action in &mut self.actions {
+            match action {
+                Action::RunCommand(cmd) => {
+                    cmd.command = rhd_util::substitute_env_vars(&cmd.command);
+                    cmd.args = cmd
+                        .args
+                        .iter()
+                        .map(|a| rhd_util::substitute_env_vars(a))
+                        .collect();
+                    cmd.working_dir = cmd
+                        .working_dir
+                        .as_ref()
+                        .map(|d| rhd_util::substitute_env_vars(d));
+                }
+                Action::AiChat(chat) => {
+                    chat.system_prompt = chat
+                        .system_prompt
+                        .as_ref()
+                        .map(|s| rhd_util::substitute_env_vars(s));
+                    chat.message = rhd_util::substitute_env_vars(&chat.message);
+                    chat.model = chat
+                        .model
+                        .as_ref()
+                        .map(|m| rhd_util::substitute_env_vars(m));
+                }
+                Action::Output(output) => {
+                    output.text = rhd_util::substitute_env_vars(&output.text);
+                }
+            }
+        }
+    }
+}

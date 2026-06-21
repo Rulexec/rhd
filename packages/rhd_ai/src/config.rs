@@ -82,6 +82,12 @@ pub fn load_models(models_dir: &Path) -> Result<HashMap<String, ModelConfig>, Co
                 message: e.to_string(),
             })?;
 
+        let config = ModelConfig {
+            base_url: rhd_util::substitute_env_vars(&config.base_url),
+            api_key: rhd_util::substitute_env_vars(&config.api_key),
+            model: rhd_util::substitute_env_vars(&config.model),
+        };
+
         models.insert(model_name, config);
     }
 

@@ -3,6 +3,7 @@ members = [
     "packages/rhd_util",
     "packages/rhd_ai",
     "packages/rhd_app",
+    "packages/rhd_test",
 ]
 resolver = "2"
 

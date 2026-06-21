@@ -11,15 +11,17 @@ RHD is a Rust-based automation tool for AI-assisted task execution. It uses a da
 ```
 rhd/
 ├── Cargo.toml (workspace root)
+├── plans/            # Implementation plans
 ├── packages/
-│   ├── rhd_util/     # Shared error types and utilities
+│   ├── rhd_util/     # Shared error types, utilities, env var substitution
 │   ├── rhd_ai/       # OpenAI-compatible AI client
-│   └── rhd_app/      # Main binary (daemon + client)
+│   ├── rhd_app/      # Main binary (daemon + client)
+│   └── rhd_test/     # E2E test runner with mock AI server
 ```
 
 ### Core Components
 
-**rhd_util**: Shared error types (`RhdError`, `RhdResult<T>`)
+**rhd_util**: Shared error types (`RhdError`, `RhdResult<T>`), `substitute_env_vars()` for `$VAR` expansion in config strings
 
 **rhd_ai**: 
 - `ModelConfig`: AI model configuration (baseUrl, apiKey, model)
@@ -40,6 +42,16 @@ rhd/
 - **runCommand never fails scenario** on non-zero exit (plan requirement)
 - Execution context stores step results for cross-step placeholder resolution
 - Placeholders: `%stepName.field%` where field is `exitCode`, `stdout`, `stderr`, `stdoutStderr`, `success`, `message`
+
+### Environment Variable Substitution
+
+Model configs and scenario YAMLs support `$ENV_VAR` syntax in string values. At load time, all `$VAR_NAME` patterns (alphanumeric + underscore) are replaced with the corresponding environment variable value. If the variable is not set, the original `$VAR_NAME` string is kept as-is.
+
+Example:
+```yaml
+baseUrl: "http://localhost:$E2E_MODEL_PORT/v1"
+cmd: "$E2E_SCRIPTS_DIR/run.sh"
+```
 
 ### Configuration Formats
 
@@ -95,6 +107,11 @@ rhd run <scenario_name>
 
 ## Development Practices
 
+### Planning
+- Implementation plans saved to `plans/` folder as markdown files
+- Plan naming: `<feature>-plan.md` or `<feature>-plan-<n>.md` for iterations
+- Plans should include: goal, architecture, implementation steps, file changes, risks, success criteria
+
 ### Code Organization
 - All crates prefixed with `rhd_`
 - Shared dependencies managed in workspace root `Cargo.toml`
@@ -102,7 +119,8 @@ rhd run <scenario_name>
 - Field names use camelCase in YAML, snake_case in Rust structs (via `#[serde(rename_all = "camelCase")]`)
 
 ### Testing
-- E2E tests in `test_e2e/` directory
+- E2E tests via `rhd_test` crate: `cargo run -p rhd_test`
+- `rhd_test` starts a mock OpenAI-compatible HTTP server (axum), spawns daemon, runs scenario, validates AI request payloads and output
 - Test scenarios in `test_e2e/scenarios/<name>/scenario.yaml`
 - Test models in `test_e2e/models/*.yaml`
 
@@ -145,5 +163,8 @@ packages/rhd_ai/src/
 └── client.rs         # OpenAiClient, AiError
 
 packages/rhd_util/src/
-└── lib.rs            # RhdError, RhdResult
+└── lib.rs            # RhdError, RhdResult, substitute_env_vars()
+
+packages/rhd_test/src/
+└── main.rs           # E2E test runner: mock AI server, daemon spawn, validation
 ```

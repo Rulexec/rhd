@@ -80,6 +80,10 @@ async fn handle_connection(stream: tokio::net::UnixStream, state: Arc<DaemonStat
             return;
         }
     };
+    if let Err(err) = std_stream.set_nonblocking(false) {
+        eprintln!("failed to set stream to blocking: {err}");
+        return;
+    }
     tokio::task::spawn_blocking(move || {
         if let Err(err) = run_connection(std_stream, &state) {
             eprintln!("connection error: {err}");

@@ -30,12 +30,13 @@ pub fn load_scenario(path: &Path) -> Result<Scenario, ScenarioLoadError> {
         source,
     })?;
 
-    let scenario: Scenario = serde_yaml::from_str(&contents).map_err(|e| ScenarioLoadError::Parse {
+    let mut scenario: Scenario = serde_yaml::from_str(&contents).map_err(|e| ScenarioLoadError::Parse {
         path: path_str.clone(),
         line: e.location().map(|l| l.line()).unwrap_or(0),
         column: e.location().map(|l| l.column()).unwrap_or(0),
         message: e.to_string(),
     })?;
+    scenario.apply_env_vars();
     validate_scenario(&scenario, &path_str)?;
     Ok(scenario)
 }
