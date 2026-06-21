@@ -1,0 +1,9 @@
+[package]
+name = "rhd_ai"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+reqwest = { workspace = true }
+serde = { workspace = true }
+rhd_util = { path = "../rhd_util" }

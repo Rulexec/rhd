@@ -1,0 +1,16 @@
+[package]
+name = "rhd_app"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "rhd"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_yaml = { workspace = true }
+rkyv = { workspace = true }
+rhd_ai = { path = "../rhd_ai" }
+rhd_util = { path = "../rhd_util" }
