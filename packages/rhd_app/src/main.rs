@@ -1,4 +1,5 @@
 mod cli;
+mod client;
 mod daemon;
 mod ipc;
 mod scenario;
@@ -12,6 +13,12 @@ async fn main() {
     match cli.command {
         Command::Daemon(args) => {
             if let Err(err) = run_daemon_command(args).await {
+                eprintln!("error: {err}");
+                std::process::exit(1);
+            }
+        }
+        Command::Run(args) => {
+            if let Err(err) = client::run_scenario(&args.name).await {
                 eprintln!("error: {err}");
                 std::process::exit(1);
             }

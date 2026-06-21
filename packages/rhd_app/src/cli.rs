@@ -12,6 +12,12 @@ pub struct Cli {
 #[derive(Subcommand, Debug)]
 pub enum Command {
     Daemon(DaemonArgs),
+    Run(RunArgs),
+}
+
+#[derive(Parser, Debug)]
+pub struct RunArgs {
+    pub name: String,
 }
 
 #[derive(Parser, Debug)]
