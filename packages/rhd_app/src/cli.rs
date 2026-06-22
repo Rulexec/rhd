@@ -15,11 +15,18 @@ pub enum Command {
     Run(RunArgs),
 }
 
+pub fn default_socket_path() -> PathBuf {
+    std::env::var("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join("rhd.sock")
+}
+
 #[derive(Parser, Debug)]
 pub struct RunArgs {
     pub name: String,
-    #[arg(long, default_value = "rhd.sock")]
-    pub socket: PathBuf,
+    #[arg(long)]
+    pub socket: Option<PathBuf>,
 }
 
 impl RunArgs {
@@ -41,8 +48,8 @@ pub struct DaemonArgs {
     pub default_model: Option<String>,
     #[arg(long, default_value_t = false)]
     pub verbose: bool,
-    #[arg(long, default_value = "rhd.sock")]
-    pub socket: PathBuf,
+    #[arg(long)]
+    pub socket: Option<PathBuf>,
 }
 
 impl DaemonArgs {

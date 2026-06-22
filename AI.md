@@ -29,7 +29,7 @@ rhd/
 - Loads models from `models/*.yaml` at startup
 
 **rhd_app**:
-- **Daemon mode**: Unix socket server on `rhd.sock`, accepts `RunScenario` requests
+- **Daemon mode**: Unix socket server on `$HOME/rhd.sock` (default), accepts `RunScenario` requests
 - **Client mode**: Connects to daemon, sends scenario name, receives output
 - **Scenario executor**: Runs action chains sequentially with placeholder resolution
 - **IPC protocol**: rkyv serialization with version-prefixed framing
@@ -83,7 +83,7 @@ actions:
 ```
 
 ### IPC Protocol
-- Unix socket at `./rhd.sock` (configurable via `--socket`)
+- Unix socket at `$HOME/rhd.sock` by default (configurable via `--socket`)
 - Message format: 4-byte version + 4-byte length + rkyv payload
 - Protocol version: 1
 - Request: `IpcRequest::RunScenario { name: String, cwd: String }`
@@ -106,13 +106,13 @@ actions:
 
 ```bash
 # Start daemon
-rhd daemon [--models-dir models] [--scenarios-dir scenarios] [--default-model name] [--socket rhd.sock] [--verbose]
+rhd daemon [--models-dir models] [--scenarios-dir scenarios] [--default-model name] [--socket PATH] [--verbose]
 
 # Run scenario
-rhd run <scenario_name> [--socket rhd.sock]
+rhd run <scenario_name> [--socket PATH]
 ```
 
-The `--socket` flag allows specifying a custom socket path, useful when running daemon and client in different directories.
+By default, the socket is located at `$HOME/rhd.sock`. The `--socket` flag allows specifying a custom socket path.
 
 ## Development Practices
 
@@ -154,10 +154,10 @@ The `--socket` flag allows specifying a custom socket path, useful when running 
 4. **output behavior**: Resolves placeholders in template, returns final string
 5. **Model loading**: Filename (without extension) becomes model name in HashMap
 6. **Scenario loading**: Directory name is scenario identifier, `scenario.yaml` contains definition
-7. **Socket cleanup**: Daemon removes stale `rhd.sock` on startup
+7. **Socket cleanup**: Daemon removes stale socket file on startup
 8. **Graceful shutdown**: Daemon handles SIGTERM/SIGINT for clean shutdown
 9. **CWD propagation**: `rhd run` sends its cwd to daemon; commands execute in client's cwd unless overridden in scenario
-10. **Socket path**: Both daemon and client accept `--socket` flag for custom socket location
+10. **Socket path**: Default socket location is `$HOME/rhd.sock`; both daemon and client accept `--socket` flag for custom location
 
 ## File Structure Reference
 
