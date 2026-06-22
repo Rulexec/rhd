@@ -59,7 +59,6 @@ pub struct OutputAction {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Scenario {
-    pub name: String,
     #[serde(default)]
     #[allow(dead_code)]
     pub description: Option<String>,

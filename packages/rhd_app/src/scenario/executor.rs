@@ -38,6 +38,7 @@ pub struct ExecuteOutput {
 
 pub async fn execute_scenario(
     scenario: &Scenario,
+    scenario_name: &str,
     models: &HashMap<String, ModelConfig>,
     default_model: Option<&str>,
     verbose: bool,
@@ -45,7 +46,6 @@ pub async fn execute_scenario(
 ) -> Result<ExecuteOutput, ExecuteError> {
     let mut context = ExecutionContext::default();
     let mut outputs = Vec::new();
-    let scenario_name = &scenario.name;
 
     if verbose {
         eprintln!("[verbose] executing scenario '{}'", scenario_name);

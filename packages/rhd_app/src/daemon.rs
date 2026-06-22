@@ -140,6 +140,7 @@ fn handle_request(request: IpcRequest, state: &DaemonState) -> IpcResponse {
             };
             let result = tokio::runtime::Handle::current().block_on(execute_scenario(
                 scenario,
+                &name,
                 &state.models,
                 state.default_model.as_deref(),
                 state.verbose,

@@ -42,13 +42,6 @@ pub fn load_scenario(path: &Path) -> Result<Scenario, ScenarioLoadError> {
 }
 
 fn validate_scenario(scenario: &Scenario, path: &str) -> Result<(), ScenarioLoadError> {
-    if scenario.name.is_empty() {
-        return Err(ScenarioLoadError::Validation {
-            path: path.to_string(),
-            message: "scenario name must not be empty".into(),
-        });
-    }
-
     if scenario.actions.is_empty() {
         return Err(ScenarioLoadError::Validation {
             path: path.to_string(),
@@ -97,7 +90,11 @@ pub fn load_scenarios_dir(dir: &Path) -> Result<HashMap<String, Scenario>, Scena
             continue;
         }
         let scenario = load_scenario(&scenario_file)?;
-        scenarios.insert(scenario.name.clone(), scenario);
+        let dir_name = path.file_name()
+            .expect("directory must have a name")
+            .to_string_lossy()
+            .into_owned();
+        scenarios.insert(dir_name, scenario);
     }
     Ok(scenarios)
 }

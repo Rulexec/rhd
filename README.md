@@ -89,7 +89,6 @@ Scenarios: `scenarios/<name>/scenario.yaml`. Directory name is scenario identifi
 
 | Field | Required | Description |
 |---|---|---|
-| `name` | yes | Scenario name |
 | `description` | no | Free text description |
 | `actions` | yes | Ordered list of actions |
 
@@ -152,7 +151,6 @@ All string fields support `$VAR_NAME` syntax (alphanumeric + underscore). Replac
 ## Example scenario
 
 ```yaml
-name: example
 description: Just a test
 actions:
   - type: runCommand

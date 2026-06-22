@@ -64,7 +64,6 @@ model: "gpt-4"
 
 **Scenario** (`scenarios/<name>/scenario.yaml`):
 ```yaml
-name: scenario_name
 description: Optional description
 actions:
   - type: runCommand
@@ -153,7 +152,7 @@ By default, the socket is located at `$HOME/rhd.sock`. The `--socket` flag allow
 3. **aiChat behavior**: Resolves placeholders in systemPrompt and message before API call
 4. **output behavior**: Resolves placeholders in template, returns final string
 5. **Model loading**: Filename (without extension) becomes model name in HashMap
-6. **Scenario loading**: Directory name is scenario identifier, `scenario.yaml` contains definition
+6. **Scenario loading**: Directory name is scenario identifier (used as HashMap key), `scenario.yaml` contains definition
 7. **Socket cleanup**: Daemon removes stale socket file on startup
 8. **Graceful shutdown**: Daemon handles SIGTERM/SIGINT for clean shutdown
 9. **CWD propagation**: `rhd run` sends its cwd to daemon; commands execute in client's cwd unless overridden in scenario
