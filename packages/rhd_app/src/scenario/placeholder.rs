@@ -56,13 +56,7 @@ fn resolve_single(placeholder: &str, context: &ExecutionContext) -> String {
         "exitCode" => result.exit_code.to_string(),
         "stdout" => result.stdout.clone(),
         "stderr" => result.stderr.clone(),
-        "stdoutStderr" => {
-            if result.success {
-                result.stdout_stderr.clone()
-            } else {
-                String::new()
-            }
-        }
+        "stdoutStderr" => result.stdout_stderr.clone(),
         "success" => result.success.to_string(),
         "message" => result.message.clone().unwrap_or_default(),
         "cwd" => result.cwd.clone().unwrap_or_default(),
@@ -99,7 +93,7 @@ mod tests {
     }
 
     #[test]
-    fn stdout_stderr_empty_on_failure() {
+    fn stdout_stderr_available_on_failure() {
         let mut ctx = ExecutionContext::default();
         ctx.record_step(
             "run".into(),
@@ -113,7 +107,7 @@ mod tests {
                 cwd: None,
             },
         );
-        assert_eq!(resolve_placeholders("%run.stdoutStderr%", &ctx), "");
+        assert_eq!(resolve_placeholders("%run.stdoutStderr%", &ctx), "out\nerr\n");
     }
 
     #[test]
