@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use rhd_ai::config::ModelConfig;
 use rhd_ai::OpenAiClient;
 use thiserror::Error;
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::sync::mpsc;
 
 use super::placeholder::{resolve_placeholders, ExecutionContext, StepResult};
 use super::{Action, Scenario};
@@ -105,20 +107,75 @@ async fn execute_run_command(
     command.stdout(std::process::Stdio::piped());
     command.stderr(std::process::Stdio::piped());
 
-    match command.output().await {
-        Ok(output) => {
-            let exit_code = output.status.code().unwrap_or(-1);
-            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-            let success = output.status.success();
+    match command.spawn() {
+        Ok(mut child) => {
+            let stdout = child.stdout.take().unwrap();
+            let stderr = child.stderr.take().unwrap();
+
+            let (tx, mut rx) = mpsc::channel::<(String, String)>(100);
+
+            let tx_out = tx.clone();
+            let stdout_task = tokio::spawn(async move {
+                let mut reader = BufReader::new(stdout);
+                let mut line = String::new();
+                loop {
+                    line.clear();
+                    match reader.read_line(&mut line).await {
+                        Ok(0) => break,
+                        Ok(_) => {
+                            let _ = tx_out.send(("stdout".to_string(), line.clone())).await;
+                        }
+                        Err(_) => break,
+                    }
+                }
+            });
+
+            let tx_err = tx.clone();
+            let stderr_task = tokio::spawn(async move {
+                let mut reader = BufReader::new(stderr);
+                let mut line = String::new();
+                loop {
+                    line.clear();
+                    match reader.read_line(&mut line).await {
+                        Ok(0) => break,
+                        Ok(_) => {
+                            let _ = tx_err.send(("stderr".to_string(), line.clone())).await;
+                        }
+                        Err(_) => break,
+                    }
+                }
+            });
+
+            drop(tx);
+
+            let mut combined = String::new();
+            let mut stdout_buf = String::new();
+            let mut stderr_buf = String::new();
+
+            while let Some((source, line)) = rx.recv().await {
+                combined.push_str(&line);
+                match source.as_str() {
+                    "stdout" => stdout_buf.push_str(&line),
+                    "stderr" => stderr_buf.push_str(&line),
+                    _ => {}
+                }
+            }
+
+            let _ = tokio::join!(stdout_task, stderr_task);
+            let status = child.wait().await;
+
+            let (exit_code, success) = match status {
+                Ok(s) => (s.code().unwrap_or(-1), s.success()),
+                Err(_) => (-1, false),
+            };
 
             if verbose {
                 eprintln!("[verbose] command exit code: {exit_code}");
-                if !stdout.is_empty() {
-                    eprintln!("[verbose] command stdout:\n{stdout}");
+                if !stdout_buf.is_empty() {
+                    eprintln!("[verbose] command stdout:\n{stdout_buf}");
                 }
-                if !stderr.is_empty() {
-                    eprintln!("[verbose] command stderr:\n{stderr}");
+                if !stderr_buf.is_empty() {
+                    eprintln!("[verbose] command stderr:\n{stderr_buf}");
                 }
                 if !success {
                     eprintln!("[verbose] command failed with exit code {exit_code}");
@@ -127,8 +184,9 @@ async fn execute_run_command(
 
             StepResult {
                 exit_code,
-                stdout,
-                stderr,
+                stdout: stdout_buf,
+                stderr: stderr_buf,
+                stdout_stderr: combined,
                 success,
                 message: None,
                 cwd: Some(resolved_cwd),
@@ -142,6 +200,7 @@ async fn execute_run_command(
                 exit_code: -1,
                 stdout: String::new(),
                 stderr: err.to_string(),
+                stdout_stderr: String::new(),
                 success: false,
                 message: None,
                 cwd: Some(resolved_cwd),
@@ -216,6 +275,7 @@ async fn execute_ai_chat(
                 exit_code: 0,
                 stdout: String::new(),
                 stderr: String::new(),
+                stdout_stderr: String::new(),
                 success: true,
                 message: Some(response),
                 cwd: None,

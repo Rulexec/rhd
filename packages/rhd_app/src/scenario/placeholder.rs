@@ -5,6 +5,7 @@ pub struct StepResult {
     pub exit_code: i32,
     pub stdout: String,
     pub stderr: String,
+    pub stdout_stderr: String,
     pub success: bool,
     pub message: Option<String>,
     pub cwd: Option<String>,
@@ -57,7 +58,7 @@ fn resolve_single(placeholder: &str, context: &ExecutionContext) -> String {
         "stderr" => result.stderr.clone(),
         "stdoutStderr" => {
             if result.success {
-                format!("{}{}", result.stdout, result.stderr)
+                result.stdout_stderr.clone()
             } else {
                 String::new()
             }
@@ -82,6 +83,7 @@ mod tests {
                 exit_code: 1,
                 stdout: String::new(),
                 stderr: String::new(),
+                stdout_stderr: String::new(),
                 success: false,
                 message: None,
                 cwd: None,
@@ -105,6 +107,7 @@ mod tests {
                 exit_code: 2,
                 stdout: "out".into(),
                 stderr: "err".into(),
+                stdout_stderr: "out\nerr\n".into(),
                 success: false,
                 message: None,
                 cwd: None,
@@ -120,14 +123,15 @@ mod tests {
             "run".into(),
             StepResult {
                 exit_code: 0,
-                stdout: "out".into(),
-                stderr: "err".into(),
+                stdout: "out\n".into(),
+                stderr: "err\n".into(),
+                stdout_stderr: "out\nerr\n".into(),
                 success: true,
                 message: None,
                 cwd: None,
             },
         );
-        assert_eq!(resolve_placeholders("%run.stdoutStderr%", &ctx), "outerr");
+        assert_eq!(resolve_placeholders("%run.stdoutStderr%", &ctx), "out\nerr\n");
     }
 
     #[test]
