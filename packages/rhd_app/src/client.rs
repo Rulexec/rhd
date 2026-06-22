@@ -4,19 +4,21 @@ use tokio::net::UnixStream;
 
 use crate::ipc::protocol::{IpcRequest, IpcResponse};
 
-const SOCKET_PATH: &str = "rhd.sock";
-
-pub async fn run_scenario(name: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let socket_path = Path::new(SOCKET_PATH);
+pub async fn run_scenario(name: &str, socket_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let mut stream = UnixStream::connect(socket_path).await.map_err(|e| {
         format!(
             "failed to connect to daemon at {}: {} (is daemon running?)",
-            SOCKET_PATH, e
+            socket_path.display(), e
         )
     })?;
 
+    let cwd = std::env::current_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+
     let request = IpcRequest::RunScenario {
         name: name.to_string(),
+        cwd,
     };
     let request_bytes = rkyv::to_bytes::<_, 256>(&request)
         .map_err(|e| format!("failed to serialize request: {}", e))?;

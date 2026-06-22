@@ -8,7 +8,7 @@ actions:
     name: ai1
     model: test_model
     systemPrompt: "You received: %cmd1.stdout%"
-    message: "Exit code was %cmd1.exitCode%, success=%cmd1.success%"
+    message: "Exit code was %cmd1.exitCode%, success=%cmd1.success%, cwd=%cmd1.cwd%"
   - type: output
     name: out1
     output: "AI said: %ai1.message%"

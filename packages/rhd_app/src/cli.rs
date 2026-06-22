@@ -18,6 +18,8 @@ pub enum Command {
 #[derive(Parser, Debug)]
 pub struct RunArgs {
     pub name: String,
+    #[arg(long, default_value = "rhd.sock")]
+    pub socket: PathBuf,
 }
 
 impl RunArgs {
@@ -39,6 +41,8 @@ pub struct DaemonArgs {
     pub default_model: Option<String>,
     #[arg(long, default_value_t = false)]
     pub verbose: bool,
+    #[arg(long, default_value = "rhd.sock")]
+    pub socket: PathBuf,
 }
 
 impl DaemonArgs {

@@ -39,6 +39,7 @@ pub async fn execute_scenario(
     models: &HashMap<String, ModelConfig>,
     default_model: Option<&str>,
     verbose: bool,
+    client_cwd: &str,
 ) -> Result<ExecuteOutput, ExecuteError> {
     let mut context = ExecutionContext::default();
     let mut outputs = Vec::new();
@@ -52,7 +53,7 @@ pub async fn execute_scenario(
         match action {
             Action::RunCommand(cmd) => {
                 let step_name = cmd.name.clone().unwrap_or_else(|| cmd.command.clone());
-                let result = execute_run_command(cmd, &context, verbose).await;
+                let result = execute_run_command(cmd, &context, verbose, client_cwd).await;
                 context.record_step(step_name, result);
             }
             Action::AiChat(chat) => {
@@ -79,6 +80,7 @@ async fn execute_run_command(
     cmd: &super::RunCommandAction,
     context: &ExecutionContext,
     verbose: bool,
+    client_cwd: &str,
 ) -> StepResult {
     let resolved_command = resolve_placeholders(&cmd.command, context);
     let resolved_args: Vec<String> = cmd
@@ -94,10 +96,11 @@ async fn execute_run_command(
     let mut command = tokio::process::Command::new(&resolved_command);
     command.args(&resolved_args);
 
-    if let Some(working_dir) = &cmd.working_dir {
-        let resolved_dir = resolve_placeholders(working_dir, context);
-        command.current_dir(resolved_dir);
-    }
+    let resolved_cwd = match &cmd.working_dir {
+        Some(dir) => resolve_placeholders(dir, context),
+        None => client_cwd.to_string(),
+    };
+    command.current_dir(&resolved_cwd);
 
     command.stdout(std::process::Stdio::piped());
     command.stderr(std::process::Stdio::piped());
@@ -128,6 +131,7 @@ async fn execute_run_command(
                 stderr,
                 success,
                 message: None,
+                cwd: Some(resolved_cwd),
             }
         }
         Err(err) => {
@@ -140,6 +144,7 @@ async fn execute_run_command(
                 stderr: err.to_string(),
                 success: false,
                 message: None,
+                cwd: Some(resolved_cwd),
             }
         },
     }
@@ -213,6 +218,7 @@ async fn execute_ai_chat(
                 stderr: String::new(),
                 success: true,
                 message: Some(response),
+                cwd: None,
             })
         }
         Err(err) => {

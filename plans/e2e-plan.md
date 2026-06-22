@@ -2,7 +2,7 @@
 
 ## Goal
 
-Replace `test_e2e/run_e2e.sh` with Rust crate `rhd_test` that:
+Rust crate `rhd_test` that:
 - Starts mock OpenAI-compatible HTTP server
 - Runs `rhd daemon` + `rhd run <scenario>`
 - Validates AI request payloads (placeholders resolved correctly)

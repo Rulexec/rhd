@@ -21,8 +21,9 @@ pub async fn run_daemon(
     models: HashMap<String, ModelConfig>,
     default_model: Option<String>,
     verbose: bool,
+    socket_path: &Path,
 ) -> std::io::Result<()> {
-    let sock_path = Path::new("rhd.sock");
+    let sock_path = socket_path;
     if let Err(err) = std::fs::remove_file(sock_path) {
         if err.kind() != std::io::ErrorKind::NotFound {
             return Err(err);
@@ -113,7 +114,7 @@ fn run_connection(
 
 fn handle_request(request: IpcRequest, state: &DaemonState) -> IpcResponse {
     match request {
-        IpcRequest::RunScenario { name } => {
+        IpcRequest::RunScenario { name, cwd } => {
             let scenario = match state.scenarios.get(&name) {
                 Some(s) => s,
                 None => {
@@ -130,6 +131,7 @@ fn handle_request(request: IpcRequest, state: &DaemonState) -> IpcResponse {
                 &state.models,
                 state.default_model.as_deref(),
                 state.verbose,
+                &cwd,
             ));
             match result {
                 Ok(output) => IpcResponse::Success {

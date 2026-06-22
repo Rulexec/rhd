@@ -41,7 +41,7 @@ rhd/
 - Three action types: `runCommand`, `aiChat`, `output`
 - **runCommand never fails scenario** on non-zero exit (plan requirement)
 - Execution context stores step results for cross-step placeholder resolution
-- Placeholders: `%stepName.field%` where field is `exitCode`, `stdout`, `stderr`, `stdoutStderr`, `success`, `message`
+- Placeholders: `%stepName.field%` where field is `exitCode`, `stdout`, `stderr`, `stdoutStderr`, `success`, `message`, `cwd`
 
 ### Environment Variable Substitution
 
@@ -83,11 +83,18 @@ actions:
 ```
 
 ### IPC Protocol
-- Unix socket at `./rhd.sock`
+- Unix socket at `./rhd.sock` (configurable via `--socket`)
 - Message format: 4-byte version + 4-byte length + rkyv payload
 - Protocol version: 1
-- Request: `IpcRequest::RunScenario { name: String }`
+- Request: `IpcRequest::RunScenario { name: String, cwd: String }`
 - Response: `IpcResponse::Success { output: String }` or `IpcResponse::Error { message: String }`
+
+### CWD Propagation
+- `rhd run` captures its current working directory and sends it to the daemon via IPC
+- Commands execute in the client's cwd by default (when `cwd` not explicitly set in scenario YAML)
+- If `cwd` is set in scenario YAML, it takes precedence over client's cwd
+- The resolved cwd for each `runCommand` step is stored in `StepResult.cwd` and accessible via `%stepName.cwd%` placeholder
+- E2E tests run daemon and client in separate directories to verify cwd propagation works correctly
 
 ### Error Handling
 - Daemon stays alive on scenario errors
@@ -99,11 +106,13 @@ actions:
 
 ```bash
 # Start daemon
-rhd daemon [--models-dir models] [--scenarios-dir scenarios] [--default-model name]
+rhd daemon [--models-dir models] [--scenarios-dir scenarios] [--default-model name] [--socket rhd.sock] [--verbose]
 
 # Run scenario
-rhd run <scenario_name>
+rhd run <scenario_name> [--socket rhd.sock]
 ```
+
+The `--socket` flag allows specifying a custom socket path, useful when running daemon and client in different directories.
 
 ## Development Practices
 
@@ -147,6 +156,8 @@ rhd run <scenario_name>
 6. **Scenario loading**: Directory name is scenario identifier, `scenario.yaml` contains definition
 7. **Socket cleanup**: Daemon removes stale `rhd.sock` on startup
 8. **Graceful shutdown**: Daemon handles SIGTERM/SIGINT for clean shutdown
+9. **CWD propagation**: `rhd run` sends its cwd to daemon; commands execute in client's cwd unless overridden in scenario
+10. **Socket path**: Both daemon and client accept `--socket` flag for custom socket location
 
 ## File Structure Reference
 

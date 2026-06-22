@@ -26,7 +26,7 @@ async fn main() {
                 eprintln!("error: {err}");
                 std::process::exit(1);
             }
-            if let Err(err) = client::run_scenario(&args.name).await {
+            if let Err(err) = client::run_scenario(&args.name, &args.socket).await {
                 eprintln!("error: {err}");
                 std::process::exit(1);
             }
@@ -39,6 +39,6 @@ async fn run_daemon_command(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let models = rhd_ai::config::load_models(&args.models_dir)?;
     let scenarios = scenario::load_scenarios_dir(&args.scenarios_dir)?;
-    daemon::run_daemon(scenarios, models, args.default_model, args.verbose).await?;
+    daemon::run_daemon(scenarios, models, args.default_model, args.verbose, &args.socket).await?;
     Ok(())
 }

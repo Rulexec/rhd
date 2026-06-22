@@ -131,6 +131,7 @@ fn create_temp_script(dir: &std::path::Path, rng: &mut impl Rng) {
     let script_content = format!(
         r#"#!/bin/sh
 echo "{}"
+pwd
 exit {}
 "#,
         script_output, script_exit_code
@@ -183,7 +184,13 @@ async fn run_single_test(
         temp_dir.path().display()
     ));
 
-    let socket_path = workspace_root.join("rhd.sock");
+    // Create separate dirs for daemon and client to verify cwd propagation
+    let daemon_dir = tempfile::tempdir().unwrap();
+    let client_dir = tempfile::tempdir().unwrap();
+    log.push_str(&format!("  Daemon cwd: {}\n", daemon_dir.path().display()));
+    log.push_str(&format!("  Client cwd: {}\n", client_dir.path().display()));
+
+    let socket_path = daemon_dir.path().join("rhd.sock");
     let _ = std::fs::remove_file(&socket_path);
 
     let mut daemon = Command::new(&rhd_bin)
@@ -192,9 +199,11 @@ async fn run_single_test(
         .arg(&models_dir)
         .arg("--scenarios-dir")
         .arg(&scenarios_dir)
+        .arg("--socket")
+        .arg(&socket_path)
         .env("E2E_MODEL_PORT", port.to_string())
         .env("E2E_SCRIPTS_DIR", temp_dir.path())
-        .current_dir(&workspace_root)
+        .current_dir(daemon_dir.path())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()
@@ -212,7 +221,9 @@ async fn run_single_test(
     let run_output = Command::new(&rhd_bin)
         .arg("run")
         .arg("rhd_test")
-        .current_dir(&workspace_root)
+        .arg("--socket")
+        .arg(&socket_path)
+        .current_dir(client_dir.path())
         .output()
         .await
         .expect("failed to run scenario");
@@ -293,6 +304,24 @@ async fn run_single_test(
             failed = true;
         } else {
             log.push_str("  PASS: user message has no unresolved placeholders\n");
+        }
+
+        // Verify cwd in AI request is client's cwd, not daemon's
+        let expected_cwd = client_dir.path().to_string_lossy();
+        if !req.user_content.contains(expected_cwd.as_ref()) {
+            log.push_str(&format!(
+                "  FAIL: user message does not contain client cwd '{}'\n",
+                expected_cwd
+            ));
+            failed = true;
+        } else {
+            log.push_str("  PASS: user message contains client cwd\n");
+        }
+
+        let daemon_cwd = daemon_dir.path().to_string_lossy();
+        if req.user_content.contains(daemon_cwd.as_ref()) && daemon_cwd != expected_cwd {
+            log.push_str("  FAIL: user message contains daemon cwd instead of client cwd\n");
+            failed = true;
         }
 
         log.push_str(&format!("  system: {}\n", req.system_content));
