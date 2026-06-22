@@ -41,6 +41,18 @@ pub async fn run_daemon(
         verbose,
     });
 
+    let scenario_names: Vec<&String> = state.scenarios.keys().collect();
+    if scenario_names.is_empty() {
+        eprintln!("no scenarios loaded");
+    } else {
+        eprintln!(
+            "loaded {} scenario{}: {}",
+            scenario_names.len(),
+            if scenario_names.len() == 1 { "" } else { "s" },
+            scenario_names.into_iter().cloned().collect::<Vec<_>>().join(", ")
+        );
+    }
+
     let mut sigterm = signal(SignalKind::terminate())?;
     let mut sigint = signal(SignalKind::interrupt())?;
 
