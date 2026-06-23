@@ -216,8 +216,10 @@ model: <model>
 packages/rhd_app/src/
 ├── main.rs           # CLI entry point, command dispatch
 ├── cli.rs            # clap argument definitions
+├── config.rs         # DaemonConfig YAML loading
 ├── daemon.rs         # Unix socket server, connection handling
 ├── client.rs         # Unix socket client
+├── log.rs            # LogSink, execution logging
 ├── ipc/
 │   ├── mod.rs
 │   └── protocol.rs   # rkyv message types, read/write helpers
