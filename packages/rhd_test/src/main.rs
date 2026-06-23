@@ -175,8 +175,10 @@ async fn run_single_test(
     // Create separate dirs for daemon and client to verify cwd propagation
     let daemon_dir = tempfile::tempdir().unwrap();
     let client_dir = tempfile::tempdir().unwrap();
+    let logs_dir = daemon_dir.path().join("logs");
     log.push_str(&format!("  Daemon cwd: {}\n", daemon_dir.path().display()));
     log.push_str(&format!("  Client cwd: {}\n", client_dir.path().display()));
+    log.push_str(&format!("  Logs dir: {}\n", logs_dir.display()));
 
     let socket_path = daemon_dir.path().join("rhd.sock");
     let _ = std::fs::remove_file(&socket_path);
@@ -189,6 +191,8 @@ async fn run_single_test(
         .arg(&scenarios_dir)
         .arg("--socket")
         .arg(&socket_path)
+        .arg("--logs")
+        .arg(&logs_dir)
         .env("E2E_MODEL_PORT", port.to_string())
         .env("E2E_SCRIPTS_DIR", temp_dir.path())
         .current_dir(daemon_dir.path())
@@ -233,7 +237,9 @@ async fn run_single_test(
         return (true, log);
     }
 
-    // Spawn drain task to consume remaining stdout
+    // Spawn drain task to capture remaining stdout
+    let daemon_stdout: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
+    let daemon_stdout_clone = daemon_stdout.clone();
     tokio::spawn(async move {
         use tokio::io::AsyncBufReadExt;
         let mut reader = tokio::io::BufReader::new(stdout);
@@ -242,7 +248,9 @@ async fn run_single_test(
             line.clear();
             match reader.read_line(&mut line).await {
                 Ok(0) | Err(_) => break,
-                Ok(_) => continue,
+                Ok(_) => {
+                    daemon_stdout_clone.lock().unwrap().push_str(&line);
+                }
             }
         }
     });
@@ -271,6 +279,8 @@ async fn run_single_test(
 
     daemon.kill().await.ok();
     let _ = std::fs::remove_file(&socket_path);
+
+    let daemon_stdout_content = daemon_stdout.lock().unwrap().clone();
 
     let mut failed = false;
 
@@ -357,6 +367,93 @@ async fn run_single_test(
 
         log.push_str(&format!("  system: {}\n", req.system_content));
         log.push_str(&format!("  user: {}\n", req.user_content));
+    }
+
+    // Verify log file was created and contains expected content
+    let log_entries: Vec<_> = match std::fs::read_dir(&logs_dir) {
+        Ok(entries) => entries
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                let name = e.file_name().to_string_lossy().to_string();
+                name.starts_with("rhd_test-") && e.path().is_dir()
+            })
+            .collect(),
+        Err(err) => {
+            log.push_str(&format!("  FAIL: could not read logs_dir: {err}\n"));
+            failed = true;
+            return (failed, log);
+        }
+    };
+
+    if log_entries.len() != 1 {
+        log.push_str(&format!(
+            "  FAIL: expected 1 log directory, got {}\n",
+            log_entries.len()
+        ));
+        failed = true;
+    } else {
+        log.push_str("  PASS: exactly 1 log directory created\n");
+        let log_dir = log_entries[0].path();
+        let log_file = log_dir.join("log.txt");
+
+        if !log_file.exists() {
+            log.push_str(&format!(
+                "  FAIL: log.txt does not exist in {}\n",
+                log_dir.display()
+            ));
+            failed = true;
+        } else {
+            log.push_str(&format!("  PASS: log.txt exists in {}\n", log_dir.display()));
+
+            match std::fs::read_to_string(&log_file) {
+                Ok(log_content) => {
+                    log.push_str(&format!("  log.txt size: {} bytes\n", log_content.len()));
+
+                    let expected_output = format!("AI said: {random_response}");
+                    let expected_substrings: Vec<&str> = vec![
+                        "===== executing scenario =====\nrhd_test",
+                        "cmd1: ===== running command =====",
+                        "[STDOUT]",
+                        "cmd1: ===== command exit code =====",
+                        "ai1: ===== AI request =====",
+                        "model: test_model",
+                        "----- system prompt -----",
+                        "----- message -----",
+                        "ai1: ===== AI response =====",
+                        &random_response,
+                        "===== output step =====",
+                        &expected_output,
+                    ];
+
+                    for expected in &expected_substrings {
+                        if !log_content.contains(expected) {
+                            log.push_str(&format!(
+                                "  FAIL: log.txt does not contain '{expected}'\n"
+                            ));
+                            failed = true;
+                        } else {
+                            log.push_str(&format!(
+                                "  PASS: log.txt contains '{expected}'\n"
+                            ));
+                        }
+                    }
+
+                    // Compare log.txt with daemon stdout
+                    if log_content != daemon_stdout_content {
+                        log.push_str("  FAIL: log.txt content does not match daemon stdout\n");
+                        log.push_str(&format!("    log.txt:\n{log_content}\n"));
+                        log.push_str(&format!("    daemon stdout:\n{daemon_stdout_content}\n"));
+                        failed = true;
+                    } else {
+                        log.push_str("  PASS: log.txt matches daemon stdout\n");
+                    }
+                }
+                Err(err) => {
+                    log.push_str(&format!("  FAIL: could not read log.txt: {err}\n"));
+                    failed = true;
+                }
+            }
+        }
     }
 
     (failed, log)
