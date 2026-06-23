@@ -212,6 +212,7 @@ When `logs` is configured, each scenario execution creates a timestamped log dir
 
 ===== <stepName>: AI request =====
 model: <model>
+available tools: <tool1>, <tool2>, ...   (only when MCP tools configured)
 ----- system prompt -----
 <prompt>
 ----- message -----

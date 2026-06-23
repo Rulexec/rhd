@@ -79,10 +79,14 @@ impl LogSink {
         &mut self,
         step: &str,
         model: &str,
+        tools: &[String],
         system_prompt: &str,
         message: &str,
     ) {
         let mut body = format!("model: {model}\n");
+        if !tools.is_empty() {
+            body.push_str(&format!("available tools: {}\n", tools.join(", ")));
+        }
         body.push_str("----- system prompt -----\n");
         body.push_str(system_prompt);
         if !system_prompt.ends_with('\n') {

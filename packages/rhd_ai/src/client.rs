@@ -57,9 +57,16 @@ enum ChatMessage<'a> {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ToolDefinition {
+    #[serde(rename = "type")]
+    pub tool_type: String,
+    pub function: FunctionDefinition,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct FunctionDefinition {
     pub name: String,
     pub description: String,
-    pub input_schema: serde_json::Value,
+    pub parameters: serde_json::Value,
 }
 
 #[derive(Serialize, Deserialize, Clone)]

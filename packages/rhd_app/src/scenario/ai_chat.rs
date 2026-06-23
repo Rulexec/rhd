@@ -63,13 +63,12 @@ pub async fn execute_ai_chat(
 
     let message = resolve_placeholders(&chat.message, context);
 
-    sink.log_ai_request(step_name, &model_name, &system_prompt, &message);
-
     let client = OpenAiClient::new(&model_config.base_url, &model_config.api_key);
 
     let has_mcp = chat.mcp.as_ref().map(|m| !m.is_empty()).unwrap_or(false);
 
     if !has_mcp {
+        sink.log_ai_request(step_name, &model_name, &[], &system_prompt, &message);
         match client.chat(&model_config.model, &system_prompt, &message).await {
             Ok(response) => {
                 sink.log_step(step_name, "AI response", &response);
@@ -97,6 +96,7 @@ pub async fn execute_ai_chat(
             chat,
             context,
             &client,
+            &model_name,
             &model_config.model,
             &system_prompt,
             &message,
@@ -114,6 +114,7 @@ async fn execute_ai_chat_with_tools(
     chat: &AiChatAction,
     context: &mut ExecutionContext,
     client: &OpenAiClient,
+    model_name: &str,
     model: &str,
     system_prompt: &str,
     message: &str,
@@ -123,7 +124,7 @@ async fn execute_ai_chat_with_tools(
     step_name: &str,
     sink: &mut LogSink,
 ) -> Result<StepResult, ExecuteError> {
-    use rhd_ai::ToolDefinition;
+    use rhd_ai::{FunctionDefinition, ToolDefinition};
     use rhd_mcp_client::McpClientTrait;
 
     let max_iterations = match &chat.max_tool_iterations {
@@ -139,16 +140,19 @@ async fn execute_ai_chat_with_tools(
         for mcp_ref in mcp_refs {
             if mcp_ref.name == "flags" {
                 tools.push(ToolDefinition {
-                    name: "rhd_set_flag".to_string(),
-                    description: "Set a named flag with a boolean value".to_string(),
-                    input_schema: serde_json::json!({
-                        "type": "object",
-                        "properties": {
-                            "name": { "type": "string" },
-                            "value": { "type": "boolean", "default": true }
-                        },
-                        "required": ["name"]
-                    }),
+                    tool_type: "function".to_string(),
+                    function: FunctionDefinition {
+                        name: "rhd_set_flag".to_string(),
+                        description: "Set a named flag with a boolean value".to_string(),
+                        parameters: serde_json::json!({
+                            "type": "object",
+                            "properties": {
+                                "name": { "type": "string" },
+                                "value": { "type": "boolean", "default": true }
+                            },
+                            "required": ["name"]
+                        }),
+                    },
                 });
             } else if let Some(config) = mcp_configs.get(&mcp_ref.name) {
                 let mut resolved_config = config.clone();
@@ -167,9 +171,12 @@ async fn execute_ai_chat_with_tools(
                             Ok(mcp_tools) => {
                                 for tool in mcp_tools {
                                     tools.push(ToolDefinition {
-                                        name: tool.name,
-                                        description: tool.description,
-                                        input_schema: tool.input_schema,
+                                        tool_type: "function".to_string(),
+                                        function: FunctionDefinition {
+                                            name: tool.name,
+                                            description: tool.description,
+                                            parameters: tool.input_schema,
+                                        },
                                     });
                                 }
                                 mcp_clients.push((mcp_ref.name.clone(), mcp_client));
@@ -186,6 +193,9 @@ async fn execute_ai_chat_with_tools(
             }
         }
     }
+
+    let tool_names: Vec<String> = tools.iter().map(|t| t.function.name.clone()).collect();
+    sink.log_ai_request(step_name, model_name, &tool_names, system_prompt, message);
 
     let mut current_message = message.to_string();
     let mut tool_results: Vec<(String, String)> = Vec::new();
