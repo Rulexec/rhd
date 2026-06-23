@@ -10,6 +10,8 @@ pub struct DaemonConfig {
     pub scenarios_dir: PathBuf,
     #[serde(default = "default_models_dir")]
     pub models_dir: PathBuf,
+    #[serde(default = "default_mcp_dir")]
+    pub mcp_dir: PathBuf,
     #[serde(default)]
     pub default_model: Option<String>,
     #[serde(default)]
@@ -24,11 +26,16 @@ fn default_models_dir() -> PathBuf {
     PathBuf::from("models")
 }
 
+fn default_mcp_dir() -> PathBuf {
+    PathBuf::from("mcp")
+}
+
 impl Default for DaemonConfig {
     fn default() -> Self {
         Self {
             scenarios_dir: default_scenarios_dir(),
             models_dir: default_models_dir(),
+            mcp_dir: default_mcp_dir(),
             default_model: None,
             logs: None,
         }

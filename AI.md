@@ -130,6 +130,65 @@ logs: null
 - `defaultModel`: Fallback model for `aiChat` steps without `model` field (default: `null`)
 - `logs`: Directory for execution logs (default: `null`, no logging)
 
+### aiChat with MCP Tools
+
+The `aiChat` action supports Model Context Protocol (MCP) for tool usage:
+
+```yaml
+- type: aiChat
+  name: ai_step
+  model: model_name
+  mcp:
+    - name: fs                    # Reference to mcp/fs/mcp.yaml
+      args: ["--extra-arg"]       # Optional override
+      env:
+        AVAILABLE_ROOT: /tmp      # Optional env vars
+    - name: flags                 # Built-in tools
+  maxToolIterations: 20           # Optional, default 20, "inf" for unlimited
+  systemPrompt: "Optional system prompt"
+  message: "User message"
+```
+
+**Behavior**:
+- Without `mcp` field: Single-shot mode (current behavior)
+- With `mcp` field: Tool loop mode - model can call tools, results fed back, loop until `finish_reason: "stop"`
+- Max iterations guard prevents infinite loops (configurable per step)
+
+**Built-in Tools**:
+- `rhd_set_flag`: Sets a flag that can be used for conditional step execution
+  ```json
+  {"name": "flag_name", "value": true}
+  ```
+
+**MCP Configuration** (`mcp/<name>/mcp.yaml`):
+```yaml
+cmd: npx
+args: ["-y", "@modelcontextprotocol/server-filesystem", "$AVAILABLE_ROOT"]
+cwd: null
+```
+
+**MCP Server Lifecycle**:
+- Spawned on first use per (mcp_name, scenario_id, step_id)
+- Cached at daemon level, reused across scenario executions
+- Killed only on daemon shutdown
+
+### Skip Conditions
+
+Steps can be conditionally skipped based on flags set by `rhd_set_flag`:
+
+```yaml
+- type: runCommand
+  name: build
+  cmd: make
+  skip: ai_step.flag_skip_build    # Skip if flag is true
+```
+
+**Flag Format**: `<aiChatStepName>.flag_<flagName>`
+- Flags are stored in `ExecutionContext`
+- Accessible to all subsequent steps
+- If flag is `true` → skip step, if `false`/absent → execute
+- Applies to all step types except `output`
+
 ## Execution Logs
 
 When `logs` is configured, each scenario execution creates a timestamped log directory:
@@ -160,6 +219,15 @@ model: <model>
 
 ===== <stepName>: AI response =====
 <response>
+
+----- <stepName>: tool call -----
+<toolName>(<arguments>)
+
+----- <stepName>: tool result -----
+<result>
+
+===== <stepName>: skipped =====
+<skip expression>
 
 ===== <stepName>: output step =====
 <resolved output>

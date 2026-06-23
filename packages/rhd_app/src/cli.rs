@@ -47,6 +47,8 @@ pub struct DaemonArgs {
     #[arg(long)]
     pub scenarios_dir: Option<PathBuf>,
     #[arg(long)]
+    pub mcp_dir: Option<PathBuf>,
+    #[arg(long)]
     pub default_model: Option<String>,
     #[arg(long)]
     pub logs: Option<PathBuf>,

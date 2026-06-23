@@ -6,6 +6,7 @@ pub use executor::execute_scenario;
 pub use loader::load_scenarios_dir;
 
 use serde::Deserialize;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
@@ -35,6 +36,8 @@ pub struct RunCommandAction {
     pub args: Vec<String>,
     #[serde(default, rename = "cwd")]
     pub working_dir: Option<String>,
+    #[serde(default)]
+    pub skip: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -46,6 +49,70 @@ pub struct AiChatAction {
     pub message: String,
     #[serde(default)]
     pub model: Option<String>,
+    #[serde(default)]
+    pub mcp: Option<Vec<McpRef>>,
+    #[serde(default)]
+    pub max_tool_iterations: Option<MaxIterations>,
+    #[serde(default)]
+    pub skip: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpRef {
+    pub name: String,
+    #[serde(default)]
+    pub args: Option<Vec<String>>,
+    #[serde(default)]
+    pub env: Option<HashMap<String, String>>,
+}
+
+#[derive(Debug, Clone)]
+pub enum MaxIterations {
+    Finite(u32),
+    Infinite,
+}
+
+impl<'de> Deserialize<'de> for MaxIterations {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de;
+
+        struct MaxIterationsVisitor;
+
+        impl<'de> de::Visitor<'de> for MaxIterationsVisitor {
+            type Value = MaxIterations;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a positive integer or the string \"inf\"")
+            }
+
+            fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(MaxIterations::Finite(value as u32))
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                if value == "inf" {
+                    Ok(MaxIterations::Infinite)
+                } else {
+                    Err(de::Error::custom(format!(
+                        "expected \"inf\", got \"{}\"",
+                        value
+                    )))
+                }
+            }
+        }
+
+        deserializer.deserialize_any(MaxIterationsVisitor)
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -91,6 +158,24 @@ impl Scenario {
                         .model
                         .as_ref()
                         .map(|m| rhd_util::substitute_env_vars(m));
+                    
+                    // Apply env vars to MCP config
+                    if let Some(mcp_refs) = &mut chat.mcp {
+                        for mcp_ref in mcp_refs {
+                            if let Some(args) = &mut mcp_ref.args {
+                                *args = args
+                                    .iter()
+                                    .map(|a| rhd_util::substitute_env_vars(a))
+                                    .collect();
+                            }
+                            if let Some(env) = &mut mcp_ref.env {
+                                *env = env
+                                    .iter()
+                                    .map(|(k, v)| (k.clone(), rhd_util::substitute_env_vars(v)))
+                                    .collect();
+                            }
+                        }
+                    }
                 }
                 Action::Output(output) => {
                     output.text = rhd_util::substitute_env_vars(&output.text);

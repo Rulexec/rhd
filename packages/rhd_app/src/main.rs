@@ -4,6 +4,8 @@ mod config;
 mod daemon;
 mod ipc;
 mod log;
+mod mcp_cache;
+mod mcp_loader;
 mod scenario;
 
 use std::path::PathBuf;
@@ -49,8 +51,9 @@ async fn run_daemon_command(
 
     let models = rhd_ai::config::load_models(&merged.models_dir)?;
     let scenarios = scenario::load_scenarios_dir(&merged.scenarios_dir)?;
+    let mcp_configs = mcp_loader::load_mcp_dir(&merged.mcp_dir)?;
     let socket_path = args.socket.unwrap_or_else(cli::default_socket_path);
-    daemon::run_daemon(scenarios, models, merged.default_model, merged.logs, &socket_path).await?;
+    daemon::run_daemon(scenarios, models, mcp_configs, merged.default_model, merged.logs, &socket_path).await?;
     Ok(())
 }
 
@@ -68,6 +71,7 @@ fn merge_config(config: DaemonConfig, args: &cli::DaemonArgs) -> DaemonConfig {
     DaemonConfig {
         models_dir: args.models_dir.clone().unwrap_or(config.models_dir),
         scenarios_dir: args.scenarios_dir.clone().unwrap_or(config.scenarios_dir),
+        mcp_dir: args.mcp_dir.clone().unwrap_or(config.mcp_dir),
         default_model: args.default_model.clone().or(config.default_model),
         logs: args.logs.clone().or(config.logs),
     }

@@ -31,12 +31,41 @@ pub enum AiError {
 struct ChatRequest<'a> {
     model: &'a str,
     messages: Vec<ChatMessage<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tools: Option<&'a [ToolDefinition]>,
 }
 
 #[derive(Serialize)]
-struct ChatMessage<'a> {
-    role: &'a str,
-    content: &'a str,
+#[serde(untagged)]
+enum ChatMessage<'a> {
+    System { role: &'a str, content: &'a str },
+    User { role: &'a str, content: &'a str },
+    Assistant {
+        role: &'a str,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        content: Option<&'a str>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        tool_calls: Option<&'a [ToolCall]>,
+    },
+    Tool {
+        role: &'a str,
+        tool_call_id: &'a str,
+        content: &'a str,
+    },
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ToolDefinition {
+    pub name: String,
+    pub description: String,
+    pub input_schema: serde_json::Value,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ToolCall {
+    pub id: String,
+    pub name: String,
+    pub arguments: String,
 }
 
 #[derive(Deserialize)]
@@ -47,11 +76,33 @@ struct ChatResponse {
 #[derive(Deserialize)]
 struct Choice {
     message: ResponseMessage,
+    finish_reason: Option<String>,
 }
 
 #[derive(Deserialize)]
 struct ResponseMessage {
-    content: String,
+    content: Option<String>,
+    tool_calls: Option<Vec<ToolCallResponse>>,
+}
+
+#[derive(Deserialize, Clone)]
+struct ToolCallResponse {
+    id: String,
+    #[serde(rename = "type")]
+    call_type: String,
+    function: FunctionCall,
+}
+
+#[derive(Deserialize, Clone)]
+struct FunctionCall {
+    name: String,
+    arguments: String,
+}
+
+pub struct ChatResult {
+    pub content: Option<String>,
+    pub tool_calls: Vec<ToolCall>,
+    pub finish_reason: Option<String>,
 }
 
 pub struct OpenAiClient {
@@ -75,20 +126,38 @@ impl OpenAiClient {
         system: &str,
         message: &str,
     ) -> Result<String, AiError> {
+        let result = self.chat_with_tools(model, system, message, &[], &[]).await?;
+        Ok(result.content.unwrap_or_default())
+    }
+
+    pub async fn chat_with_tools(
+        &self,
+        model: &str,
+        system: &str,
+        message: &str,
+        tools: &[ToolDefinition],
+        tool_results: &[(String, String)], // (tool_call_id, content)
+    ) -> Result<ChatResult, AiError> {
         let url = format!("{}/chat/completions", self.base_url);
+
+        let mut messages = vec![
+            ChatMessage::System { role: "system", content: system },
+            ChatMessage::User { role: "user", content: message },
+        ];
+
+        // Add tool results if any
+        for (tool_call_id, content) in tool_results {
+            messages.push(ChatMessage::Tool {
+                role: "tool",
+                tool_call_id,
+                content,
+            });
+        }
 
         let request = ChatRequest {
             model,
-            messages: vec![
-                ChatMessage {
-                    role: "system",
-                    content: system,
-                },
-                ChatMessage {
-                    role: "user",
-                    content: message,
-                },
-            ],
+            messages,
+            tools: if tools.is_empty() { None } else { Some(tools) },
         };
 
         let response = self
@@ -121,16 +190,30 @@ impl OpenAiClient {
             }
         })?;
 
-        let content = chat_response
+        let choice = chat_response
             .choices
             .into_iter()
             .next()
             .ok_or_else(|| AiError::NoChoices {
                 model: model.to_string(),
-            })?
-            .message
-            .content;
+            })?;
 
-        Ok(content)
+        let tool_calls = choice
+            .message
+            .tool_calls
+            .unwrap_or_default()
+            .into_iter()
+            .map(|tc| ToolCall {
+                id: tc.id,
+                name: tc.function.name,
+                arguments: tc.function.arguments,
+            })
+            .collect();
+
+        Ok(ChatResult {
+            content: choice.message.content,
+            tool_calls,
+            finish_reason: choice.finish_reason,
+        })
     }
 }

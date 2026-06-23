@@ -25,12 +25,33 @@ struct Args {
 struct ChatRequest {
     model: String,
     messages: Vec<ChatMessage>,
+    #[serde(default)]
+    tools: Option<Vec<serde_json::Value>>,
 }
 
 #[derive(Debug, Deserialize)]
 struct ChatMessage {
     role: String,
-    content: String,
+    #[serde(default)]
+    content: Option<String>,
+    #[serde(default)]
+    tool_calls: Option<Vec<ToolCall>>,
+    #[serde(default)]
+    tool_call_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+struct ToolCall {
+    id: String,
+    #[serde(rename = "type")]
+    call_type: String,
+    function: FunctionCall,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+struct FunctionCall {
+    name: String,
+    arguments: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -41,12 +62,31 @@ struct ChatResponse {
 #[derive(Debug, Serialize)]
 struct Choice {
     message: ResponseMessage,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    finish_reason: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 struct ResponseMessage {
     role: String,
-    content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_calls: Option<Vec<ToolCallResponse>>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+struct ToolCallResponse {
+    id: String,
+    #[serde(rename = "type")]
+    call_type: String,
+    function: FunctionCallResponse,
+}
+
+#[derive(Debug, Serialize, Clone)]
+struct FunctionCallResponse {
+    name: String,
+    arguments: String,
 }
 
 #[derive(Debug, Clone)]
@@ -58,23 +98,29 @@ struct RecordedRequest {
 
 type SharedRequests = Arc<Mutex<Vec<RecordedRequest>>>;
 type SharedResponse = Arc<Mutex<String>>;
+type SharedFlagValue = Arc<Mutex<bool>>;
 
 async fn chat_completions(
-    State((requests, response)): State<(SharedRequests, SharedResponse)>,
+    State((requests, response, flag_value)): State<(SharedRequests, SharedResponse, SharedFlagValue)>,
     Json(body): Json<ChatRequest>,
 ) -> Json<ChatResponse> {
     let system_content = body
         .messages
         .iter()
         .find(|m| m.role == "system")
-        .map(|m| m.content.clone())
+        .and_then(|m| m.content.clone())
         .unwrap_or_default();
     let user_content = body
         .messages
         .iter()
         .find(|m| m.role == "user")
-        .map(|m| m.content.clone())
+        .and_then(|m| m.content.clone())
         .unwrap_or_default();
+
+    // Check if tools are provided and system prompt mentions rhd_set_flag
+    let has_tools = body.tools.is_some();
+    let has_tool_result = body.messages.iter().any(|m| m.role == "tool");
+    let should_call_tool = has_tools && system_content.contains("rhd_set_flag") && !has_tool_result;
 
     requests.lock().unwrap().push(RecordedRequest {
         model: body.model.clone(),
@@ -84,22 +130,49 @@ async fn chat_completions(
 
     let response_content = response.lock().unwrap().clone();
 
-    Json(ChatResponse {
-        choices: vec![Choice {
-            message: ResponseMessage {
-                role: "assistant".to_string(),
-                content: response_content,
-            },
-        }],
-    })
+    if should_call_tool {
+        // Return a tool call response with randomized flag value
+        let expected_flag = *flag_value.lock().unwrap();
+        let arguments = format!(r#"{{"name":"test_flag","value":{}}}"#, expected_flag);
+        Json(ChatResponse {
+            choices: vec![Choice {
+                message: ResponseMessage {
+                    role: "assistant".to_string(),
+                    content: None,
+                    tool_calls: Some(vec![ToolCallResponse {
+                        id: "call_1".to_string(),
+                        call_type: "function".to_string(),
+                        function: FunctionCallResponse {
+                            name: "rhd_set_flag".to_string(),
+                            arguments,
+                        },
+                    }]),
+                },
+                finish_reason: Some("tool_calls".to_string()),
+            }],
+        })
+    } else {
+        // Return a normal text response
+        Json(ChatResponse {
+            choices: vec![Choice {
+                message: ResponseMessage {
+                    role: "assistant".to_string(),
+                    content: Some(response_content),
+                    tool_calls: None,
+                },
+                finish_reason: Some("stop".to_string()),
+            }],
+        })
+    }
 }
 
-async fn start_mock_server() -> (u16, SharedRequests, SharedResponse) {
+async fn start_mock_server() -> (u16, SharedRequests, SharedResponse, SharedFlagValue) {
     let requests: SharedRequests = Arc::new(Mutex::new(Vec::new()));
     let response: SharedResponse = Arc::new(Mutex::new(String::new()));
+    let flag_value: SharedFlagValue = Arc::new(Mutex::new(true));
     let app = Router::new()
         .route("/v1/chat/completions", post(chat_completions))
-        .with_state((requests.clone(), response.clone()));
+        .with_state((requests.clone(), response.clone(), flag_value.clone()));
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -108,7 +181,7 @@ async fn start_mock_server() -> (u16, SharedRequests, SharedResponse) {
         axum::serve(listener, app).await.unwrap();
     });
 
-    (port, requests, response)
+    (port, requests, response, flag_value)
 }
 
 fn generate_random_string(rng: &mut impl Rng, length: usize) -> String {
@@ -460,14 +533,274 @@ async fn run_single_test(
     (failed, log)
 }
 
+async fn run_mcp_test(
+    iter_seed: u64,
+    port: u16,
+    requests: SharedRequests,
+    response: SharedResponse,
+    flag_value: SharedFlagValue,
+) -> (bool, String) {
+    let mut log = String::new();
+    let mut rng = StdRng::seed_from_u64(iter_seed);
+
+    let workspace_root = std::env::current_dir().unwrap();
+    let rhd_bin = workspace_root.join("target/debug/rhd");
+    let models_dir = workspace_root.join("test_e2e/models");
+    let scenarios_dir = workspace_root.join("test_e2e/scenarios");
+
+    let random_response = generate_random_string(&mut rng, 8);
+    *response.lock().unwrap() = random_response.clone();
+    log.push_str(&format!("  AI response: {random_response}\n"));
+
+    // Randomize flag value
+    let expected_flag: bool = rng.gen();
+    *flag_value.lock().unwrap() = expected_flag;
+    log.push_str(&format!("  Expected flag value: {expected_flag}\n"));
+
+    let temp_dir = tempfile::tempdir().unwrap();
+    log.push_str(&format!(
+        "  Temp scripts at: {}\n",
+        temp_dir.path().display()
+    ));
+
+    let daemon_dir = tempfile::tempdir().unwrap();
+    let client_dir = tempfile::tempdir().unwrap();
+    let logs_dir = daemon_dir.path().join("logs");
+    log.push_str(&format!("  Daemon cwd: {}\n", daemon_dir.path().display()));
+    log.push_str(&format!("  Client cwd: {}\n", client_dir.path().display()));
+    log.push_str(&format!("  Logs dir: {}\n", logs_dir.display()));
+
+    let socket_path = daemon_dir.path().join("rhd.sock");
+    let _ = std::fs::remove_file(&socket_path);
+
+    let mut daemon = Command::new(&rhd_bin)
+        .arg("daemon")
+        .arg("--models-dir")
+        .arg(&models_dir)
+        .arg("--scenarios-dir")
+        .arg(&scenarios_dir)
+        .arg("--socket")
+        .arg(&socket_path)
+        .arg("--logs")
+        .arg(&logs_dir)
+        .env("E2E_MODEL_PORT", port.to_string())
+        .current_dir(daemon_dir.path())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("failed to spawn daemon");
+
+    log.push_str(&format!("  Daemon spawned (PID: {:?})\n", daemon.id()));
+
+    let mut stdout = daemon.stdout.take().expect("failed to take stdout");
+    let mut stdout_buf = String::new();
+    let mut found_listening = false;
+    let start_time = std::time::Instant::now();
+    let timeout = Duration::from_secs(10);
+
+    while start_time.elapsed() < timeout {
+        let mut line = String::new();
+        match tokio::io::AsyncBufReadExt::read_line(
+            &mut tokio::io::BufReader::new(&mut stdout),
+            &mut line,
+        )
+        .await
+        {
+            Ok(0) => break,
+            Ok(_) => {
+                stdout_buf.push_str(&line);
+                if line.contains("listening on") {
+                    found_listening = true;
+                    break;
+                }
+            }
+            Err(_) => break,
+        }
+    }
+
+    if !found_listening {
+        log.push_str("  FAIL: Daemon did not print 'listening on' message\n");
+        log.push_str(&format!("  stdout so far: {stdout_buf}\n"));
+        daemon.kill().await.ok();
+        return (true, log);
+    }
+
+    let daemon_stdout: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
+    let daemon_stdout_clone = daemon_stdout.clone();
+    tokio::spawn(async move {
+        use tokio::io::AsyncBufReadExt;
+        let mut reader = tokio::io::BufReader::new(stdout);
+        let mut line = String::new();
+        loop {
+            line.clear();
+            match reader.read_line(&mut line).await {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {
+                    daemon_stdout_clone.lock().unwrap().push_str(&line);
+                }
+            }
+        }
+    });
+
+    log.push_str("  Daemon ready (listening message received)\n");
+
+    let run_output = Command::new(&rhd_bin)
+        .arg("run")
+        .arg("mcp_test")
+        .arg("--socket")
+        .arg(&socket_path)
+        .current_dir(client_dir.path())
+        .output()
+        .await
+        .expect("failed to run scenario");
+
+    let stdout = String::from_utf8_lossy(&run_output.stdout);
+    let stderr = String::from_utf8_lossy(&run_output.stderr);
+    let exit_code = run_output.status.code().unwrap_or(-1);
+
+    log.push_str(&format!("  rhd run exit code: {exit_code}\n"));
+    log.push_str(&format!("  rhd run stdout: {stdout}\n"));
+    if !stderr.is_empty() {
+        log.push_str(&format!("  rhd run stderr: {stderr}\n"));
+    }
+
+    daemon.kill().await.ok();
+    let _ = std::fs::remove_file(&socket_path);
+
+    let mut failed = false;
+
+    if exit_code != 0 {
+        log.push_str(&format!(
+            "  FAIL: expected exit code 0, got {exit_code}\n"
+        ));
+        failed = true;
+    } else {
+        log.push_str("  PASS: exit code is 0\n");
+    }
+
+    let expected_output = format!("Flag was set: {}", expected_flag);
+    if !stdout.contains(&expected_output) {
+        log.push_str(&format!(
+            "  FAIL: output does not contain '{expected_output}'\n"
+        ));
+        log.push_str(&format!("    actual output: {stdout}\n"));
+        failed = true;
+    } else {
+        log.push_str(&format!(
+            "  PASS: output contains '{expected_output}'\n"
+        ));
+    }
+
+    let recorded = requests.lock().unwrap();
+    if recorded.is_empty() {
+        log.push_str("  FAIL: no AI requests received\n");
+        failed = true;
+    } else {
+        log.push_str(&format!("  PASS: {} AI request(s) received\n", recorded.len()));
+        
+        let req = &recorded[0];
+        if req.model != "test-model" {
+            log.push_str(&format!(
+                "  FAIL: expected model 'test-model', got '{}'\n",
+                req.model
+            ));
+            failed = true;
+        } else {
+            log.push_str("  PASS: model is 'test-model'\n");
+        }
+
+        log.push_str(&format!("  system: {}\n", req.system_content));
+        log.push_str(&format!("  user: {}\n", req.user_content));
+    }
+
+    let log_entries: Vec<_> = match std::fs::read_dir(&logs_dir) {
+        Ok(entries) => entries
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                let name = e.file_name().to_string_lossy().to_string();
+                name.starts_with("mcp_test-") && e.path().is_dir()
+            })
+            .collect(),
+        Err(err) => {
+            log.push_str(&format!("  FAIL: could not read logs_dir: {err}\n"));
+            failed = true;
+            return (failed, log);
+        }
+    };
+
+    if log_entries.len() != 1 {
+        log.push_str(&format!(
+            "  FAIL: expected 1 log directory, got {}\n",
+            log_entries.len()
+        ));
+        failed = true;
+    } else {
+        log.push_str("  PASS: exactly 1 log directory created\n");
+        let log_dir = log_entries[0].path();
+        let log_file = log_dir.join("log.txt");
+
+        if !log_file.exists() {
+            log.push_str(&format!(
+                "  FAIL: log.txt does not exist in {}\n",
+                log_dir.display()
+            ));
+            failed = true;
+        } else {
+            log.push_str(&format!("  PASS: log.txt exists in {}\n", log_dir.display()));
+
+            match std::fs::read_to_string(&log_file) {
+                Ok(log_content) => {
+                    log.push_str(&format!("  log.txt size: {} bytes\n", log_content.len()));
+
+                    let expected_flag_str = format!("Flag was set: {}", expected_flag);
+                    let mut expected_substrings: Vec<String> = vec![
+                        "===== mcp_test: executing scenario =====".to_string(),
+                        "===== ai1: AI request =====".to_string(),
+                        "model: test_model".to_string(),
+                        "----- system prompt -----".to_string(),
+                        "----- message -----".to_string(),
+                        "===== ai1: AI response =====".to_string(),
+                        "===== out1: output step =====".to_string(),
+                        expected_flag_str,
+                    ];
+                    // Skip happens when flag is true
+                    if expected_flag {
+                        expected_substrings.push("===== cmd1: skipped =====".to_string());
+                    }
+
+                    for expected in &expected_substrings {
+                        if !log_content.contains(expected) {
+                            log.push_str(&format!(
+                                "  FAIL: log.txt does not contain '{expected}'\n"
+                            ));
+                            failed = true;
+                        } else {
+                            log.push_str(&format!(
+                                "  PASS: log.txt contains '{expected}'\n"
+                            ));
+                        }
+                    }
+                }
+                Err(err) => {
+                    log.push_str(&format!("  FAIL: could not read log.txt: {err}\n"));
+                    failed = true;
+                }
+            }
+        }
+    }
+
+    (failed, log)
+}
+
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
 
-    let (port, requests, response) = start_mock_server().await;
+    let (port, requests, response, flag_value) = start_mock_server().await;
     println!("Mock AI server started on port {port}");
 
     let mut failures: Vec<u64> = Vec::new();
+    let mut mcp_failures: Vec<u64> = Vec::new();
 
     for i in 0..args.repetitions {
         let iter_seed = args.seed + i as u64;
@@ -487,23 +820,59 @@ async fn main() {
             print!("{log}");
             failures.push(iter_seed);
         }
+
+        requests.lock().unwrap().clear();
+
+        let (mcp_failed, mcp_log) =
+            run_mcp_test(iter_seed, port, requests.clone(), response.clone(), flag_value.clone()).await;
+
+        if mcp_failed {
+            println!(
+                "\n=== MCP Test Repetition {}/{} (seed: {}) FAILED ===",
+                i + 1,
+                args.repetitions,
+                iter_seed
+            );
+            print!("{mcp_log}");
+            mcp_failures.push(iter_seed);
+        }
     }
 
     println!("\n=== Summary ===");
     println!(
-        "Total: {}, Passed: {}, Failed: {}",
+        "Standard Test - Total: {}, Passed: {}, Failed: {}",
         args.repetitions,
         args.repetitions as usize - failures.len(),
         failures.len()
     );
+    println!(
+        "MCP Test - Total: {}, Passed: {}, Failed: {}",
+        args.repetitions,
+        args.repetitions as usize - mcp_failures.len(),
+        mcp_failures.len()
+    );
 
-    if !failures.is_empty() {
-        eprintln!("Failed seeds: {:?}", failures);
-        eprintln!("\nTo reproduce first failure:");
-        eprintln!(
-            "  cargo run -p rhd_test -- --seed {} --repetitions 1",
-            failures[0]
-        );
+    if !failures.is_empty() || !mcp_failures.is_empty() {
+        if !failures.is_empty() {
+            eprintln!("Standard test failed seeds: {:?}", failures);
+            eprintln!(
+                "\nTo reproduce first standard test failure:"
+            );
+            eprintln!(
+                "  cargo run -p rhd_test -- --seed {} --repetitions 1",
+                failures[0]
+            );
+        }
+        if !mcp_failures.is_empty() {
+            eprintln!("MCP test failed seeds: {:?}", mcp_failures);
+            eprintln!(
+                "\nTo reproduce first MCP test failure:"
+            );
+            eprintln!(
+                "  cargo run -p rhd_test -- --seed {} --repetitions 1",
+                mcp_failures[0]
+            );
+        }
         eprintln!("\nE2E TEST FAILED");
         std::process::exit(1);
     } else {

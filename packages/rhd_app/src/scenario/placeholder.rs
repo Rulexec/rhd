@@ -26,11 +26,20 @@ impl StepResult {
 #[derive(Debug, Clone, Default)]
 pub struct ExecutionContext {
     pub steps: HashMap<String, StepResult>,
+    pub flags: HashMap<String, bool>,
 }
 
 impl ExecutionContext {
     pub fn record_step(&mut self, name: String, result: StepResult) {
         self.steps.insert(name, result);
+    }
+
+    pub fn set_flag(&mut self, key: String, value: bool) {
+        self.flags.insert(key, value);
+    }
+
+    pub fn get_flag(&self, key: &str) -> Option<bool> {
+        self.flags.get(key).copied()
     }
 }
 
@@ -59,6 +68,16 @@ fn resolve_single(placeholder: &str, context: &ExecutionContext) -> String {
     let Some((step_name, field)) = placeholder.split_once('.') else {
         return String::new();
     };
+
+    // Check if this is a flag placeholder (field starts with "flag_")
+    if let Some(flag_name) = field.strip_prefix("flag_") {
+        let full_key = format!("{}.flag_{}", step_name, flag_name);
+        return context
+            .flags
+            .get(&full_key)
+            .map(|v| v.to_string())
+            .unwrap_or_default();
+    }
 
     let Some(result) = context.steps.get(step_name) else {
         return String::new();

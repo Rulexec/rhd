@@ -3,16 +3,20 @@ use std::path::Path;
 use std::sync::Arc;
 
 use rhd_ai::config::ModelConfig;
+use rhd_mcp_client::McpConfig;
 use tokio::net::UnixListener;
 use tokio::signal::unix::{signal, SignalKind};
 
 use crate::ipc::protocol::{read_message, write_message, IpcRequest, IpcResponse};
 use crate::log::{create_log_dir, open_log_file, LogSink};
+use crate::mcp_cache::McpServerCache;
 use crate::scenario::{execute_scenario, Scenario};
 
 struct DaemonState {
     scenarios: HashMap<String, Scenario>,
     models: HashMap<String, ModelConfig>,
+    mcp_configs: HashMap<String, McpConfig>,
+    mcp_cache: McpServerCache,
     default_model: Option<String>,
     logs: Option<std::path::PathBuf>,
 }
@@ -20,6 +24,7 @@ struct DaemonState {
 pub async fn run_daemon(
     scenarios: HashMap<String, Scenario>,
     models: HashMap<String, ModelConfig>,
+    mcp_configs: HashMap<String, McpConfig>,
     default_model: Option<String>,
     logs: Option<std::path::PathBuf>,
     socket_path: &Path,
@@ -38,6 +43,8 @@ pub async fn run_daemon(
     let state = Arc::new(DaemonState {
         scenarios,
         models,
+        mcp_configs,
+        mcp_cache: McpServerCache::new(),
         default_model,
         logs,
     });
@@ -148,6 +155,8 @@ fn handle_request(request: IpcRequest, state: &DaemonState) -> IpcResponse {
                 scenario,
                 &name,
                 &state.models,
+                &state.mcp_configs,
+                &state.mcp_cache,
                 state.default_model.as_deref(),
                 &mut sink,
                 &cwd,
