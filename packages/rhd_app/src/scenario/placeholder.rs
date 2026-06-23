@@ -1,14 +1,26 @@
 use std::collections::HashMap;
 
+use crate::log::OutputLine;
+
 #[derive(Debug, Clone)]
 pub struct StepResult {
     pub exit_code: i32,
     pub stdout: String,
     pub stderr: String,
-    pub stdout_stderr: String,
+    pub stdout_stderr: Vec<OutputLine>,
     pub success: bool,
     pub message: Option<String>,
     pub cwd: Option<String>,
+}
+
+impl StepResult {
+    pub fn stdout_stderr_combined(&self) -> String {
+        let mut combined = String::new();
+        for line in &self.stdout_stderr {
+            combined.push_str(line.content());
+        }
+        combined
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -56,7 +68,7 @@ fn resolve_single(placeholder: &str, context: &ExecutionContext) -> String {
         "exitCode" => result.exit_code.to_string(),
         "stdout" => result.stdout.clone(),
         "stderr" => result.stderr.clone(),
-        "stdoutStderr" => result.stdout_stderr.clone(),
+        "stdoutStderr" => result.stdout_stderr_combined(),
         "success" => result.success.to_string(),
         "message" => result.message.clone().unwrap_or_default(),
         "cwd" => result.cwd.clone().unwrap_or_default(),
@@ -68,20 +80,30 @@ fn resolve_single(placeholder: &str, context: &ExecutionContext) -> String {
 mod tests {
     use super::*;
 
+    fn make_result(
+        exit_code: i32,
+        stdout: &str,
+        stderr: &str,
+        stdout_stderr: Vec<OutputLine>,
+        success: bool,
+    ) -> StepResult {
+        StepResult {
+            exit_code,
+            stdout: stdout.into(),
+            stderr: stderr.into(),
+            stdout_stderr,
+            success,
+            message: None,
+            cwd: None,
+        }
+    }
+
     #[test]
     fn resolves_exit_code() {
         let mut ctx = ExecutionContext::default();
         ctx.record_step(
             "testsRun".into(),
-            StepResult {
-                exit_code: 1,
-                stdout: String::new(),
-                stderr: String::new(),
-                stdout_stderr: String::new(),
-                success: false,
-                message: None,
-                cwd: None,
-            },
+            make_result(1, "", "", vec![], false),
         );
         assert_eq!(resolve_placeholders("code: %testsRun.exitCode%", &ctx), "code: 1");
     }
@@ -93,39 +115,29 @@ mod tests {
     }
 
     #[test]
-    fn stdout_stderr_available_on_failure() {
+    fn stdout_stderr_combined_from_lines() {
         let mut ctx = ExecutionContext::default();
         ctx.record_step(
             "run".into(),
-            StepResult {
-                exit_code: 2,
-                stdout: "out".into(),
-                stderr: "err".into(),
-                stdout_stderr: "out\nerr\n".into(),
-                success: false,
-                message: None,
-                cwd: None,
-            },
+            make_result(
+                2,
+                "out\n",
+                "err\n",
+                vec![
+                    OutputLine::Stdout("out\n".into()),
+                    OutputLine::Stderr("err\n".into()),
+                ],
+                false,
+            ),
         );
         assert_eq!(resolve_placeholders("%run.stdoutStderr%", &ctx), "out\nerr\n");
     }
 
     #[test]
-    fn stdout_stderr_concatenated_on_success() {
+    fn stdout_stderr_empty_when_no_lines() {
         let mut ctx = ExecutionContext::default();
-        ctx.record_step(
-            "run".into(),
-            StepResult {
-                exit_code: 0,
-                stdout: "out\n".into(),
-                stderr: "err\n".into(),
-                stdout_stderr: "out\nerr\n".into(),
-                success: true,
-                message: None,
-                cwd: None,
-            },
-        );
-        assert_eq!(resolve_placeholders("%run.stdoutStderr%", &ctx), "out\nerr\n");
+        ctx.record_step("run".into(), make_result(0, "", "", vec![], true));
+        assert_eq!(resolve_placeholders("%run.stdoutStderr%", &ctx), "");
     }
 
     #[test]

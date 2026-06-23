@@ -8,6 +8,7 @@ use tokio::sync::mpsc;
 
 use super::placeholder::{resolve_placeholders, ExecutionContext, StepResult};
 use super::{Action, Scenario};
+use crate::log::{LogSink, OutputLine};
 
 #[derive(Debug, Error)]
 pub enum ExecuteError {
@@ -41,35 +42,32 @@ pub async fn execute_scenario(
     scenario_name: &str,
     models: &HashMap<String, ModelConfig>,
     default_model: Option<&str>,
-    verbose: bool,
+    sink: &mut LogSink,
     client_cwd: &str,
 ) -> Result<ExecuteOutput, ExecuteError> {
     let mut context = ExecutionContext::default();
     let mut outputs = Vec::new();
 
-    if verbose {
-        eprintln!("[verbose] executing scenario '{}'", scenario_name);
-    }
+    sink.log(scenario_name, "executing scenario", "");
 
     for action in &scenario.actions {
         match action {
             Action::RunCommand(cmd) => {
                 let step_name = cmd.name.clone().unwrap_or_else(|| cmd.command.clone());
-                let result = execute_run_command(cmd, &context, verbose, client_cwd).await;
+                let result = execute_run_command(cmd, &context, sink, &step_name, client_cwd).await;
                 context.record_step(step_name, result);
             }
             Action::AiChat(chat) => {
                 let step_name = chat.name.clone().unwrap_or_else(|| "aiChat".to_string());
                 let result =
-                    execute_ai_chat(chat, &context, models, default_model, scenario_name, &step_name, verbose)
+                    execute_ai_chat(chat, &context, models, default_model, scenario_name, &step_name, sink)
                         .await?;
                 context.record_step(step_name, result);
             }
             Action::Output(output) => {
+                let step_name = output.name.clone().unwrap_or_else(|| "output".to_string());
                 let resolved = resolve_placeholders(&output.text, &context);
-                if verbose {
-                    eprintln!("[verbose] output step: {}", resolved);
-                }
+                sink.log(&step_name, "output step", &resolved);
                 outputs.push(resolved);
             }
         }
@@ -81,7 +79,8 @@ pub async fn execute_scenario(
 async fn execute_run_command(
     cmd: &super::RunCommandAction,
     context: &ExecutionContext,
-    verbose: bool,
+    sink: &mut LogSink,
+    step_name: &str,
     client_cwd: &str,
 ) -> StepResult {
     let resolved_command = resolve_placeholders(&cmd.command, context);
@@ -91,9 +90,11 @@ async fn execute_run_command(
         .map(|arg| resolve_placeholders(arg, context))
         .collect();
 
-    if verbose {
-        eprintln!("[verbose] running command: {} {}", resolved_command, resolved_args.join(" "));
-    }
+    sink.log_step(
+        step_name,
+        "running command",
+        &format!("{} {}", resolved_command, resolved_args.join(" ")),
+    );
 
     let mut command = tokio::process::Command::new(&resolved_command);
     command.args(&resolved_args);
@@ -112,7 +113,7 @@ async fn execute_run_command(
             let stdout = child.stdout.take().unwrap();
             let stderr = child.stderr.take().unwrap();
 
-            let (tx, mut rx) = mpsc::channel::<(String, String)>(100);
+            let (tx, mut rx) = mpsc::channel::<OutputLine>(100);
 
             let tx_out = tx.clone();
             let stdout_task = tokio::spawn(async move {
@@ -123,7 +124,7 @@ async fn execute_run_command(
                     match reader.read_line(&mut line).await {
                         Ok(0) => break,
                         Ok(_) => {
-                            let _ = tx_out.send(("stdout".to_string(), line.clone())).await;
+                            let _ = tx_out.send(OutputLine::Stdout(line.clone())).await;
                         }
                         Err(_) => break,
                     }
@@ -139,7 +140,7 @@ async fn execute_run_command(
                     match reader.read_line(&mut line).await {
                         Ok(0) => break,
                         Ok(_) => {
-                            let _ = tx_err.send(("stderr".to_string(), line.clone())).await;
+                            let _ = tx_err.send(OutputLine::Stderr(line.clone())).await;
                         }
                         Err(_) => break,
                     }
@@ -148,17 +149,16 @@ async fn execute_run_command(
 
             drop(tx);
 
-            let mut combined = String::new();
+            let mut output_lines = Vec::new();
             let mut stdout_buf = String::new();
             let mut stderr_buf = String::new();
 
-            while let Some((source, line)) = rx.recv().await {
-                combined.push_str(&line);
-                match source.as_str() {
-                    "stdout" => stdout_buf.push_str(&line),
-                    "stderr" => stderr_buf.push_str(&line),
-                    _ => {}
+            while let Some(output_line) = rx.recv().await {
+                match &output_line {
+                    OutputLine::Stdout(s) => stdout_buf.push_str(s),
+                    OutputLine::Stderr(s) => stderr_buf.push_str(s),
                 }
+                output_lines.push(output_line);
             }
 
             let _ = tokio::join!(stdout_task, stderr_task);
@@ -169,38 +169,26 @@ async fn execute_run_command(
                 Err(_) => (-1, false),
             };
 
-            if verbose {
-                eprintln!("[verbose] command exit code: {exit_code}");
-                if !stdout_buf.is_empty() {
-                    eprintln!("[verbose] command stdout:\n{stdout_buf}");
-                }
-                if !stderr_buf.is_empty() {
-                    eprintln!("[verbose] command stderr:\n{stderr_buf}");
-                }
-                if !success {
-                    eprintln!("[verbose] command failed with exit code {exit_code}");
-                }
-            }
+            sink.log_step_dashed(step_name, "command exit code", &exit_code.to_string());
+            sink.log_command_output(step_name, &output_lines);
 
             StepResult {
                 exit_code,
                 stdout: stdout_buf,
                 stderr: stderr_buf,
-                stdout_stderr: combined,
+                stdout_stderr: output_lines,
                 success,
                 message: None,
                 cwd: Some(resolved_cwd),
             }
         }
         Err(err) => {
-            if verbose {
-                eprintln!("[verbose] command spawn error: {err}");
-            }
+            sink.log_step(step_name, "command spawn error", &err.to_string());
             StepResult {
                 exit_code: -1,
                 stdout: String::new(),
                 stderr: err.to_string(),
-                stdout_stderr: String::new(),
+                stdout_stderr: vec![OutputLine::Stderr(err.to_string())],
                 success: false,
                 message: None,
                 cwd: Some(resolved_cwd),
@@ -216,16 +204,18 @@ async fn execute_ai_chat(
     default_model: Option<&str>,
     scenario_name: &str,
     step_name: &str,
-    verbose: bool,
+    sink: &mut LogSink,
 ) -> Result<StepResult, ExecuteError> {
     let model_name = match &chat.model {
         Some(m) => m.clone(),
         None => match default_model {
             Some(m) => m.to_string(),
             None => {
-                if verbose {
-                    eprintln!("[verbose] no default model configured for step '{step_name}'");
-                }
+                sink.log_step(
+                    step_name,
+                    "AI request failed",
+                    "no default model configured",
+                );
                 return Err(ExecuteError::NoDefaultModel {
                     scenario: scenario_name.to_string(),
                     step: step_name.to_string(),
@@ -237,9 +227,11 @@ async fn execute_ai_chat(
     let model_config = match models.get(&model_name) {
         Some(config) => config.clone(),
         None => {
-            if verbose {
-                eprintln!("[verbose] unknown model '{model_name}' for step '{step_name}'");
-            }
+            sink.log_step(
+                step_name,
+                "AI request failed",
+                &format!("unknown model '{model_name}'"),
+            );
             return Err(ExecuteError::UnknownModel {
                 scenario: scenario_name.to_string(),
                 step: step_name.to_string(),
@@ -256,35 +248,25 @@ async fn execute_ai_chat(
 
     let message = resolve_placeholders(&chat.message, context);
 
-    if verbose {
-        eprintln!("[verbose] AI request to model '{model_name}':");
-        if !system_prompt.is_empty() {
-            eprintln!("[verbose]   system: {system_prompt}");
-        }
-        eprintln!("[verbose]   message: {message}");
-    }
+    sink.log_ai_request(step_name, &model_name, &system_prompt, &message);
 
     let client = OpenAiClient::new(&model_config.base_url, &model_config.api_key);
 
     match client.chat(&model_config.model, &system_prompt, &message).await {
         Ok(response) => {
-            if verbose {
-                eprintln!("[verbose] AI response: {response}");
-            }
+            sink.log_step(step_name, "AI response", &response);
             Ok(StepResult {
                 exit_code: 0,
                 stdout: String::new(),
                 stderr: String::new(),
-                stdout_stderr: String::new(),
+                stdout_stderr: vec![],
                 success: true,
                 message: Some(response),
                 cwd: None,
             })
         }
         Err(err) => {
-            if verbose {
-                eprintln!("[verbose] AI request failed: {err}");
-            }
+            sink.log_step(step_name, "AI request failed", &err.to_string());
             Err(ExecuteError::AiFailed {
                 scenario: scenario_name.to_string(),
                 step: step_name.to_string(),
