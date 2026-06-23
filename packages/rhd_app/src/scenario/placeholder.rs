@@ -75,8 +75,9 @@ fn resolve_single(placeholder: &str, context: &ExecutionContext) -> String {
         return context
             .flags
             .get(&full_key)
-            .map(|v| v.to_string())
-            .unwrap_or_default();
+            .copied()
+            .unwrap_or(false)
+            .to_string();
     }
 
     let Some(result) = context.steps.get(step_name) else {

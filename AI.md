@@ -268,7 +268,7 @@ available tools: <tool1>, <tool2>, ...   (only when MCP tools configured)
 
 ## Important Conventions
 
-1. **Placeholder resolution**: Missing values resolve to empty string, not errors
+1. **Placeholder resolution**: Missing values resolve to empty string, not errors. Exception: flag placeholders (`%step.flag_name%`) resolve to "false" when flag not set
 2. **runCommand behavior**: Captures exit code + stdout/stderr, never fails scenario
 3. **aiChat behavior**: Resolves placeholders in systemPrompt and message before API call
 4. **output behavior**: Resolves placeholders in template, returns final string
