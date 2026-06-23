@@ -138,7 +138,7 @@ fn handle_request(request: IpcRequest, state: &DaemonState) -> IpcResponse {
             let scenario = match state.scenarios.get(&name) {
                 Some(s) => s,
                 None => {
-                    sink.log("unknown scenario", &name);
+                    sink.log(&name, "unknown scenario", "");
                     return IpcResponse::Error {
                         message: format!("unknown scenario: {name}"),
                     };
@@ -157,7 +157,7 @@ fn handle_request(request: IpcRequest, state: &DaemonState) -> IpcResponse {
                     output: output.outputs.join("\n"),
                 },
                 Err(err) => {
-                    sink.log("scenario execution error", &err.to_string());
+                    sink.log("error", "scenario execution error", &err.to_string());
                     IpcResponse::Error {
                         message: err.to_string(),
                     }

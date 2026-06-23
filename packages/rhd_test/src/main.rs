@@ -411,17 +411,17 @@ async fn run_single_test(
 
                     let expected_output = format!("AI said: {random_response}");
                     let expected_substrings: Vec<&str> = vec![
-                        "===== executing scenario =====\nrhd_test",
-                        "cmd1: ===== running command =====",
+                        "===== rhd_test: executing scenario =====",
+                        "===== cmd1: running command =====",
                         "[STDOUT]",
-                        "cmd1: ===== command exit code =====",
-                        "ai1: ===== AI request =====",
+                        "===== cmd1: command exit code =====",
+                        "===== ai1: AI request =====",
                         "model: test_model",
                         "----- system prompt -----",
                         "----- message -----",
-                        "ai1: ===== AI response =====",
+                        "===== ai1: AI response =====",
                         &random_response,
-                        "===== output step =====",
+                        "===== out1: output step =====",
                         &expected_output,
                     ];
 

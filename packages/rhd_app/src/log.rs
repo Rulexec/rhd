@@ -30,8 +30,12 @@ impl LogSink {
         }
     }
 
-    pub fn log(&mut self, header: &str, body: &str) {
-        let block = format!("===== {header} =====\n{body}\n");
+    pub fn log(&mut self, prefix: &str, header: &str, body: &str) {
+        let block = if body.is_empty() {
+            format!("===== {prefix}: {header} =====\n")
+        } else {
+            format!("===== {prefix}: {header} =====\n{body}\n")
+        };
         print!("{block}");
         let _ = io::stdout().flush();
         if let Some(f) = &mut self.file {
@@ -41,7 +45,7 @@ impl LogSink {
     }
 
     pub fn log_step(&mut self, step: &str, header: &str, body: &str) {
-        let block = format!("{step}: ===== {header} =====\n{body}\n");
+        let block = format!("===== {step}: {header} =====\n{body}\n");
         print!("{block}");
         let _ = io::stdout().flush();
         if let Some(f) = &mut self.file {

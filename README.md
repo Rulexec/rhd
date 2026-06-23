@@ -80,35 +80,6 @@ When `logs` is configured, each scenario execution creates a timestamped log dir
 - Collision handling: If directory exists, appends `-2`, `-3`, etc.
 - Log file: `log.txt` inside the directory
 
-**Log format** (written to stdout and `log.txt`):
-```
-===== executing scenario =====
-<scenarioName>
-
-<stepName>: ===== running command =====
-<command> <args>
-
-<stepName>: ===== command output =====
-[STDOUT] stdout line
-[STDERR] stderr line
-
-<stepName>: ===== command exit code =====
-<code>
-
-<stepName>: ===== AI request =====
-model: <model>
------ system prompt -----
-<prompt>
------ message -----
-<message>
-
-<stepName>: ===== AI response =====
-<response>
-
-===== output step =====
-<resolved output>
-```
-
 ### Run scenario
 
 ```bash

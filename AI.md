@@ -139,30 +139,29 @@ When `logs` is configured, each scenario execution creates a timestamped log dir
 
 **Log format** (written to stdout and `log.txt`):
 ```
-===== executing scenario =====
-<scenarioName>
+===== <scenarioName>: executing scenario =====
 
-<stepName>: ===== running command =====
+===== <stepName>: running command =====
 <command> <args>
 
-<stepName>: ===== command output =====
+===== <stepName>: command exit code =====
+<code>
+
+===== <stepName>: command output =====
 [STDOUT] stdout line
 [STDERR] stderr line
 
-<stepName>: ===== command exit code =====
-<code>
-
-<stepName>: ===== AI request =====
+===== <stepName>: AI request =====
 model: <model>
 ----- system prompt -----
 <prompt>
 ----- message -----
 <message>
 
-<stepName>: ===== AI response =====
+===== <stepName>: AI response =====
 <response>
 
-===== output step =====
+===== <stepName>: output step =====
 <resolved output>
 ```
 

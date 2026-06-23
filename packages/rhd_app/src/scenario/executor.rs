@@ -48,7 +48,7 @@ pub async fn execute_scenario(
     let mut context = ExecutionContext::default();
     let mut outputs = Vec::new();
 
-    sink.log("executing scenario", scenario_name);
+    sink.log(scenario_name, "executing scenario", "");
 
     for action in &scenario.actions {
         match action {
@@ -65,8 +65,9 @@ pub async fn execute_scenario(
                 context.record_step(step_name, result);
             }
             Action::Output(output) => {
+                let step_name = output.name.clone().unwrap_or_else(|| "output".to_string());
                 let resolved = resolve_placeholders(&output.text, &context);
-                sink.log("output step", &resolved);
+                sink.log(&step_name, "output step", &resolved);
                 outputs.push(resolved);
             }
         }
@@ -168,8 +169,8 @@ async fn execute_run_command(
                 Err(_) => (-1, false),
             };
 
-            sink.log_command_output(step_name, &output_lines);
             sink.log_step(step_name, "command exit code", &exit_code.to_string());
+            sink.log_command_output(step_name, &output_lines);
 
             StepResult {
                 exit_code,
