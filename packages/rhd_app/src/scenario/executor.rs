@@ -169,7 +169,7 @@ async fn execute_run_command(
                 Err(_) => (-1, false),
             };
 
-            sink.log_step(step_name, "command exit code", &exit_code.to_string());
+            sink.log_step_dashed(step_name, "command exit code", &exit_code.to_string());
             sink.log_command_output(step_name, &output_lines);
 
             StepResult {

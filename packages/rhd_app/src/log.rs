@@ -54,6 +54,16 @@ impl LogSink {
         }
     }
 
+    pub fn log_step_dashed(&mut self, step: &str, header: &str, body: &str) {
+        let block = format!("----- {step}: {header} -----\n{body}\n");
+        print!("{block}");
+        let _ = io::stdout().flush();
+        if let Some(f) = &mut self.file {
+            let _ = f.write_all(block.as_bytes());
+            let _ = f.flush();
+        }
+    }
+
     pub fn log_command_output(&mut self, step: &str, lines: &[OutputLine]) {
         let mut body = String::new();
         for line in lines {
@@ -62,7 +72,7 @@ impl LogSink {
                 OutputLine::Stderr(s) => body.push_str(&format!("[STDERR] {s}")),
             }
         }
-        self.log_step(step, "command output", &body);
+        self.log_step_dashed(step, "command output", &body);
     }
 
     pub fn log_ai_request(

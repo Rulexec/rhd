@@ -144,10 +144,10 @@ When `logs` is configured, each scenario execution creates a timestamped log dir
 ===== <stepName>: running command =====
 <command> <args>
 
-===== <stepName>: command exit code =====
+----- <stepName>: command exit code -----
 <code>
 
-===== <stepName>: command output =====
+----- <stepName>: command output -----
 [STDOUT] stdout line
 [STDERR] stderr line
 
