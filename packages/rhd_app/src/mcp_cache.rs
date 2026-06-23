@@ -46,6 +46,7 @@ impl McpServerCache {
         Ok(client)
     }
 
+    #[allow(dead_code)]
     pub async fn shutdown(&self) {
         let mut cache = self.cache.lock().await;
         for (_, client) in cache.drain() {

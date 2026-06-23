@@ -37,6 +37,7 @@ struct ChatRequest<'a> {
 
 #[derive(Serialize)]
 #[serde(untagged)]
+#[allow(dead_code)]
 enum ChatMessage<'a> {
     System { role: &'a str, content: &'a str },
     User { role: &'a str, content: &'a str },
@@ -89,6 +90,7 @@ struct ResponseMessage {
 struct ToolCallResponse {
     id: String,
     #[serde(rename = "type")]
+    #[allow(dead_code)]
     call_type: String,
     function: FunctionCall,
 }

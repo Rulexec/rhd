@@ -1,6 +1,9 @@
+mod ai_chat;
+mod error;
 mod executor;
 mod loader;
 mod placeholder;
+mod run_command;
 
 pub use executor::execute_scenario;
 pub use loader::load_scenarios_dir;
