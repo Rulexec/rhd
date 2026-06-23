@@ -147,18 +147,6 @@ exit {}
     }
 }
 
-async fn wait_for_socket(socket_path: &std::path::Path, timeout_secs: u64) -> bool {
-    let start = std::time::Instant::now();
-    let timeout = Duration::from_secs(timeout_secs);
-    while start.elapsed() < timeout {
-        if socket_path.exists() {
-            return true;
-        }
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
-    false
-}
-
 async fn run_single_test(
     iter_seed: u64,
     port: u16,
@@ -204,19 +192,62 @@ async fn run_single_test(
         .env("E2E_MODEL_PORT", port.to_string())
         .env("E2E_SCRIPTS_DIR", temp_dir.path())
         .current_dir(daemon_dir.path())
-        .stdout(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
         .spawn()
         .expect("failed to spawn daemon");
 
     log.push_str(&format!("  Daemon spawned (PID: {:?})\n", daemon.id()));
 
-    if !wait_for_socket(&socket_path, 10).await {
-        log.push_str("  FAIL: Daemon failed to create socket\n");
+    // Read stdout until "listening on" message
+    let mut stdout = daemon.stdout.take().expect("failed to take stdout");
+    let mut stdout_buf = String::new();
+    let mut found_listening = false;
+    let start_time = std::time::Instant::now();
+    let timeout = Duration::from_secs(10);
+
+    while start_time.elapsed() < timeout {
+        let mut line = String::new();
+        match tokio::io::AsyncBufReadExt::read_line(
+            &mut tokio::io::BufReader::new(&mut stdout),
+            &mut line,
+        )
+        .await
+        {
+            Ok(0) => break, // EOF
+            Ok(_) => {
+                stdout_buf.push_str(&line);
+                if line.contains("listening on") {
+                    found_listening = true;
+                    break;
+                }
+            }
+            Err(_) => break,
+        }
+    }
+
+    if !found_listening {
+        log.push_str("  FAIL: Daemon did not print 'listening on' message\n");
+        log.push_str(&format!("  stdout so far: {stdout_buf}\n"));
         daemon.kill().await.ok();
         return (true, log);
     }
-    log.push_str("  Daemon socket ready\n");
+
+    // Spawn drain task to consume remaining stdout
+    tokio::spawn(async move {
+        use tokio::io::AsyncBufReadExt;
+        let mut reader = tokio::io::BufReader::new(stdout);
+        let mut line = String::new();
+        loop {
+            line.clear();
+            match reader.read_line(&mut line).await {
+                Ok(0) | Err(_) => break,
+                Ok(_) => continue,
+            }
+        }
+    });
+
+    log.push_str("  Daemon ready (listening message received)\n");
 
     let run_output = Command::new(&rhd_bin)
         .arg("run")

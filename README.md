@@ -49,11 +49,65 @@ rhd daemon [OPTIONS]
 
 | Flag | Default | Description |
 |---|---|---|
-| `--models-dir PATH` | `models` | Directory with model YAML files |
-| `--scenarios-dir PATH` | `scenarios` | Directory with scenario folders |
-| `--default-model NAME` | — | Fallback model for `aiChat` steps without `model` field |
+| `--config PATH` | `rhd.yaml` | Path to configuration file |
+| `--models-dir PATH` | `models` | Directory with model YAML files (overrides config) |
+| `--scenarios-dir PATH` | `scenarios` | Directory with scenario folders (overrides config) |
+| `--default-model NAME` | — | Fallback model for `aiChat` steps without `model` field (overrides config) |
+| `--logs PATH` | — | Directory for execution logs (overrides config) |
 | `--socket PATH` | `$HOME/rhd.sock` | Unix socket path |
-| `--verbose` | `false` | Enable verbose logging |
+
+## Configuration File
+
+The daemon can be configured via a YAML file (default: `rhd.yaml` in current directory). CLI arguments override config file values.
+
+**Config file format** (`rhd.yaml`):
+```yaml
+modelsDir: models
+scenariosDir: scenarios
+defaultModel: null
+logs: null
+```
+
+- `modelsDir`: Directory containing model YAML files (default: `models`)
+- `scenariosDir`: Directory containing scenario folders (default: `scenarios`)
+- `defaultModel`: Fallback model for `aiChat` steps without `model` field (default: `null`)
+- `logs`: Directory for execution logs (default: `null`, no logging)
+
+## Execution Logs
+
+When `logs` is configured, each scenario execution creates a timestamped log directory:
+- Format: `<logs>/<scenarioName>-YYYY-MM-DD-HH-MM-SS/`
+- Collision handling: If directory exists, appends `-2`, `-3`, etc.
+- Log file: `log.txt` inside the directory
+
+**Log format** (written to stdout and `log.txt`):
+```
+===== executing scenario =====
+<scenarioName>
+
+<stepName>: ===== running command =====
+<command> <args>
+
+<stepName>: ===== command output =====
+[STDOUT] stdout line
+[STDERR] stderr line
+
+<stepName>: ===== command exit code =====
+<code>
+
+<stepName>: ===== AI request =====
+model: <model>
+----- system prompt -----
+<prompt>
+----- message -----
+<message>
+
+<stepName>: ===== AI response =====
+<response>
+
+===== output step =====
+<resolved output>
+```
 
 ### Run scenario
 

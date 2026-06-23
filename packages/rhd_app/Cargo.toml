@@ -14,5 +14,6 @@ serde_yaml = { workspace = true }
 rkyv = { workspace = true }
 thiserror = { workspace = true }
 clap = { workspace = true }
+chrono = { workspace = true }
 rhd_ai = { path = "../rhd_ai" }
 rhd_util = { path = "../rhd_util" }

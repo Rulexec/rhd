@@ -7,20 +7,21 @@ use tokio::net::UnixListener;
 use tokio::signal::unix::{signal, SignalKind};
 
 use crate::ipc::protocol::{read_message, write_message, IpcRequest, IpcResponse};
+use crate::log::{create_log_dir, open_log_file, LogSink};
 use crate::scenario::{execute_scenario, Scenario};
 
 struct DaemonState {
     scenarios: HashMap<String, Scenario>,
     models: HashMap<String, ModelConfig>,
     default_model: Option<String>,
-    verbose: bool,
+    logs: Option<std::path::PathBuf>,
 }
 
 pub async fn run_daemon(
     scenarios: HashMap<String, Scenario>,
     models: HashMap<String, ModelConfig>,
     default_model: Option<String>,
-    verbose: bool,
+    logs: Option<std::path::PathBuf>,
     socket_path: &Path,
 ) -> std::io::Result<()> {
     let sock_path = socket_path;
@@ -38,7 +39,7 @@ pub async fn run_daemon(
         scenarios,
         models,
         default_model,
-        verbose,
+        logs,
     });
 
     let scenario_names: Vec<&String> = state.scenarios.keys().collect();
@@ -56,7 +57,7 @@ pub async fn run_daemon(
     let mut sigterm = signal(SignalKind::terminate())?;
     let mut sigint = signal(SignalKind::interrupt())?;
 
-    eprintln!("listening on {}", sock_path.display());
+    println!("listening on {}", sock_path.display());
 
     loop {
         tokio::select! {
@@ -127,15 +128,20 @@ fn run_connection(
 fn handle_request(request: IpcRequest, state: &DaemonState) -> IpcResponse {
     match request {
         IpcRequest::RunScenario { name, cwd } => {
+            let log_file = state.logs.as_ref().and_then(|logs_dir| {
+                create_log_dir(logs_dir, &name)
+                    .and_then(|dir| open_log_file(&dir))
+                    .ok()
+            });
+            let mut sink = LogSink::new(log_file);
+
             let scenario = match state.scenarios.get(&name) {
                 Some(s) => s,
                 None => {
-                    if state.verbose {
-                        eprintln!("[verbose] unknown scenario: {name}");
-                    }
+                    sink.log("unknown scenario", &name);
                     return IpcResponse::Error {
                         message: format!("unknown scenario: {name}"),
-                    }
+                    };
                 }
             };
             let result = tokio::runtime::Handle::current().block_on(execute_scenario(
@@ -143,7 +149,7 @@ fn handle_request(request: IpcRequest, state: &DaemonState) -> IpcResponse {
                 &name,
                 &state.models,
                 state.default_model.as_deref(),
-                state.verbose,
+                &mut sink,
                 &cwd,
             ));
             match result {
@@ -151,9 +157,7 @@ fn handle_request(request: IpcRequest, state: &DaemonState) -> IpcResponse {
                     output: output.outputs.join("\n"),
                 },
                 Err(err) => {
-                    if state.verbose {
-                        eprintln!("[verbose] scenario execution error: {err}");
-                    }
+                    sink.log("scenario execution error", &err.to_string());
                     IpcResponse::Error {
                         message: err.to_string(),
                     }

@@ -40,44 +40,22 @@ impl RunArgs {
 
 #[derive(Parser, Debug)]
 pub struct DaemonArgs {
-    #[arg(long, default_value = "models")]
-    pub models_dir: PathBuf,
-    #[arg(long, default_value = "scenarios")]
-    pub scenarios_dir: PathBuf,
+    #[arg(long, default_value = "rhd.yaml")]
+    pub config: PathBuf,
+    #[arg(long)]
+    pub models_dir: Option<PathBuf>,
+    #[arg(long)]
+    pub scenarios_dir: Option<PathBuf>,
     #[arg(long)]
     pub default_model: Option<String>,
-    #[arg(long, default_value_t = false)]
-    pub verbose: bool,
+    #[arg(long)]
+    pub logs: Option<PathBuf>,
     #[arg(long)]
     pub socket: Option<PathBuf>,
 }
 
 impl DaemonArgs {
     pub fn validate(&self) -> Result<(), String> {
-        if !self.models_dir.exists() {
-            return Err(format!(
-                "models directory does not exist: {}",
-                self.models_dir.display()
-            ));
-        }
-        if !self.models_dir.is_dir() {
-            return Err(format!(
-                "models path is not a directory: {}",
-                self.models_dir.display()
-            ));
-        }
-        if !self.scenarios_dir.exists() {
-            return Err(format!(
-                "scenarios directory does not exist: {}",
-                self.scenarios_dir.display()
-            ));
-        }
-        if !self.scenarios_dir.is_dir() {
-            return Err(format!(
-                "scenarios path is not a directory: {}",
-                self.scenarios_dir.display()
-            ));
-        }
         Ok(())
     }
 }

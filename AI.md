@@ -105,13 +105,66 @@ actions:
 
 ```bash
 # Start daemon
-rhd daemon [--models-dir models] [--scenarios-dir scenarios] [--default-model name] [--socket PATH] [--verbose]
+rhd daemon [--config rhd.yaml] [--models-dir models] [--scenarios-dir scenarios] [--default-model name] [--logs logs] [--socket PATH]
 
 # Run scenario
 rhd run <scenario_name> [--socket PATH]
 ```
 
 By default, the socket is located at `$HOME/rhd.sock`. The `--socket` flag allows specifying a custom socket path.
+
+## Configuration File
+
+The daemon can be configured via a YAML file (default: `rhd.yaml` in current directory). CLI arguments override config file values.
+
+**Config file format** (`rhd.yaml`):
+```yaml
+modelsDir: models
+scenariosDir: scenarios
+defaultModel: null
+logs: null
+```
+
+- `modelsDir`: Directory containing model YAML files (default: `models`)
+- `scenariosDir`: Directory containing scenario folders (default: `scenarios`)
+- `defaultModel`: Fallback model for `aiChat` steps without `model` field (default: `null`)
+- `logs`: Directory for execution logs (default: `null`, no logging)
+
+## Execution Logs
+
+When `logs` is configured, each scenario execution creates a timestamped log directory:
+- Format: `<logs>/<scenarioName>-YYYY-MM-DD-HH-MM-SS/`
+- Collision handling: If directory exists, appends `-2`, `-3`, etc.
+- Log file: `log.txt` inside the directory
+
+**Log format** (written to stdout and `log.txt`):
+```
+===== executing scenario =====
+<scenarioName>
+
+<stepName>: ===== running command =====
+<command> <args>
+
+<stepName>: ===== command output =====
+[STDOUT] stdout line
+[STDERR] stderr line
+
+<stepName>: ===== command exit code =====
+<code>
+
+<stepName>: ===== AI request =====
+model: <model>
+----- system prompt -----
+<prompt>
+----- message -----
+<message>
+
+<stepName>: ===== AI response =====
+<response>
+
+===== output step =====
+<resolved output>
+```
 
 ## Development Practices
 
