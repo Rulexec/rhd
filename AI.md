@@ -18,6 +18,7 @@ rhd/
 │   ├── rhd_ai/       # OpenAI-compatible AI client
 │   ├── rhd_api/      # Shared IPC types, protocol definitions, execution tracking types
 │   ├── rhd_db/       # SQLite database for scenario ID persistence
+│   ├── rhd_mcp_client/ # MCP protocol client for tool usage
 │   ├── rhd_app/      # Main binary (daemon + client)
 │   └── rhd_test/     # E2E test runner with mock AI server
 ```
@@ -45,6 +46,13 @@ rhd/
 - `next_id()`: Atomically retrieves and increments the next scenario ID
 - Database file: `<dbDir>/meta.db` (default: `rhd_db/meta.db`)
 
+**rhd_mcp_client**:
+- `McpConfig`: MCP server configuration (cmd, args, cwd, env)
+- `McpClient`: MCP client implementation with stdio transport
+- `ToolDefinition`, `ToolResult`: Tool types for MCP protocol
+- `McpClientTrait`: Trait for MCP client implementations
+- Built-in tools support (e.g., `rhd_set_flag`)
+
 **rhd_app**:
 - **Daemon mode**: Unix socket server on `$HOME/rhd.sock` (default), accepts `RunScenario` requests
 - **WebSocket server**: Optional TCP listener on `127.0.0.1:{ws_port}` for Web UI integration
@@ -53,6 +61,7 @@ rhd/
 - **Execution tracking**: Tracks step timings, token usage, log sections
 - **IPC protocol**: rkyv serialization with version-prefixed framing (Unix socket)
 - **WebSocket protocol**: JSON over WebSocket (TCP)
+- **MCP integration**: Loads MCP configs, caches server instances, handles tool calls
 
 ## Key Design Decisions
 
@@ -112,7 +121,7 @@ actions:
 - Message format: 4-byte version + 4-byte length + rkyv payload
 - Protocol version: 1
 - Request: `IpcRequest::RunScenario { name: String, cwd: String }`
-- Response: `IpcResponse::Success { output: String }` or `IpcResponse::Error { message: String }`
+- Response: `IpcResponse::Success { output: String }`, `IpcResponse::Error { message: String }`, or `IpcResponse::Aborted`
 
 ### WebSocket Protocol
 - Optional TCP listener on `127.0.0.1:{ws_port}` (configurable via `--ws-port` or `wsPort` in config)
@@ -153,7 +162,7 @@ actions:
 
 ```bash
 # Start daemon
-rhd daemon [--config rhd.yaml] [--models-dir models] [--scenarios-dir scenarios] [--default-model name] [--logs logs] [--socket PATH] [--ws-port PORT] [--db-dir DIR]
+rhd daemon [--config rhd.yaml] [--models-dir models] [--scenarios-dir scenarios] [--mcp-dir mcp] [--default-model name] [--logs logs] [--socket PATH] [--ws-port PORT] [--db-dir DIR]
 
 # Run scenario
 rhd run <scenario_name> [--socket PATH]
@@ -171,6 +180,7 @@ The daemon can be configured via a YAML file (default: `rhd.yaml` in current dir
 ```yaml
 modelsDir: models
 scenariosDir: scenarios
+mcpDir: mcp
 defaultModel: null
 logs: null
 wsPort: null
@@ -179,6 +189,7 @@ dbDir: rhd_db
 
 - `modelsDir`: Directory containing model YAML files (default: `models`)
 - `scenariosDir`: Directory containing scenario folders (default: `scenarios`)
+- `mcpDir`: Directory containing MCP server configurations (default: `mcp`)
 - `defaultModel`: Fallback model for `aiChat` steps without `model` field (default: `null`)
 - `logs`: Directory for execution logs (default: `null`, no logging)
 - `wsPort`: WebSocket server port (default: `null`, disabled)
@@ -312,7 +323,7 @@ When `logs` is configured, each scenario execution creates a timestamped log dir
 - `tokens` and `cost` fields omitted at scenario level if no AI steps
 - Per-step `tokens` and `cost` omitted for non-AI steps
 - `sections` array contains line ranges for all delimited blocks within the step
-- All timestamps are UTC ISO 8601
+- All timestamps are ISO 8601 (local timezone for log directory names, UTC for meta.json fields)
 
 **Log format** (written to stdout and `log.txt`):
 ```
@@ -419,7 +430,7 @@ Svelte-based web UI in `frontend/` directory for monitoring scenario execution.
 
 ### Architecture
 - WebSocket connection with auto-reconnect
-- Svelte stores for state management (`activeScenarios`, `finishedScenarios`, `lastKnownId`)
+- Svelte stores for state management (`activeScenarios`, `finishedScenarios`, `lastKnownId`, `wsConnected`)
 - CSS modules + utility classes (Tailwind-like approach)
 - Components: `TabNav`, `ScenariosTab`, `ChatsTab`, `ActiveScenario`, `FinishedScenario`
 
@@ -459,6 +470,8 @@ packages/rhd_app/src/
 ├── execution.rs      # ExecutionTracker, ExecutionHandle, execution tracking
 ├── ws.rs             # WebSocket server, JSON protocol handlers
 ├── log.rs            # LogSink, execution logging, meta.json writing/reading
+├── mcp_cache.rs      # MCP server instance caching
+├── mcp_loader.rs     # MCP config loading from mcp/<name>/mcp.yaml
 ├── ipc/
 │   ├── mod.rs
 │   └── protocol.rs   # rkyv message types, read/write helpers
@@ -466,6 +479,7 @@ packages/rhd_app/src/
     ├── mod.rs        # Action/Scenario structs
     ├── loader.rs     # YAML loading, validation
     ├── executor.rs   # Action execution engine
+    ├── error.rs      # ExecuteError, ExecuteOutput types
     ├── ai_chat.rs    # AI chat execution with token tracking
     ├── run_command.rs # Command execution with section tracking
     └── placeholder.rs # Placeholder resolution, ExecutionContext
@@ -483,6 +497,13 @@ packages/rhd_util/src/
 
 packages/rhd_db/src/
 └── lib.rs            # ScenarioDb, DbError, SQLite wrapper for ID persistence
+
+packages/rhd_mcp_client/src/
+├── lib.rs            # McpConfig, ToolDefinition, ToolResult, McpClientTrait
+├── client.rs         # MCP client implementation
+├── protocol.rs       # MCP JSON-RPC protocol types
+├── transport.rs      # stdio transport for MCP servers
+└── builtin.rs        # Built-in tools (rhd_set_flag)
 
 packages/rhd_test/src/
 ├── main.rs           # E2E test runner: mock AI server, daemon spawn, validation
