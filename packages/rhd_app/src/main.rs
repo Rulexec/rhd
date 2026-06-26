@@ -1,6 +1,7 @@
 mod cli;
 mod client;
 mod config;
+mod credentials;
 mod daemon;
 mod execution;
 mod ipc;
@@ -54,7 +55,16 @@ async fn run_daemon_command(
     let config = load_config(&args.config)?;
     let merged = merge_config(config, &args);
 
-    let models = rhd_ai::config::load_models(&merged.models_dir)?;
+    let credentials = if let Some(cred_path) = &merged.credentials_config {
+        if !cred_path.exists() {
+            return Err(format!("credentials file not found: {}", cred_path.display()).into());
+        }
+        credentials::load_credentials(cred_path)?
+    } else {
+        std::collections::HashMap::new()
+    };
+
+    let models = rhd_ai::config::load_models(&merged.models_dir, &credentials)?;
     let scenarios = scenario::load_scenarios_dir(&merged.scenarios_dir)?;
     let mcp_configs = mcp_loader::load_mcp_dir(&merged.mcp_dir)?;
     let socket_path = args.socket.unwrap_or_else(cli::default_socket_path);
@@ -82,5 +92,6 @@ fn merge_config(config: DaemonConfig, args: &cli::DaemonArgs) -> DaemonConfig {
         logs: args.logs.clone().or(config.logs),
         ws_port: args.ws_port.or(config.ws_port),
         db_dir: args.db_dir.clone().unwrap_or(config.db_dir),
+        credentials_config: config.credentials_config,
     }
 }

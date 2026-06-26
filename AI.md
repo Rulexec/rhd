@@ -87,7 +87,7 @@ cmd: "$E2E_SCRIPTS_DIR/run.sh"
 **Model config** (`models/*.yaml`):
 ```yaml
 baseUrl: "https://api.openai.com/v1"
-apiKey: "sk-..."
+apiKey: "sk-..."          # Plain string, credential reference, or env var
 model: "gpt-4"
 inputTokenPrice: 5.0      # Optional: price per 1M tokens
 outputTokenPrice: 15.0    # Optional: price per 1M tokens
@@ -96,6 +96,19 @@ priceTiers:               # Optional: tiered pricing
     inputTokenPrice: 10.0
     outputTokenPrice: 30.0
 ```
+
+**API Key Forms**:
+The `apiKey` field supports three forms:
+1. **Plain string**: `apiKey: "sk-..."` - used as-is
+2. **Credential reference**:
+   ```yaml
+   apiKey:
+     cred: myApiKey
+   ```
+   References a key in the credentials file (see Credentials Configuration below)
+3. **Environment variable** (full replacement only): `apiKey: "$MY_API_KEY"` - entire value replaced with env var
+
+**Note**: Partial environment variable substitution (e.g., `apiKey: "sk-$MY_KEY"`) is NOT supported for apiKey. The string must be exactly `"$VAR_NAME"` to trigger env var lookup. If the environment variable is not set or empty, the daemon will fail to start.
 
 **Scenario** (`scenarios/<name>/scenario.yaml`):
 ```yaml
@@ -185,6 +198,7 @@ defaultModel: null
 logs: null
 wsPort: null
 dbDir: rhd_db
+credentialsConfig: null   # Optional: path to credentials file
 ```
 
 - `modelsDir`: Directory containing model YAML files (default: `models`)
@@ -194,6 +208,60 @@ dbDir: rhd_db
 - `logs`: Directory for execution logs (default: `null`, no logging)
 - `wsPort`: WebSocket server port (default: `null`, disabled)
 - `dbDir`: Directory for SQLite database (default: `rhd_db`, creates `meta.db` inside)
+- `credentialsConfig`: Path to credentials file (default: `null`, optional). Path is resolved relative to the config file location.
+
+### Credentials Configuration
+
+The credentials feature allows separating sensitive API keys from model configurations, enabling safe sharing of `rhd.yaml` and scenario files without leaking secrets.
+
+**Credentials file format** (`credentials.yaml`):
+```yaml
+myApiKey: "sk-..."
+anotherKey: "secret123"
+```
+
+**Usage in rhd.yaml**:
+```yaml
+credentialsConfig: ../credentials.yaml
+modelsDir: models
+scenariosDir: scenarios
+```
+
+**Behavior**:
+- If `credentialsConfig` is specified and the file does not exist, the daemon exits with an error
+- If `credentialsConfig` is not specified, no error occurs (credentials are optional)
+- Path is resolved relative to the `rhd.yaml` file location
+- Credentials can be referenced in model configs using `apiKey: { cred: keyName }`
+
+**Example**: Secure configuration sharing
+```
+project/
+├── rhd.yaml              # Can be committed to git
+├── credentials.yaml      # Add to .gitignore
+├── models/
+│   └── gpt4.yaml         # References credentials
+└── scenarios/
+    └── my_scenario/
+        └── scenario.yaml
+```
+
+In `rhd.yaml`:
+```yaml
+credentialsConfig: ./credentials.yaml
+```
+
+In `models/gpt4.yaml`:
+```yaml
+baseUrl: "https://api.openai.com/v1"
+apiKey:
+  cred: openaiKey
+model: "gpt-4"
+```
+
+In `credentials.yaml` (not committed):
+```yaml
+openaiKey: "sk-actual-api-key-here"
+```
 
 ### aiChat with MCP Tools
 

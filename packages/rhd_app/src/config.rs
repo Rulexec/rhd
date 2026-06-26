@@ -20,6 +20,8 @@ pub struct DaemonConfig {
     pub ws_port: Option<u16>,
     #[serde(default = "default_db_dir")]
     pub db_dir: PathBuf,
+    #[serde(default)]
+    pub credentials_config: Option<PathBuf>,
 }
 
 fn default_scenarios_dir() -> PathBuf {
@@ -48,6 +50,7 @@ impl Default for DaemonConfig {
             logs: None,
             ws_port: None,
             db_dir: default_db_dir(),
+            credentials_config: None,
         }
     }
 }
@@ -55,7 +58,14 @@ impl Default for DaemonConfig {
 pub fn load_config(path: &Path) -> Result<DaemonConfig, String> {
     let content = std::fs::read_to_string(path)
         .map_err(|e| format!("failed to read config '{}': {e}", path.display()))?;
-    let config: DaemonConfig = serde_yaml::from_str(&content)
+    let mut config: DaemonConfig = serde_yaml::from_str(&content)
         .map_err(|e| format!("failed to parse config '{}': {e}", path.display()))?;
+    
+    if let Some(cred_path) = &config.credentials_config {
+        if let Some(config_dir) = path.parent() {
+            config.credentials_config = Some(config_dir.join(cred_path));
+        }
+    }
+    
     Ok(config)
 }
