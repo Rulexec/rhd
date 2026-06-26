@@ -7,7 +7,11 @@ pub const PROTOCOL_VERSION: u32 = 1;
 #[derive(Archive, Serialize, Deserialize, Debug, Clone)]
 #[archive(check_bytes)]
 pub enum IpcRequest {
-    RunScenario { name: String, cwd: String },
+    RunScenario {
+        name: String,
+        cwd: String,
+        model_aliases: Vec<(String, String)>,
+    },
 }
 
 #[derive(Archive, Serialize, Deserialize, Debug, Clone)]
@@ -15,6 +19,7 @@ pub enum IpcRequest {
 pub enum IpcResponse {
     Success { output: String },
     Error { message: String },
+    Aborted,
 }
 
 pub fn write_message<T: rkyv::Serialize<rkyv::ser::serializers::AllocSerializer<256>>>(

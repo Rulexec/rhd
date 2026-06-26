@@ -1,10 +1,15 @@
 mod cli;
 mod client;
 mod config;
+mod credentials;
 mod daemon;
+mod execution;
 mod ipc;
 mod log;
+mod mcp_cache;
+mod mcp_loader;
 mod scenario;
+mod ws;
 
 use std::path::PathBuf;
 
@@ -32,8 +37,12 @@ async fn main() {
                 eprintln!("error: {err}");
                 std::process::exit(1);
             }
+            let model_aliases = args.parsed_model_aliases();
             let socket_path = args.socket.unwrap_or_else(cli::default_socket_path);
-            if let Err(err) = client::run_scenario(&args.name, &socket_path).await {
+            if let Err(err) = client::run_scenario(&args.name, &socket_path, model_aliases).await {
+                if err.to_string() == "ABORTED" {
+                    std::process::exit(2);
+                }
                 eprintln!("error: {err}");
                 std::process::exit(1);
             }
@@ -47,10 +56,21 @@ async fn run_daemon_command(
     let config = load_config(&args.config)?;
     let merged = merge_config(config, &args);
 
-    let models = rhd_ai::config::load_models(&merged.models_dir)?;
+    let credentials = if let Some(cred_path) = &merged.credentials_config {
+        if !cred_path.exists() {
+            return Err(format!("credentials file not found: {}", cred_path.display()).into());
+        }
+        credentials::load_credentials(cred_path)?
+    } else {
+        std::collections::HashMap::new()
+    };
+
+    let models = rhd_ai::config::load_models(&merged.models_dir, &credentials)?;
     let scenarios = scenario::load_scenarios_dir(&merged.scenarios_dir)?;
+    let mcp_configs = mcp_loader::load_mcp_dir(&merged.mcp_dir)?;
     let socket_path = args.socket.unwrap_or_else(cli::default_socket_path);
-    daemon::run_daemon(scenarios, models, merged.default_model, merged.logs, &socket_path).await?;
+    let db_file = merged.db_dir.join("meta.db");
+    daemon::run_daemon(scenarios, models, mcp_configs, merged.default_model, merged.logs, &socket_path, merged.ws_port, db_file.to_str().unwrap_or("db/meta.db")).await?;
     Ok(())
 }
 
@@ -68,7 +88,11 @@ fn merge_config(config: DaemonConfig, args: &cli::DaemonArgs) -> DaemonConfig {
     DaemonConfig {
         models_dir: args.models_dir.clone().unwrap_or(config.models_dir),
         scenarios_dir: args.scenarios_dir.clone().unwrap_or(config.scenarios_dir),
+        mcp_dir: args.mcp_dir.clone().unwrap_or(config.mcp_dir),
         default_model: args.default_model.clone().or(config.default_model),
         logs: args.logs.clone().or(config.logs),
+        ws_port: args.ws_port.or(config.ws_port),
+        db_dir: args.db_dir.clone().unwrap_or(config.db_dir),
+        credentials_config: config.credentials_config,
     }
 }

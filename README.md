@@ -52,9 +52,12 @@ rhd daemon [OPTIONS]
 | `--config PATH` | `rhd.yaml` | Path to configuration file |
 | `--models-dir PATH` | `models` | Directory with model YAML files (overrides config) |
 | `--scenarios-dir PATH` | `scenarios` | Directory with scenario folders (overrides config) |
+| `--mcp-dir PATH` | `mcp` | Directory with MCP server configurations (overrides config) |
 | `--default-model NAME` | — | Fallback model for `aiChat` steps without `model` field (overrides config) |
 | `--logs PATH` | — | Directory for execution logs (overrides config) |
 | `--socket PATH` | `$HOME/rhd.sock` | Unix socket path |
+| `--ws-port PORT` | — | WebSocket server port for Web UI (optional) |
+| `--db-dir DIR` | `rhd_db` | Directory for SQLite database (overrides config) |
 
 ## Configuration File
 
@@ -64,14 +67,24 @@ The daemon can be configured via a YAML file (default: `rhd.yaml` in current dir
 ```yaml
 modelsDir: models
 scenariosDir: scenarios
+mcpDir: mcp
 defaultModel: null
 logs: null
+wsPort: null
+dbDir: rhd_db
+credentialsConfig: null
 ```
 
-- `modelsDir`: Directory containing model YAML files (default: `models`)
-- `scenariosDir`: Directory containing scenario folders (default: `scenarios`)
-- `defaultModel`: Fallback model for `aiChat` steps without `model` field (default: `null`)
-- `logs`: Directory for execution logs (default: `null`, no logging)
+| Field | Default | Description |
+|---|---|---|
+| `modelsDir` | `models` | Directory containing model YAML files |
+| `scenariosDir` | `scenarios` | Directory containing scenario folders |
+| `mcpDir` | `mcp` | Directory containing MCP server configurations |
+| `defaultModel` | `null` | Fallback model for `aiChat` steps without `model` field |
+| `logs` | `null` | Directory for execution logs (no logging if null) |
+| `wsPort` | `null` | WebSocket server port (disabled if null) |
+| `dbDir` | `rhd_db` | Directory for SQLite database |
+| `credentialsConfig` | `null` | Path to credentials file (relative to config file) |
 
 ## Execution Logs
 
@@ -83,10 +96,20 @@ When `logs` is configured, each scenario execution creates a timestamped log dir
 ### Run scenario
 
 ```bash
-rhd run <scenario_name> [--socket PATH]
+rhd run <scenario_name> [--socket PATH] [--modelAlias ALIAS=TARGET]
 ```
 
+| Flag | Description |
+|---|---|
+| `--socket PATH` | Unix socket path (default: `$HOME/rhd.sock`) |
+| `--modelAlias ALIAS=TARGET` | Override model alias at runtime (can be repeated) |
+
 Client captures current working directory and sends it to daemon. Commands execute in client's cwd unless scenario overrides with `cwd` field.
+
+**Model alias override example:**
+```bash
+rhd run example --modelAlias medium=gpt4 --modelAlias small=qwen3
+```
 
 ## Models
 
@@ -95,8 +118,11 @@ Model configs: `models/<name>.yaml`. Filename (without extension) becomes model 
 | Field | Required | Description |
 |---|---|---|
 | `baseUrl` | yes | OpenAI-compatible API endpoint. Supports `$ENV_VAR`. |
-| `apiKey` | yes | API key. Supports `$ENV_VAR`. |
+| `apiKey` | yes | API key. Plain string, `$ENV_VAR`, or `{ cred: keyName }`. |
 | `model` | yes | Model identifier passed to API. Supports `$ENV_VAR`. |
+| `inputTokenPrice` | no | Price per 1M input tokens |
+| `outputTokenPrice` | no | Price per 1M output tokens |
+| `priceTiers` | no | Tiered pricing (see below) |
 
 Example `models/deepseek.yaml`:
 
@@ -105,6 +131,61 @@ baseUrl: "https://api.deepseek.com/v1"
 apiKey: "$DEEPSEEK_API_KEY"
 model: "deepseek-chat"
 ```
+
+### Token pricing
+
+Optional fields for cost tracking:
+
+```yaml
+inputTokenPrice: 5.0      # Price per 1M input tokens
+outputTokenPrice: 15.0    # Price per 1M output tokens
+priceTiers:               # Optional tiered pricing
+  - afterTokens: 250000   # Apply after this many tokens
+    inputTokenPrice: 10.0
+    outputTokenPrice: 30.0
+```
+
+### Model alias
+
+A model config can reference another model:
+
+```yaml
+# models/medium.yaml
+alias: gpt4
+```
+
+Filename becomes alias name. Resolves to target model at runtime. Aliases can chain.
+
+## Credentials
+
+Separate API keys from config for safe sharing:
+
+**`credentials.yaml`:**
+```yaml
+openaiKey: "sk-..."
+anthropicKey: "sk-ant-..."
+```
+
+**`rhd.yaml`:**
+```yaml
+credentialsConfig: ./credentials.yaml
+```
+
+**`models/gpt4.yaml`:**
+```yaml
+baseUrl: "https://api.openai.com/v1"
+apiKey:
+  cred: openaiKey
+model: "gpt-4"
+```
+
+Add `credentials.yaml` to `.gitignore`.
+
+## WebSocket Server
+
+Optional WebSocket server for Web UI integration. Enable via `--ws-port` or `wsPort` config.
+
+Default disabled. Used by frontend for real-time scenario monitoring.
 
 ## Scenarios
 
@@ -133,7 +214,7 @@ Execute shell command. **Never fails scenario** on non-zero exit.
 
 #### `aiChat`
 
-Send message to AI model, receive response.
+Send message to AI model, receive response. Supports tool calling via MCP (Model Context Protocol).
 
 | Field | Required | Description |
 |---|---|---|
@@ -142,6 +223,9 @@ Send message to AI model, receive response.
 | `model` | no | Model name (from `models/*.yaml`). Falls back to `--default-model`. Supports `$ENV_VAR`. |
 | `systemPrompt` | no | System prompt. Supports `$ENV_VAR` and `%placeholder%`. |
 | `message` | yes | User message. Supports `$ENV_VAR` and `%placeholder%`. |
+| `mcp` | no | List of MCP server references for tool calling. See [MCP Tools](#mcp-tools). |
+| `maxToolIterations` | no | Max tool call loop iterations. Default `20`, set `"inf"` for unlimited. |
+| `skip` | no | Skip condition based on flag. See [Skip Conditions](#skip-conditions). |
 
 #### `output`
 
@@ -166,8 +250,68 @@ Reference previous step results: `%stepName.field%`.
 | `%step.success%` | `runCommand` | `true` if exit code 0, `false` otherwise |
 | `%step.cwd%` | `runCommand` | Resolved working directory |
 | `%step.message%` | `aiChat` | Assistant reply text |
+| `%step.flag_name%` | `aiChat` | Flag value set by `rhd_set_flag` tool (`true` or `false`) |
 
 Missing placeholders resolve to empty string (no error).
+
+### MCP Tools
+
+The `aiChat` action supports Model Context Protocol (MCP) for tool usage. When `mcp` field is present, the model can call tools in a loop until it responds without tool calls.
+
+```yaml
+- type: aiChat
+  name: ai_step
+  model: model_name
+  mcp:
+    - name: fs                    # Reference to mcp/fs/mcp.yaml
+      args: ["--extra-arg"]       # Optional override
+      env:
+        AVAILABLE_ROOT: /tmp      # Optional env vars
+    - name: flags                 # Built-in tools
+  maxToolIterations: 20           # Optional, default 20, "inf" for unlimited
+  systemPrompt: "Optional system prompt"
+  message: "User message"
+```
+
+**Behavior**:
+- Without `mcp` field: Single-shot mode (current behavior)
+- With `mcp` field: Tool loop mode - model can call tools, results fed back, loop until `finish_reason: "stop"`
+- Max iterations guard prevents infinite loops (configurable per step)
+
+**Built-in Tools**:
+- `rhd_set_flag`: Sets a flag that can be used for conditional step execution
+  ```json
+  {"name": "flag_name", "value": true}
+  ```
+
+**MCP Configuration** (`mcp/<name>/mcp.yaml`):
+```yaml
+cmd: npx
+args: ["-y", "@modelcontextprotocol/server-filesystem", "$AVAILABLE_ROOT"]
+cwd: null
+```
+
+**MCP Server Lifecycle**:
+- Spawned on first use per (mcp_name, scenario_id, step_id)
+- Cached at daemon level, reused across scenario executions
+- Killed only on daemon shutdown
+
+### Skip Conditions
+
+Steps can be conditionally skipped based on flags set by `rhd_set_flag`:
+
+```yaml
+- type: runCommand
+  name: build
+  cmd: make
+  skip: ai_step.flag_skip_build    # Skip if flag is true
+```
+
+**Flag Format**: `<aiChatStepName>.flag_<flagName>`
+- Flags are stored in `ExecutionContext`
+- Accessible to all subsequent steps
+- If flag is `true` → skip step, if `false`/absent → execute
+- Applies to all step types except `output`
 
 ### Environment variable substitution
 

@@ -10,3 +10,4 @@ serde_json = { workspace = true }
 serde_yaml = { workspace = true }
 thiserror = { workspace = true }
 rhd_util = { path = "../rhd_util" }
+rhd_api = { path = "../rhd_api" }

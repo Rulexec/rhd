@@ -1,0 +1,17 @@
+description: E2E test for MCP built-in tools and skip functionality
+actions:
+  - type: aiChat
+    name: ai1
+    model: test_model
+    mcp:
+      - name: flags
+    systemPrompt: "You are testing MCP tools. Call rhd_set_flag with name='test_flag' and value=true."
+    message: "Set the flag now."
+  - type: runCommand
+    name: cmd1
+    cmd: echo
+    args: ["This should be skipped"]
+    skip: ai1.flag_test_flag
+  - type: output
+    name: out1
+    output: "Flag was set: %ai1.flag_test_flag%"

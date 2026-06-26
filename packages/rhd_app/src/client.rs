@@ -4,7 +4,11 @@ use tokio::net::UnixStream;
 
 use crate::ipc::protocol::{IpcRequest, IpcResponse};
 
-pub async fn run_scenario(name: &str, socket_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn run_scenario(
+    name: &str,
+    socket_path: &Path,
+    model_aliases: Vec<(String, String)>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut stream = UnixStream::connect(socket_path).await.map_err(|e| {
         format!(
             "failed to connect to daemon at {}: {} (is daemon running?)",
@@ -19,6 +23,7 @@ pub async fn run_scenario(name: &str, socket_path: &Path) -> Result<(), Box<dyn 
     let request = IpcRequest::RunScenario {
         name: name.to_string(),
         cwd,
+        model_aliases,
     };
     let request_bytes = rkyv::to_bytes::<_, 256>(&request)
         .map_err(|e| format!("failed to serialize request: {}", e))?;
@@ -53,8 +58,15 @@ pub async fn run_scenario(name: &str, socket_path: &Path) -> Result<(), Box<dyn 
     match response {
         IpcResponse::Success { output } => {
             print!("{}", output);
+            if !output.ends_with('\n') {
+                println!();
+            }
             Ok(())
         }
         IpcResponse::Error { message } => Err(message.into()),
+        IpcResponse::Aborted => {
+            println!("ABORTED");
+            Err("ABORTED".into())
+        }
     }
 }
