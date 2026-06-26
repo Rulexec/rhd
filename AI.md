@@ -28,7 +28,7 @@ rhd/
 **rhd_util**: Shared error types (`RhdError`, `RhdResult<T>`), `substitute_env_vars()` for `$VAR` expansion in config strings
 
 **rhd_ai**:
-- `ModelConfig`: AI model configuration (baseUrl, apiKey, model, optional token pricing)
+- `ModelConfig`: AI model configuration (model_id, baseUrl, apiKey, model, optional token pricing)
 - `OpenAiClient`: HTTP client for chat completions API
 - Loads models from `models/*.yaml` at startup
 - Parses token usage from API responses
@@ -97,14 +97,14 @@ priceTiers:               # Optional: tiered pricing
     outputTokenPrice: 30.0
 ```
 
-**Important**: The filename (without extension) is used as the model identifier in logs, meta.json, and scenario references. The `model` field is only used for API calls. For example, `models/gpt4.yaml` with `model: "gpt-4"` will be referenced as `gpt4` in scenarios and logs, while `gpt-4` is sent to the API.
+**Important**: The filename (without extension) is used as the model identifier in logs, meta.json, and scenario references. The `model` field is only used for API calls. For example, `models/gpt4.yaml` with `model: "gpt-4"` will be referenced as `gpt4` in scenarios and logs, while `gpt-4` is sent to the API. For aliases, the resolved target name is used in logs (e.g., `small.yaml` with `alias: other_model` logs as `other_model`).
 
 **Model Alias**:
 A model config file can contain only an `alias` field to reference another model:
 ```yaml
 alias: gpt4
 ```
-This creates an alias named after the filename (e.g., `medium.yaml` with `alias: gpt4` creates a `medium` alias that resolves to the `gpt4` model). Aliases can chain (alias pointing to another alias), but circular references are not allowed.
+This creates an alias named after the filename (e.g., `medium.yaml` with `alias: gpt4` creates a `medium` alias that resolves to the `gpt4` model). In logs and meta.json, the resolved target name is shown (e.g., `medium` alias logs as `gpt4`). Aliases can chain (alias pointing to another alias), but circular references are not allowed.
 
 **CLI Model Alias Override**:
 The `rhd run` command supports `--modelAlias ALIAS=TARGET` to override model names at runtime:

@@ -230,7 +230,7 @@ pub async fn run_mcp_test(
                     let mut expected_substrings: Vec<String> = vec![
                         "===== mcp_test: executing scenario =====".to_string(),
                         "===== ai1: AI request =====".to_string(),
-                        "model: test-model".to_string(),
+                        "model: test_model".to_string(),
                         "----- system prompt -----".to_string(),
                         "----- message -----".to_string(),
                         "===== ai1: AI response =====".to_string(),

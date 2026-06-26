@@ -273,7 +273,7 @@ pub async fn run_single_test(
                         "----- cmd1: command exit code -----",
                         "----- cmd1: command output -----",
                         "===== ai1: AI request =====",
-                        "model: test-model",
+                        "model: test_model",
                         "----- system prompt -----",
                         "----- message -----",
                         "===== ai1: AI response =====",

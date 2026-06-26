@@ -40,6 +40,7 @@ enum RawModelEntry {
 
 #[derive(Debug, Clone)]
 pub struct ModelConfig {
+    pub model_id: String,
     pub base_url: String,
     pub api_key: String,
     pub model: String,
@@ -173,6 +174,7 @@ pub fn load_models(
             RawModelEntry::Full(raw_config) => {
                 let resolved_api_key = resolve_api_key(&raw_config.api_key, credentials)?;
                 let config = ModelConfig {
+                    model_id: name.clone(),
                     base_url: rhd_util::substitute_env_vars(&raw_config.base_url),
                     api_key: resolved_api_key,
                     model: rhd_util::substitute_env_vars(&raw_config.model),
@@ -193,6 +195,7 @@ pub fn load_models(
                 Some(RawModelEntry::Full(raw_config)) => {
                     let resolved_api_key = resolve_api_key(&raw_config.api_key, credentials)?;
                     ModelConfig {
+                        model_id: resolved.clone(),
                         base_url: rhd_util::substitute_env_vars(&raw_config.base_url),
                         api_key: resolved_api_key,
                         model: rhd_util::substitute_env_vars(&raw_config.model),

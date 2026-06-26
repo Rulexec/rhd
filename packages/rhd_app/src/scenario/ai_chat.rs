@@ -73,14 +73,14 @@ pub async fn execute_ai_chat(
     let client = OpenAiClient::new(&model_config.base_url, &model_config.api_key);
 
     if let Some(h) = &handle {
-        h.set_step_model(model_config.model.clone());
+        h.set_step_model(model_config.model_id.clone());
     }
 
     let has_mcp = chat.mcp.as_ref().map(|m| !m.is_empty()).unwrap_or(false);
 
     if !has_mcp {
         let request_tracker = SectionTracker::start(sink, LogSectionKind::AiRequest);
-        sink.log_ai_request(step_name, &model_config.model, &[], &system_prompt, &message);
+        sink.log_ai_request(step_name, &model_config.model_id, &[], &system_prompt, &message);
         if let Some(h) = &handle {
             h.add_section(request_tracker.end(sink));
         }
@@ -139,6 +139,7 @@ pub async fn execute_ai_chat(
             chat,
             context,
             &client,
+            &model_config.model_id,
             &model_config.model,
             &system_prompt,
             &message,
@@ -157,7 +158,8 @@ async fn execute_ai_chat_with_tools(
     chat: &AiChatAction,
     context: &mut ExecutionContext,
     client: &OpenAiClient,
-    model: &str,
+    display_name: &str,
+    api_model: &str,
     system_prompt: &str,
     message: &str,
     mcp_configs: &HashMap<String, McpConfig>,
@@ -239,7 +241,7 @@ async fn execute_ai_chat_with_tools(
 
     let tool_names: Vec<String> = tools.iter().map(|t| t.function.name.clone()).collect();
     let request_tracker = SectionTracker::start(sink, LogSectionKind::AiRequest);
-    sink.log_ai_request(step_name, model, &tool_names, system_prompt, message);
+    sink.log_ai_request(step_name, display_name, &tool_names, system_prompt, message);
     if let Some(h) = &handle {
         h.add_section(request_tracker.end(sink));
     }
@@ -257,7 +259,7 @@ async fn execute_ai_chat_with_tools(
             });
         }
 
-        let chat_future = client.chat_with_tools(model, system_prompt, &current_message, &tools, &tool_results);
+        let chat_future = client.chat_with_tools(api_model, system_prompt, &current_message, &tools, &tool_results);
         
         let result = if let Some(h) = &handle {
             let mut abort_signal = h.abort_signal();
