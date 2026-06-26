@@ -365,6 +365,44 @@ pub async fn run_single_test(
                                     log.push_str("  PASS: step names are correct\n");
                                 }
 
+                                // Validate step types
+                                use rhd_api::StepType;
+                                let expected_types = vec![StepType::RunCommand, StepType::AiChat, StepType::Output];
+                                let actual_types: Vec<StepType> = meta.steps.iter().map(|s| s.step_type).collect();
+                                if actual_types != expected_types {
+                                    log.push_str(&format!(
+                                        "  FAIL: expected step types {:?}, got {:?}\n",
+                                        expected_types, actual_types
+                                    ));
+                                    failed = true;
+                                } else {
+                                    log.push_str("  PASS: step types are correct\n");
+                                }
+
+                                // Validate exit_code for runCommand step
+                                let cmd_step = &meta.steps[0];
+                                if cmd_step.exit_code.is_none() {
+                                    log.push_str("  FAIL: cmd1 step has no exit_code\n");
+                                    failed = true;
+                                } else {
+                                    log.push_str(&format!(
+                                        "  PASS: cmd1 step has exit_code: {}\n",
+                                        cmd_step.exit_code.unwrap()
+                                    ));
+                                }
+
+                                // Validate model for aiChat step
+                                let ai_step = &meta.steps[1];
+                                if ai_step.model.is_none() {
+                                    log.push_str("  FAIL: ai1 step has no model\n");
+                                    failed = true;
+                                } else {
+                                    log.push_str(&format!(
+                                        "  PASS: ai1 step has model: {}\n",
+                                        ai_step.model.as_ref().unwrap()
+                                    ));
+                                }
+
                                 let ai_step = &meta.steps[1];
                                 if ai_step.tokens.is_none() {
                                     log.push_str("  FAIL: ai1 step has no token usage\n");

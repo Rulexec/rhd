@@ -69,6 +69,10 @@ pub async fn execute_ai_chat(
 
     let client = OpenAiClient::new(&model_config.base_url, &model_config.api_key);
 
+    if let Some(h) = &handle {
+        h.set_step_model(model_name.clone());
+    }
+
     let has_mcp = chat.mcp.as_ref().map(|m| !m.is_empty()).unwrap_or(false);
 
     if !has_mcp {

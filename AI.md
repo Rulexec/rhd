@@ -245,6 +245,8 @@ When `logs` is configured, each scenario execution creates a timestamped log dir
   "steps": [
     {
       "name": "build",
+      "type": "runCommand",
+      "exitCode": 0,
       "started": "2026-06-26T15:00:00Z",
       "finished": "2026-06-26T15:00:10Z",
       "durationMs": 10000,
@@ -253,11 +255,33 @@ When `logs` is configured, each scenario execution creates a timestamped log dir
         { "kind": "exitCode", "startLine": 8, "endLine": 9 },
         { "kind": "commandOutput", "startLine": 11, "endLine": 15 }
       ]
+    },
+    {
+      "name": "ai_step",
+      "type": "aiChat",
+      "model": "gpt-4",
+      "started": "2026-06-26T15:00:10Z",
+      "finished": "2026-06-26T15:00:20Z",
+      "durationMs": 10000,
+      "tokens": { "prompt": 500, "completion": 200, "total": 700 },
+      "cost": 0.005,
+      "sections": [...]
+    },
+    {
+      "name": "output_step",
+      "type": "output",
+      "started": "2026-06-26T15:00:20Z",
+      "finished": "2026-06-26T15:00:20Z",
+      "durationMs": 0,
+      "sections": [...]
     }
   ]
 }
 ```
 
+- Every step includes `type` field: `runCommand`, `aiChat`, or `output`
+- `runCommand` steps include `exitCode` field
+- `aiChat` steps include `model` field
 - `tokens` and `cost` fields omitted at scenario level if no AI steps
 - Per-step `tokens` and `cost` omitted for non-AI steps
 - `sections` array contains line ranges for all delimited blocks within the step

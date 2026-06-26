@@ -50,10 +50,23 @@ pub enum EventData {
     },
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum StepType {
+    RunCommand,
+    AiChat,
+    Output,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StepTiming {
     pub name: String,
+    pub step_type: StepType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
     pub started_at: DateTime<Utc>,
     pub finished_at: DateTime<Utc>,
     pub duration_ms: u64,

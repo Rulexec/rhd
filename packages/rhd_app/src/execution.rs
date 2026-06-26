@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Utc};
-use rhd_api::{EventData, EventType, ExecutionEvent, LogSection, StepTiming, TokenUsage};
+use rhd_api::{EventData, EventType, ExecutionEvent, LogSection, StepTiming, StepType, TokenUsage};
 use tokio::sync::broadcast;
 
 pub struct ExecutionTracker {
@@ -22,6 +22,9 @@ struct ExecutionState {
     token_usage: TokenUsage,
     current_step_start: Option<DateTime<Utc>>,
     current_step_name: Option<String>,
+    current_step_type: Option<StepType>,
+    current_step_exit_code: Option<i32>,
+    current_step_model: Option<String>,
     current_step_tokens: TokenUsage,
     current_step_sections: Vec<LogSection>,
 }
@@ -79,6 +82,9 @@ impl ExecutionTracker {
                 token_usage: TokenUsage::default(),
                 current_step_start: None,
                 current_step_name: None,
+                current_step_type: None,
+                current_step_exit_code: None,
+                current_step_model: None,
                 current_step_tokens: TokenUsage::default(),
                 current_step_sections: Vec::new(),
             }),
@@ -118,13 +124,16 @@ impl ExecutionHandle {
         self.id
     }
 
-    pub fn step_started(&self, step_name: &str) {
+    pub fn step_started(&self, step_name: &str, step_type: StepType) {
         let now = Utc::now();
         let mut state = self.state.lock().unwrap();
         Self::finalize_current_step(&mut state, now);
 
         state.current_step_start = Some(now);
         state.current_step_name = Some(step_name.to_string());
+        state.current_step_type = Some(step_type);
+        state.current_step_exit_code = None;
+        state.current_step_model = None;
         state.current_step_tokens = TokenUsage::default();
         state.current_step_sections = Vec::new();
 
@@ -147,6 +156,16 @@ impl ExecutionHandle {
     pub fn add_section(&self, section: LogSection) {
         let mut state = self.state.lock().unwrap();
         state.current_step_sections.push(section);
+    }
+
+    pub fn set_step_exit_code(&self, exit_code: i32) {
+        let mut state = self.state.lock().unwrap();
+        state.current_step_exit_code = Some(exit_code);
+    }
+
+    pub fn set_step_model(&self, model: String) {
+        let mut state = self.state.lock().unwrap();
+        state.current_step_model = Some(model);
     }
 
     pub fn finished(self: Arc<Self>) -> FinishedExecution {
@@ -188,9 +207,16 @@ impl ExecutionHandle {
     }
 
     fn finalize_current_step(state: &mut ExecutionState, now: DateTime<Utc>) {
-        if let (Some(start), Some(name)) = (state.current_step_start.take(), state.current_step_name.take()) {
+        if let (Some(start), Some(name), Some(step_type)) = (
+            state.current_step_start.take(),
+            state.current_step_name.take(),
+            state.current_step_type.take(),
+        ) {
             let timing = StepTiming {
                 name,
+                step_type,
+                exit_code: state.current_step_exit_code.take(),
+                model: state.current_step_model.take(),
                 started_at: start,
                 finished_at: now,
                 duration_ms: (now - start).num_milliseconds() as u64,

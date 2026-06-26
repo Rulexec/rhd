@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use rhd_ai::config::ModelConfig;
-use rhd_api::LogSectionKind;
+use rhd_api::{LogSectionKind, StepType};
 use rhd_mcp_client::McpConfig;
 
 use super::ai_chat::execute_ai_chat;
@@ -43,7 +43,7 @@ pub async fn execute_scenario(
                 }
                 
                 if let Some(h) = &handle {
-                    h.step_started(&step_name);
+                    h.step_started(&step_name, StepType::RunCommand);
                 }
                 
                 let result = execute_run_command(cmd, &context, sink, &step_name, client_cwd, handle.clone()).await;
@@ -60,7 +60,7 @@ pub async fn execute_scenario(
                 }
                 
                 if let Some(h) = &handle {
-                    h.step_started(&step_name);
+                    h.step_started(&step_name, StepType::AiChat);
                 }
                 
                 let result =
@@ -72,7 +72,7 @@ pub async fn execute_scenario(
                 let step_name = output.name.clone().unwrap_or_else(|| "output".to_string());
                 
                 if let Some(h) = &handle {
-                    h.step_started(&step_name);
+                    h.step_started(&step_name, StepType::Output);
                 }
                 
                 let resolved = resolve_placeholders(&output.text, &context);

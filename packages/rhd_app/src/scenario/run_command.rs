@@ -110,6 +110,7 @@ pub async fn execute_run_command(
             sink.log_step_dashed(step_name, "command exit code", &exit_code.to_string());
             if let Some(h) = &handle {
                 h.add_section(exit_tracker.end(sink));
+                h.set_step_exit_code(exit_code);
             }
 
             let output_tracker = SectionTracker::start(sink, LogSectionKind::CommandOutput);
@@ -130,6 +131,9 @@ pub async fn execute_run_command(
         }
         Err(err) => {
             sink.log_step(step_name, "command spawn error", &err.to_string());
+            if let Some(h) = &handle {
+                h.set_step_exit_code(-1);
+            }
             StepResult {
                 exit_code: -1,
                 stdout: String::new(),
