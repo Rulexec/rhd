@@ -58,6 +58,9 @@ pub async fn run_scenario(
     match response {
         IpcResponse::Success { output } => {
             print!("{}", output);
+            if !output.ends_with('\n') {
+                println!();
+            }
             Ok(())
         }
         IpcResponse::Error { message } => Err(message.into()),
