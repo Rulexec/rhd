@@ -1,6 +1,7 @@
 export function formatDateTime(isoString) {
-  const date = new Date(isoString);
-  return date.toLocaleString();
+  const d = new Date(isoString);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
 export function formatDuration(durationMs) {
