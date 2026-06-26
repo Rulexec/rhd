@@ -27,27 +27,20 @@ pub enum EventData {
     ScenarioStarted {
         id: u64,
         name: String,
+        #[serde(rename = "daemonTime")]
         daemon_time: DateTime<Utc>,
+        #[serde(rename = "startedAt")]
         started_at: DateTime<Utc>,
     },
     StepStarted {
+        #[serde(rename = "executionId")]
         execution_id: u64,
+        #[serde(rename = "stepName")]
         step_name: String,
+        #[serde(rename = "startedAt")]
         started_at: DateTime<Utc>,
     },
-    ScenarioFinished {
-        id: u64,
-        name: String,
-        daemon_time: DateTime<Utc>,
-        started_at: DateTime<Utc>,
-        finished_at: DateTime<Utc>,
-        duration_ms: u64,
-        steps: Vec<StepTiming>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        tokens: Option<TokenUsage>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        cost: Option<f64>,
-    },
+    ScenarioFinished(ScenarioMeta),
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -120,6 +113,7 @@ impl TokenUsage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScenarioMeta {
+    pub id: u64,
     pub scenario: String,
     pub started: DateTime<Utc>,
     pub finished: DateTime<Utc>,
@@ -148,7 +142,7 @@ pub enum WsRequest {
     #[serde(rename = "subscribe")]
     Subscribe { id: String },
     #[serde(rename = "getFinishedScenarios")]
-    GetFinishedScenarios { id: String },
+    GetFinishedScenarios { id: String, last_id: Option<u64> },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

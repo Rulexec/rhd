@@ -240,6 +240,7 @@ fn build_scenario_meta(
     };
 
     rhd_api::ScenarioMeta {
+        id: finished.id,
         scenario: name.to_string(),
         started: finished.started_at,
         finished: finished.finished_at,

@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Utc};
-use rhd_api::{EventData, EventType, ExecutionEvent, LogSection, StepTiming, StepType, TokenUsage};
+use rhd_api::{EventData, EventType, ExecutionEvent, LogSection, ScenarioMeta, StepTiming, StepType, TokenUsage};
 use tokio::sync::broadcast;
 
 pub struct ExecutionTracker {
@@ -180,19 +180,20 @@ impl ExecutionHandle {
             None
         };
 
+        let meta = ScenarioMeta {
+            id: self.id,
+            scenario: self.scenario_name.clone(),
+            started: self.started_at,
+            finished: now,
+            duration_ms: (now - self.started_at).num_milliseconds() as u64,
+            tokens: tokens.clone(),
+            cost: None,
+            steps: state.step_timings.clone(),
+        };
+
         let _ = self.tracker.events_tx.send(ExecutionEvent {
             event: EventType::ScenarioFinished,
-            data: EventData::ScenarioFinished {
-                id: self.id,
-                name: self.scenario_name.clone(),
-                daemon_time: now,
-                started_at: self.started_at,
-                finished_at: now,
-                duration_ms: (now - self.started_at).num_milliseconds() as u64,
-                steps: state.step_timings.clone(),
-                tokens: tokens.clone(),
-                cost: None,
-            },
+            data: EventData::ScenarioFinished(meta),
         });
 
         FinishedExecution {

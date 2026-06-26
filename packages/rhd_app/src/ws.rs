@@ -87,7 +87,7 @@ fn handle_ws_message(text: &str, state: &Arc<DaemonState>) -> WsResponse {
             handle_run_scenario(id, name, cwd, state)
         }
         WsRequest::Subscribe { id } => handle_subscribe(id, state),
-        WsRequest::GetFinishedScenarios { id } => handle_get_finished(id, state),
+        WsRequest::GetFinishedScenarios { id, last_id } => handle_get_finished(id, last_id, state),
     }
 }
 
@@ -159,7 +159,7 @@ fn handle_subscribe(id: String, state: &Arc<DaemonState>) -> WsResponse {
     WsResponse::success(id, data)
 }
 
-fn handle_get_finished(id: String, state: &Arc<DaemonState>) -> WsResponse {
+fn handle_get_finished(id: String, last_id: Option<u64>, state: &Arc<DaemonState>) -> WsResponse {
     let scenarios = match state.logs.as_ref() {
         Some(logs_dir) => match read_finished_scenarios(logs_dir) {
             Ok(s) => s,
@@ -168,6 +168,11 @@ fn handle_get_finished(id: String, state: &Arc<DaemonState>) -> WsResponse {
         None => Vec::new(),
     };
 
-    let data = serde_json::to_value(scenarios).unwrap_or(serde_json::json!([]));
+    let filtered = match last_id {
+        Some(last) => scenarios.into_iter().filter(|s| s.id > last).collect(),
+        None => scenarios,
+    };
+
+    let data = serde_json::to_value(filtered).unwrap_or(serde_json::json!([]));
     WsResponse::success(id, data)
 }

@@ -12,6 +12,7 @@ RHD is a Rust-based automation tool for AI-assisted task execution. It uses a da
 rhd/
 ├── Cargo.toml (workspace root)
 ├── plans/            # Implementation plans
+├── frontend/         # Svelte web UI
 ├── packages/
 │   ├── rhd_util/     # Shared error types, utilities, env var substitution
 │   ├── rhd_ai/       # OpenAI-compatible AI client
@@ -110,10 +111,11 @@ actions:
 - JSON over WebSocket for web-friendly integration
 - **Client → Server requests**:
   - `runScenario`: Execute a scenario
-  - `subscribe`: Subscribe to execution events
-  - `getFinishedScenarios`: Get list of finished scenarios from meta.json
+  - `subscribe`: Subscribe to execution events (returns list of currently active executions)
+  - `getFinishedScenarios`: Get list of finished scenarios from meta.json. Accepts optional `lastId` parameter to fetch only scenarios with id > lastId (for incremental updates)
 - **Server → Client responses**: Request responses with success/error status
 - **Server → Client events**: Real-time execution events (scenarioStarted, stepStarted, scenarioFinished)
+  - `scenarioFinished` event data uses same `ScenarioMeta` format as `getFinishedScenarios` response items
 - Multiple subscribers supported via broadcast channel
 
 ### CWD Propagation
@@ -232,6 +234,7 @@ When `logs` is configured, each scenario execution creates a timestamped log dir
 
 ```json
 {
+  "id": 1,
   "scenario": "my_scenario",
   "started": "2026-06-26T15:00:00Z",
   "finished": "2026-06-26T15:01:30Z",
@@ -279,6 +282,7 @@ When `logs` is configured, each scenario execution creates a timestamped log dir
 }
 ```
 
+- `id` field contains the execution ID (unique per scenario execution)
 - Every step includes `type` field: `runCommand`, `aiChat`, or `output`
 - `runCommand` steps include `exitCode` field
 - `aiChat` steps include `model` field
@@ -370,9 +374,55 @@ available tools: <tool1>, <tool2>, ...   (only when MCP tools configured)
 9. **CWD propagation**: `rhd run` sends its cwd to daemon; commands execute in client's cwd unless overridden in scenario
 10. **Socket path**: Default socket location is `$HOME/rhd.sock`; both daemon and client accept `--socket` flag for custom location
 
+## Frontend
+
+Svelte-based web UI in `frontend/` directory for monitoring scenario execution.
+
+### Setup
+- Requires Node.js v24.13.0 (specified in `.nvmrc`)
+- Start with `nvm use && npm run start`
+- Connects to daemon WebSocket server (default port 9876, configurable via `VITE_WS_PORT` env var)
+
+### Features
+- **Scenarios tab**:
+  - Shows active scenarios with real-time updates (current step, elapsed time, token counts)
+  - Shows finished scenarios list (sorted by date, newest first)
+  - Caches finished scenarios; uses `lastId` parameter for incremental fetching
+- **Chats tab**: Placeholder (not implemented yet)
+
+### Architecture
+- WebSocket connection with auto-reconnect
+- Svelte stores for state management (`activeScenarios`, `finishedScenarios`, `lastKnownId`)
+- CSS modules + utility classes (Tailwind-like approach)
+- Components: `TabNav`, `ScenariosTab`, `ChatsTab`, `ActiveScenario`, `FinishedScenario`
+
 ## File Structure Reference
 
 ```
+frontend/
+├── .nvmrc              # Node.js version (v24.13.0)
+├── package.json        # Dependencies and scripts
+├── vite.config.js      # Vite configuration
+├── index.html          # Entry HTML
+├── svelte.config.js    # Svelte configuration
+└── src/
+    ├── main.js         # App entry point
+    ├── App.svelte      # Root component
+    ├── lib/
+    │   ├── ws.js       # WebSocket connection service
+    │   ├── stores.js   # Svelte stores for state
+    │   └── utils.js    # Helper functions
+    ├── components/
+    │   ├── TabNav.svelte
+    │   ├── ScenariosTab.svelte
+    │   ├── ChatsTab.svelte
+    │   ├── ActiveScenario.svelte
+    │   └── FinishedScenario.svelte
+    └── styles/
+        ├── global.css
+        ├── utilities.css
+        └── components/
+
 packages/rhd_app/src/
 ├── main.rs           # CLI entry point, command dispatch
 ├── cli.rs            # clap argument definitions
