@@ -73,14 +73,14 @@ pub async fn execute_ai_chat(
     let client = OpenAiClient::new(&model_config.base_url, &model_config.api_key);
 
     if let Some(h) = &handle {
-        h.set_step_model(model_name.clone());
+        h.set_step_model(model_config.model.clone());
     }
 
     let has_mcp = chat.mcp.as_ref().map(|m| !m.is_empty()).unwrap_or(false);
 
     if !has_mcp {
         let request_tracker = SectionTracker::start(sink, LogSectionKind::AiRequest);
-        sink.log_ai_request(step_name, &model_name, &[], &system_prompt, &message);
+        sink.log_ai_request(step_name, &model_config.model, &[], &system_prompt, &message);
         if let Some(h) = &handle {
             h.add_section(request_tracker.end(sink));
         }
@@ -139,7 +139,6 @@ pub async fn execute_ai_chat(
             chat,
             context,
             &client,
-            &model_name,
             &model_config.model,
             &system_prompt,
             &message,
@@ -158,7 +157,6 @@ async fn execute_ai_chat_with_tools(
     chat: &AiChatAction,
     context: &mut ExecutionContext,
     client: &OpenAiClient,
-    model_name: &str,
     model: &str,
     system_prompt: &str,
     message: &str,
@@ -241,7 +239,7 @@ async fn execute_ai_chat_with_tools(
 
     let tool_names: Vec<String> = tools.iter().map(|t| t.function.name.clone()).collect();
     let request_tracker = SectionTracker::start(sink, LogSectionKind::AiRequest);
-    sink.log_ai_request(step_name, model_name, &tool_names, system_prompt, message);
+    sink.log_ai_request(step_name, model, &tool_names, system_prompt, message);
     if let Some(h) = &handle {
         h.add_section(request_tracker.end(sink));
     }
