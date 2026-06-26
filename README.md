@@ -56,6 +56,8 @@ rhd daemon [OPTIONS]
 | `--default-model NAME` | — | Fallback model for `aiChat` steps without `model` field (overrides config) |
 | `--logs PATH` | — | Directory for execution logs (overrides config) |
 | `--socket PATH` | `$HOME/rhd.sock` | Unix socket path |
+| `--ws-port PORT` | — | WebSocket server port for Web UI (optional) |
+| `--db-dir DIR` | `rhd_db` | Directory for SQLite database (overrides config) |
 
 ## Configuration File
 
@@ -65,14 +67,24 @@ The daemon can be configured via a YAML file (default: `rhd.yaml` in current dir
 ```yaml
 modelsDir: models
 scenariosDir: scenarios
+mcpDir: mcp
 defaultModel: null
 logs: null
+wsPort: null
+dbDir: rhd_db
+credentialsConfig: null
 ```
 
-- `modelsDir`: Directory containing model YAML files (default: `models`)
-- `scenariosDir`: Directory containing scenario folders (default: `scenarios`)
-- `defaultModel`: Fallback model for `aiChat` steps without `model` field (default: `null`)
-- `logs`: Directory for execution logs (default: `null`, no logging)
+| Field | Default | Description |
+|---|---|---|
+| `modelsDir` | `models` | Directory containing model YAML files |
+| `scenariosDir` | `scenarios` | Directory containing scenario folders |
+| `mcpDir` | `mcp` | Directory containing MCP server configurations |
+| `defaultModel` | `null` | Fallback model for `aiChat` steps without `model` field |
+| `logs` | `null` | Directory for execution logs (no logging if null) |
+| `wsPort` | `null` | WebSocket server port (disabled if null) |
+| `dbDir` | `rhd_db` | Directory for SQLite database |
+| `credentialsConfig` | `null` | Path to credentials file (relative to config file) |
 
 ## Execution Logs
 
@@ -84,10 +96,20 @@ When `logs` is configured, each scenario execution creates a timestamped log dir
 ### Run scenario
 
 ```bash
-rhd run <scenario_name> [--socket PATH]
+rhd run <scenario_name> [--socket PATH] [--modelAlias ALIAS=TARGET]
 ```
 
+| Flag | Description |
+|---|---|
+| `--socket PATH` | Unix socket path (default: `$HOME/rhd.sock`) |
+| `--modelAlias ALIAS=TARGET` | Override model alias at runtime (can be repeated) |
+
 Client captures current working directory and sends it to daemon. Commands execute in client's cwd unless scenario overrides with `cwd` field.
+
+**Model alias override example:**
+```bash
+rhd run example --modelAlias medium=gpt4 --modelAlias small=qwen3
+```
 
 ## Models
 
@@ -96,8 +118,11 @@ Model configs: `models/<name>.yaml`. Filename (without extension) becomes model 
 | Field | Required | Description |
 |---|---|---|
 | `baseUrl` | yes | OpenAI-compatible API endpoint. Supports `$ENV_VAR`. |
-| `apiKey` | yes | API key. Supports `$ENV_VAR`. |
+| `apiKey` | yes | API key. Plain string, `$ENV_VAR`, or `{ cred: keyName }`. |
 | `model` | yes | Model identifier passed to API. Supports `$ENV_VAR`. |
+| `inputTokenPrice` | no | Price per 1M input tokens |
+| `outputTokenPrice` | no | Price per 1M output tokens |
+| `priceTiers` | no | Tiered pricing (see below) |
 
 Example `models/deepseek.yaml`:
 
@@ -106,6 +131,61 @@ baseUrl: "https://api.deepseek.com/v1"
 apiKey: "$DEEPSEEK_API_KEY"
 model: "deepseek-chat"
 ```
+
+### Token pricing
+
+Optional fields for cost tracking:
+
+```yaml
+inputTokenPrice: 5.0      # Price per 1M input tokens
+outputTokenPrice: 15.0    # Price per 1M output tokens
+priceTiers:               # Optional tiered pricing
+  - afterTokens: 250000   # Apply after this many tokens
+    inputTokenPrice: 10.0
+    outputTokenPrice: 30.0
+```
+
+### Model alias
+
+A model config can reference another model:
+
+```yaml
+# models/medium.yaml
+alias: gpt4
+```
+
+Filename becomes alias name. Resolves to target model at runtime. Aliases can chain.
+
+## Credentials
+
+Separate API keys from config for safe sharing:
+
+**`credentials.yaml`:**
+```yaml
+openaiKey: "sk-..."
+anthropicKey: "sk-ant-..."
+```
+
+**`rhd.yaml`:**
+```yaml
+credentialsConfig: ./credentials.yaml
+```
+
+**`models/gpt4.yaml`:**
+```yaml
+baseUrl: "https://api.openai.com/v1"
+apiKey:
+  cred: openaiKey
+model: "gpt-4"
+```
+
+Add `credentials.yaml` to `.gitignore`.
+
+## WebSocket Server
+
+Optional WebSocket server for Web UI integration. Enable via `--ws-port` or `wsPort` config.
+
+Default disabled. Used by frontend for real-time scenario monitoring.
 
 ## Scenarios
 
