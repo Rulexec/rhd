@@ -97,6 +97,22 @@ priceTiers:               # Optional: tiered pricing
     outputTokenPrice: 30.0
 ```
 
+**Important**: The filename (without extension) is used as the model identifier in logs, meta.json, and scenario references. The `model` field is only used for API calls. For example, `models/gpt4.yaml` with `model: "gpt-4"` will be referenced as `gpt4` in scenarios and logs, while `gpt-4` is sent to the API.
+
+**Model Alias**:
+A model config file can contain only an `alias` field to reference another model:
+```yaml
+alias: gpt4
+```
+This creates an alias named after the filename (e.g., `medium.yaml` with `alias: gpt4` creates a `medium` alias that resolves to the `gpt4` model). Aliases can chain (alias pointing to another alias), but circular references are not allowed.
+
+**CLI Model Alias Override**:
+The `rhd run` command supports `--modelAlias ALIAS=TARGET` to override model names at runtime:
+```bash
+rhd run example --modelAlias medium=gpt4 --modelAlias small=qwen3
+```
+This replaces all occurrences of `medium` with `gpt4` and `small` with `qwen3` in aiChat steps. CLI aliases apply after YAML alias resolution, so they can override both direct model names and YAML-resolved aliases.
+
 **API Key Forms**:
 The `apiKey` field supports three forms:
 1. **Plain string**: `apiKey: "sk-..."` - used as-is
@@ -178,7 +194,7 @@ actions:
 rhd daemon [--config rhd.yaml] [--models-dir models] [--scenarios-dir scenarios] [--mcp-dir mcp] [--default-model name] [--logs logs] [--socket PATH] [--ws-port PORT] [--db-dir DIR]
 
 # Run scenario
-rhd run <scenario_name> [--socket PATH]
+rhd run <scenario_name> [--socket PATH] [--modelAlias ALIAS=TARGET]
 ```
 
 By default, the socket is located at `$HOME/rhd.sock`. The `--socket` flag allows specifying a custom socket path.
@@ -447,7 +463,8 @@ available tools: <tool1>, <tool2>, ...   (only when MCP tools configured)
 - Field names use camelCase in YAML, snake_case in Rust structs (via `#[serde(rename_all = "camelCase")]`)
 
 ### Testing
-- E2E tests via `rhd_test` crate: `cargo run -p rhd_test [-- --seed <N> --repetitions <N>]`
+- E2E tests via `rhd_test` crate: `cargo build && cargo run -p rhd_test [-- --seed <N> --repetitions <N>]`
+- **Important**: Always prepend `cargo build &&` when running e2e tests to ensure the test binary and daemon are rebuilt with latest changes
 - `rhd_test` accepts `--seed` (default 42) for deterministic random generation and `--repetitions` (default 10) to run tests in loop
 - Each iteration uses seed `base_seed + i`, prints iteration seed for reproducibility on failure
 - `rhd_test` starts a mock OpenAI-compatible HTTP server (axum, reused across iterations), spawns daemon per iteration, runs scenario, validates AI request payloads and output

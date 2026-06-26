@@ -24,6 +24,7 @@ pub async fn execute_scenario(
     sink: &mut LogSink,
     client_cwd: &str,
     handle: Option<Arc<ExecutionHandle>>,
+    model_aliases: &[(String, String)],
 ) -> Result<ExecuteOutput, ExecuteError> {
     let mut context = ExecutionContext::default();
     let mut outputs = Vec::new();
@@ -70,7 +71,7 @@ pub async fn execute_scenario(
                 }
                 
                 let result =
-                    execute_ai_chat(chat, &mut context, models, mcp_configs, mcp_cache, default_model, scenario_name, &step_name, sink, handle.clone())
+                    execute_ai_chat(chat, &mut context, models, mcp_configs, mcp_cache, default_model, scenario_name, &step_name, sink, handle.clone(), model_aliases)
                         .await?;
                 context.record_step(step_name, result);
             }

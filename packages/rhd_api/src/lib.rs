@@ -148,6 +148,8 @@ pub enum WsRequest {
         id: String,
         name: String,
         cwd: String,
+        #[serde(default)]
+        model_aliases: Vec<(String, String)>,
     },
     #[serde(rename = "subscribe")]
     Subscribe { id: String },

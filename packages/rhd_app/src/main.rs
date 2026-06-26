@@ -37,8 +37,9 @@ async fn main() {
                 eprintln!("error: {err}");
                 std::process::exit(1);
             }
+            let model_aliases = args.parsed_model_aliases();
             let socket_path = args.socket.unwrap_or_else(cli::default_socket_path);
-            if let Err(err) = client::run_scenario(&args.name, &socket_path).await {
+            if let Err(err) = client::run_scenario(&args.name, &socket_path, model_aliases).await {
                 if err.to_string() == "ABORTED" {
                     std::process::exit(2);
                 }

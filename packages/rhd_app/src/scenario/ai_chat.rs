@@ -24,6 +24,7 @@ pub async fn execute_ai_chat(
     step_name: &str,
     sink: &mut LogSink,
     handle: Option<Arc<ExecutionHandle>>,
+    model_aliases: &[(String, String)],
 ) -> Result<StepResult, ExecuteError> {
     let model_name = match &chat.model {
         Some(m) => m.clone(),
@@ -42,6 +43,8 @@ pub async fn execute_ai_chat(
             }
         },
     };
+
+    let model_name = apply_model_aliases(&model_name, model_aliases);
 
     let model_config = match models.get(&model_name) {
         Some(config) => config.clone(),
@@ -344,6 +347,7 @@ async fn execute_ai_chat_with_tools(
                         }
                     }
                 }
+                
                 if !found {
                     result_str = format!("Error: unknown tool '{}'", tool_call.name);
                 }
@@ -362,4 +366,12 @@ async fn execute_ai_chat_with_tools(
             current_message = content.clone();
         }
     }
+}
+
+fn apply_model_aliases(model_name: &str, model_aliases: &[(String, String)]) -> String {
+    model_aliases
+        .iter()
+        .find(|(alias, _)| alias == model_name)
+        .map(|(_, target)| target.clone())
+        .unwrap_or_else(|| model_name.to_string())
 }

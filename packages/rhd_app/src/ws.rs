@@ -83,8 +83,8 @@ fn handle_ws_message(text: &str, state: &Arc<DaemonState>) -> WsResponse {
     };
 
     match request {
-        WsRequest::RunScenario { id, name, cwd } => {
-            handle_run_scenario(id, name, cwd, state)
+        WsRequest::RunScenario { id, name, cwd, model_aliases } => {
+            handle_run_scenario(id, name, cwd, model_aliases, state)
         }
         WsRequest::Subscribe { id } => handle_subscribe(id, state),
         WsRequest::GetFinishedScenarios { id, last_id } => handle_get_finished(id, last_id, state),
@@ -96,6 +96,7 @@ fn handle_run_scenario(
     id: String,
     name: String,
     cwd: String,
+    model_aliases: Vec<(String, String)>,
     state: &Arc<DaemonState>,
 ) -> WsResponse {
     let scenario = match state.scenarios.get(&name) {
@@ -128,6 +129,7 @@ fn handle_run_scenario(
         &mut sink,
         &cwd,
         Some(handle.clone()),
+        &model_aliases,
     ));
 
     let status = match &result {

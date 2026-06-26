@@ -7,7 +7,11 @@ pub const PROTOCOL_VERSION: u32 = 1;
 #[derive(Archive, Serialize, Deserialize, Debug, Clone)]
 #[archive(check_bytes)]
 pub enum IpcRequest {
-    RunScenario { name: String, cwd: String },
+    RunScenario {
+        name: String,
+        cwd: String,
+        model_aliases: Vec<(String, String)>,
+    },
 }
 
 #[derive(Archive, Serialize, Deserialize, Debug, Clone)]

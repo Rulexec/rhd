@@ -25,6 +25,19 @@ struct RawModelConfig {
     pub price_tiers: Option<Vec<rhd_api::TokenPriceTier>>,
 }
 
+#[derive(Debug, Deserialize, Clone)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct RawAliasConfig {
+    pub alias: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[serde(untagged)]
+enum RawModelEntry {
+    Alias(RawAliasConfig),
+    Full(RawModelConfig),
+}
+
 #[derive(Debug, Clone)]
 pub struct ModelConfig {
     pub base_url: String,
@@ -65,6 +78,12 @@ pub enum ConfigError {
 
     #[error("api key environment variable '{var}' is not set or empty")]
     EnvVarNotSet { var: String },
+
+    #[error("alias '{alias}' references unknown model '{target}'")]
+    AliasTargetNotFound { alias: String, target: String },
+
+    #[error("circular alias chain detected: '{chain}'")]
+    CircularAlias { chain: String },
 }
 
 pub fn resolve_api_key(
@@ -102,7 +121,7 @@ pub fn load_models(
             source,
         })?;
 
-    let mut models = HashMap::new();
+    let mut raw_entries: HashMap<String, RawModelEntry> = HashMap::new();
 
     for entry in entries {
         let entry = entry.map_err(|source| ConfigError::ModelsDirRead {
@@ -130,7 +149,7 @@ pub fn load_models(
                 source,
             })?;
 
-        let raw_config: RawModelConfig =
+        let raw_entry: RawModelEntry =
             serde_yaml::from_str(&contents).map_err(|e| ConfigError::YamlParse {
                 path: file_path.clone(),
                 line: e.location().map(|l| l.line()).unwrap_or(0),
@@ -138,27 +157,94 @@ pub fn load_models(
                 message: e.to_string(),
             })?;
 
-        let resolved_api_key = resolve_api_key(&raw_config.api_key, credentials)?;
-
-        let config = ModelConfig {
-            base_url: rhd_util::substitute_env_vars(&raw_config.base_url),
-            api_key: resolved_api_key,
-            model: rhd_util::substitute_env_vars(&raw_config.model),
-            input_token_price: raw_config.input_token_price,
-            output_token_price: raw_config.output_token_price,
-            price_tiers: raw_config.price_tiers,
-        };
-
-        models.insert(model_name, config);
+        raw_entries.insert(model_name, raw_entry);
     }
 
-    if models.is_empty() {
+    if raw_entries.is_empty() {
         return Err(ConfigError::NoModels {
             path: models_dir.to_path_buf(),
         });
     }
 
+    let mut models: HashMap<String, ModelConfig> = HashMap::new();
+
+    for (name, entry) in &raw_entries {
+        match entry {
+            RawModelEntry::Full(raw_config) => {
+                let resolved_api_key = resolve_api_key(&raw_config.api_key, credentials)?;
+                let config = ModelConfig {
+                    base_url: rhd_util::substitute_env_vars(&raw_config.base_url),
+                    api_key: resolved_api_key,
+                    model: rhd_util::substitute_env_vars(&raw_config.model),
+                    input_token_price: raw_config.input_token_price,
+                    output_token_price: raw_config.output_token_price,
+                    price_tiers: raw_config.price_tiers.clone(),
+                };
+                models.insert(name.clone(), config);
+            }
+            RawModelEntry::Alias(_) => {}
+        }
+    }
+
+    for (alias_name, entry) in &raw_entries {
+        if let RawModelEntry::Alias(alias_config) = entry {
+            let resolved = resolve_alias_chain(alias_name, &alias_config.alias, &raw_entries)?;
+            let config = match raw_entries.get(&resolved) {
+                Some(RawModelEntry::Full(raw_config)) => {
+                    let resolved_api_key = resolve_api_key(&raw_config.api_key, credentials)?;
+                    ModelConfig {
+                        base_url: rhd_util::substitute_env_vars(&raw_config.base_url),
+                        api_key: resolved_api_key,
+                        model: rhd_util::substitute_env_vars(&raw_config.model),
+                        input_token_price: raw_config.input_token_price,
+                        output_token_price: raw_config.output_token_price,
+                        price_tiers: raw_config.price_tiers.clone(),
+                    }
+                }
+                _ => {
+                    return Err(ConfigError::AliasTargetNotFound {
+                        alias: alias_name.clone(),
+                        target: alias_config.alias.clone(),
+                    });
+                }
+            };
+            models.insert(alias_name.clone(), config);
+        }
+    }
+
     Ok(models)
+}
+
+fn resolve_alias_chain(
+    alias_name: &str,
+    target: &str,
+    raw_entries: &HashMap<String, RawModelEntry>,
+) -> Result<String, ConfigError> {
+    let mut visited = vec![alias_name.to_string()];
+    let mut current = target.to_string();
+
+    loop {
+        if visited.contains(&current) {
+            visited.push(current);
+            return Err(ConfigError::CircularAlias {
+                chain: visited.join(" -> "),
+            });
+        }
+
+        match raw_entries.get(&current) {
+            Some(RawModelEntry::Full(_)) => return Ok(current),
+            Some(RawModelEntry::Alias(alias_config)) => {
+                visited.push(current.clone());
+                current = alias_config.alias.clone();
+            }
+            None => {
+                return Err(ConfigError::AliasTargetNotFound {
+                    alias: alias_name.to_string(),
+                    target: target.to_string(),
+                });
+            }
+        }
+    }
 }
 
 #[cfg(test)]

@@ -156,7 +156,7 @@ fn run_connection(
 
 fn handle_request(request: IpcRequest, state: &DaemonState) -> IpcResponse {
     match request {
-        IpcRequest::RunScenario { name, cwd } => {
+        IpcRequest::RunScenario { name, cwd, model_aliases } => {
             let log_dir = state.logs.as_ref().and_then(|logs_dir| {
                 create_log_dir(logs_dir, &name).ok()
             });
@@ -185,6 +185,7 @@ fn handle_request(request: IpcRequest, state: &DaemonState) -> IpcResponse {
                 &mut sink,
                 &cwd,
                 Some(handle.clone()),
+                &model_aliases,
             ));
 
             let status = match &result {
