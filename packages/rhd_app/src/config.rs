@@ -18,6 +18,8 @@ pub struct DaemonConfig {
     pub logs: Option<PathBuf>,
     #[serde(default)]
     pub ws_port: Option<u16>,
+    #[serde(default = "default_db_dir")]
+    pub db_dir: PathBuf,
 }
 
 fn default_scenarios_dir() -> PathBuf {
@@ -32,6 +34,10 @@ fn default_mcp_dir() -> PathBuf {
     PathBuf::from("mcp")
 }
 
+fn default_db_dir() -> PathBuf {
+    PathBuf::from("rhd_db")
+}
+
 impl Default for DaemonConfig {
     fn default() -> Self {
         Self {
@@ -41,6 +47,7 @@ impl Default for DaemonConfig {
             default_model: None,
             logs: None,
             ws_port: None,
+            db_dir: default_db_dir(),
         }
     }
 }

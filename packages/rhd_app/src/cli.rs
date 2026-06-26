@@ -56,6 +56,8 @@ pub struct DaemonArgs {
     pub socket: Option<PathBuf>,
     #[arg(long)]
     pub ws_port: Option<u16>,
+    #[arg(long)]
+    pub db_dir: Option<PathBuf>,
 }
 
 impl DaemonArgs {

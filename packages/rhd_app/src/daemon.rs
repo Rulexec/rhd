@@ -3,6 +3,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use rhd_ai::config::ModelConfig;
+use rhd_db::ScenarioDb;
 use rhd_mcp_client::McpConfig;
 use tokio::net::UnixListener;
 use tokio::signal::unix::{signal, SignalKind};
@@ -31,6 +32,7 @@ pub async fn run_daemon(
     logs: Option<std::path::PathBuf>,
     socket_path: &Path,
     ws_port: Option<u16>,
+    db_path: &str,
 ) -> std::io::Result<()> {
     let sock_path = socket_path;
     if let Err(err) = std::fs::remove_file(sock_path) {
@@ -43,7 +45,11 @@ pub async fn run_daemon(
     std_listener.set_nonblocking(true)?;
     let listener = UnixListener::from_std(std_listener)?;
 
-    let execution_tracker = Arc::new(ExecutionTracker::new());
+    if let Some(parent) = std::path::Path::new(db_path).parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let db = Arc::new(ScenarioDb::new(db_path).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?);
+    let execution_tracker = Arc::new(ExecutionTracker::new(db));
 
     let state = Arc::new(DaemonState {
         scenarios,

@@ -1,13 +1,13 @@
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Utc};
 use rhd_api::{EventData, EventType, ExecutionEvent, LogSection, ScenarioMeta, StepTiming, StepType, TokenUsage};
+use rhd_db::ScenarioDb;
 use tokio::sync::broadcast;
 
 pub struct ExecutionTracker {
-    next_id: AtomicU64,
+    db: Arc<ScenarioDb>,
     active: Mutex<HashMap<u64, ActiveExecution>>,
     events_tx: broadcast::Sender<ExecutionEvent>,
 }
@@ -38,17 +38,17 @@ pub struct ExecutionHandle {
 }
 
 impl ExecutionTracker {
-    pub fn new() -> Self {
+    pub fn new(db: Arc<ScenarioDb>) -> Self {
         let (events_tx, _) = broadcast::channel(64);
         Self {
-            next_id: AtomicU64::new(1),
+            db,
             active: Mutex::new(HashMap::new()),
             events_tx,
         }
     }
 
     pub fn start(self: &Arc<Self>, scenario_name: String) -> Arc<ExecutionHandle> {
-        let id = self.next_id.fetch_add(1, Ordering::SeqCst);
+        let id = self.db.next_id().expect("failed to get next scenario ID from database");
         let started_at = Utc::now();
 
         {
@@ -120,10 +120,6 @@ pub struct ActiveExecutionInfo {
 }
 
 impl ExecutionHandle {
-    pub fn id(&self) -> u64 {
-        self.id
-    }
-
     pub fn step_started(&self, step_name: &str, step_type: StepType) {
         let now = Utc::now();
         let mut state = self.state.lock().unwrap();
@@ -198,7 +194,6 @@ impl ExecutionHandle {
 
         FinishedExecution {
             id: self.id,
-            scenario_name: self.scenario_name.clone(),
             started_at: self.started_at,
             finished_at: now,
             duration_ms: (now - self.started_at).num_milliseconds() as u64,
@@ -236,7 +231,6 @@ impl ExecutionHandle {
 
 pub struct FinishedExecution {
     pub id: u64,
-    pub scenario_name: String,
     pub started_at: DateTime<Utc>,
     pub finished_at: DateTime<Utc>,
     pub duration_ms: u64,

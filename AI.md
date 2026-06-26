@@ -17,6 +17,7 @@ rhd/
 │   ├── rhd_util/     # Shared error types, utilities, env var substitution
 │   ├── rhd_ai/       # OpenAI-compatible AI client
 │   ├── rhd_api/      # Shared IPC types, protocol definitions, execution tracking types
+│   ├── rhd_db/       # SQLite database for scenario ID persistence
 │   ├── rhd_app/      # Main binary (daemon + client)
 │   └── rhd_test/     # E2E test runner with mock AI server
 ```
@@ -36,6 +37,13 @@ rhd/
 - `ExecutionEvent`, `StepTiming`, `LogSection`, `TokenUsage`, `ScenarioMeta`
 - `WsRequest`, `WsResponse`, `WsEvent`, `ErrorCode` for WebSocket protocol
 - `TokenPriceTier` and `calculate_cost()` for token pricing
+
+**rhd_db**:
+- `ScenarioDb`: SQLite database wrapper for persisting scenario execution IDs
+- Uses WAL mode for better concurrency and crash recovery
+- Thread-safe via `Mutex<Connection>`
+- `next_id()`: Atomically retrieves and increments the next scenario ID
+- Database file: `<dbDir>/meta.db` (default: `rhd_db/meta.db`)
 
 **rhd_app**:
 - **Daemon mode**: Unix socket server on `$HOME/rhd.sock` (default), accepts `RunScenario` requests
@@ -131,11 +139,20 @@ actions:
 - All errors include context (file path, line number, step name)
 - Model validation at daemon startup (exits if invalid)
 
+### Scenario ID Persistence
+- Scenario execution IDs are persisted in SQLite database to survive daemon restarts
+- Database location: `<dbDir>/meta.db` (default: `rhd_db/meta.db`)
+- Single table `meta` with column `nextScenarioId` (INTEGER)
+- IDs are atomically incremented using SQLite transactions
+- WAL mode enabled for better concurrency and crash recovery
+- Database directory is created automatically if it doesn't exist
+- Fails fast if database cannot be opened or accessed
+
 ## CLI Usage
 
 ```bash
 # Start daemon
-rhd daemon [--config rhd.yaml] [--models-dir models] [--scenarios-dir scenarios] [--default-model name] [--logs logs] [--socket PATH] [--ws-port PORT]
+rhd daemon [--config rhd.yaml] [--models-dir models] [--scenarios-dir scenarios] [--default-model name] [--logs logs] [--socket PATH] [--ws-port PORT] [--db-dir DIR]
 
 # Run scenario
 rhd run <scenario_name> [--socket PATH]
@@ -143,6 +160,7 @@ rhd run <scenario_name> [--socket PATH]
 
 By default, the socket is located at `$HOME/rhd.sock`. The `--socket` flag allows specifying a custom socket path.
 The `--ws-port` flag enables WebSocket server on the specified port (optional).
+The `--db-dir` flag specifies the directory for the SQLite database (default: `rhd_db`).
 
 ## Configuration File
 
@@ -155,6 +173,7 @@ scenariosDir: scenarios
 defaultModel: null
 logs: null
 wsPort: null
+dbDir: rhd_db
 ```
 
 - `modelsDir`: Directory containing model YAML files (default: `models`)
@@ -162,6 +181,7 @@ wsPort: null
 - `defaultModel`: Fallback model for `aiChat` steps without `model` field (default: `null`)
 - `logs`: Directory for execution logs (default: `null`, no logging)
 - `wsPort`: WebSocket server port (default: `null`, disabled)
+- `dbDir`: Directory for SQLite database (default: `rhd_db`, creates `meta.db` inside)
 
 ### aiChat with MCP Tools
 
@@ -453,6 +473,9 @@ packages/rhd_api/src/
 
 packages/rhd_util/src/
 └── lib.rs            # RhdError, RhdResult, substitute_env_vars()
+
+packages/rhd_db/src/
+└── lib.rs            # ScenarioDb, DbError, SQLite wrapper for ID persistence
 
 packages/rhd_test/src/
 ├── main.rs           # E2E test runner: mock AI server, daemon spawn, validation
