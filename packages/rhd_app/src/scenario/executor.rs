@@ -1,6 +1,8 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use rhd_ai::config::ModelConfig;
+use rhd_api::LogSectionKind;
 use rhd_mcp_client::McpConfig;
 
 use super::ai_chat::execute_ai_chat;
@@ -8,7 +10,8 @@ use super::error::{ExecuteError, ExecuteOutput};
 use super::placeholder::{resolve_placeholders, ExecutionContext};
 use super::run_command::execute_run_command;
 use super::{Action, Scenario};
-use crate::log::LogSink;
+use crate::execution::ExecutionHandle;
+use crate::log::{LogSink, SectionTracker};
 use crate::mcp_cache::McpServerCache;
 
 pub async fn execute_scenario(
@@ -20,6 +23,7 @@ pub async fn execute_scenario(
     default_model: Option<&str>,
     sink: &mut LogSink,
     client_cwd: &str,
+    handle: Option<Arc<ExecutionHandle>>,
 ) -> Result<ExecuteOutput, ExecuteError> {
     let mut context = ExecutionContext::default();
     let mut outputs = Vec::new();
@@ -38,7 +42,11 @@ pub async fn execute_scenario(
                     }
                 }
                 
-                let result = execute_run_command(cmd, &context, sink, &step_name, client_cwd).await;
+                if let Some(h) = &handle {
+                    h.step_started(&step_name);
+                }
+                
+                let result = execute_run_command(cmd, &context, sink, &step_name, client_cwd, handle.clone()).await;
                 context.record_step(step_name, result);
             }
             Action::AiChat(chat) => {
@@ -51,15 +59,28 @@ pub async fn execute_scenario(
                     }
                 }
                 
+                if let Some(h) = &handle {
+                    h.step_started(&step_name);
+                }
+                
                 let result =
-                    execute_ai_chat(chat, &mut context, models, mcp_configs, mcp_cache, default_model, scenario_name, &step_name, sink)
+                    execute_ai_chat(chat, &mut context, models, mcp_configs, mcp_cache, default_model, scenario_name, &step_name, sink, handle.clone())
                         .await?;
                 context.record_step(step_name, result);
             }
             Action::Output(output) => {
                 let step_name = output.name.clone().unwrap_or_else(|| "output".to_string());
+                
+                if let Some(h) = &handle {
+                    h.step_started(&step_name);
+                }
+                
                 let resolved = resolve_placeholders(&output.text, &context);
+                let output_tracker = SectionTracker::start(sink, LogSectionKind::OutputStep);
                 sink.log(&step_name, "output step", &resolved);
+                if let Some(h) = &handle {
+                    h.add_section(output_tracker.end(sink));
+                }
                 outputs.push(resolved);
             }
         }

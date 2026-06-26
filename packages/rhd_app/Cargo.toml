@@ -19,3 +19,6 @@ chrono = { workspace = true }
 rhd_ai = { path = "../rhd_ai" }
 rhd_util = { path = "../rhd_util" }
 rhd_mcp_client = { path = "../rhd_mcp_client" }
+rhd_api = { path = "../rhd_api" }
+tokio-tungstenite = { workspace = true }
+futures-util = { workspace = true }

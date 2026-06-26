@@ -16,6 +16,8 @@ pub struct DaemonConfig {
     pub default_model: Option<String>,
     #[serde(default)]
     pub logs: Option<PathBuf>,
+    #[serde(default)]
+    pub ws_port: Option<u16>,
 }
 
 fn default_scenarios_dir() -> PathBuf {
@@ -38,6 +40,7 @@ impl Default for DaemonConfig {
             mcp_dir: default_mcp_dir(),
             default_model: None,
             logs: None,
+            ws_port: None,
         }
     }
 }

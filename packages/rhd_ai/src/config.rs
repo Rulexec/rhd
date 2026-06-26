@@ -10,6 +10,12 @@ pub struct ModelConfig {
     pub base_url: String,
     pub api_key: String,
     pub model: String,
+    #[serde(default)]
+    pub input_token_price: Option<f64>,
+    #[serde(default)]
+    pub output_token_price: Option<f64>,
+    #[serde(default)]
+    pub price_tiers: Option<Vec<rhd_api::TokenPriceTier>>,
 }
 
 #[derive(Debug, Error)]
@@ -86,6 +92,9 @@ pub fn load_models(models_dir: &Path) -> Result<HashMap<String, ModelConfig>, Co
             base_url: rhd_util::substitute_env_vars(&config.base_url),
             api_key: rhd_util::substitute_env_vars(&config.api_key),
             model: rhd_util::substitute_env_vars(&config.model),
+            input_token_price: config.input_token_price,
+            output_token_price: config.output_token_price,
+            price_tiers: config.price_tiers,
         };
 
         models.insert(model_name, config);

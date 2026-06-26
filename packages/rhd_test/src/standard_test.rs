@@ -310,6 +310,123 @@ pub async fn run_single_test(
                 }
             }
         }
+
+        let meta_file = log_dir.join("meta.json");
+        if !meta_file.exists() {
+            log.push_str(&format!(
+                "  FAIL: meta.json does not exist in {}\n",
+                log_dir.display()
+            ));
+            failed = true;
+        } else {
+            log.push_str(&format!("  PASS: meta.json exists in {}\n", log_dir.display()));
+
+            match std::fs::read_to_string(&meta_file) {
+                Ok(meta_content) => {
+                    match serde_json::from_str::<rhd_api::ScenarioMeta>(&meta_content) {
+                        Ok(meta) => {
+                            log.push_str(&format!("  PASS: meta.json is valid JSON\n"));
+
+                            if meta.scenario != "rhd_test" {
+                                log.push_str(&format!(
+                                    "  FAIL: expected scenario 'rhd_test', got '{}'\n",
+                                    meta.scenario
+                                ));
+                                failed = true;
+                            } else {
+                                log.push_str("  PASS: scenario name is 'rhd_test'\n");
+                            }
+
+                            if meta.duration_ms == 0 {
+                                log.push_str("  FAIL: duration_ms is 0\n");
+                                failed = true;
+                            } else {
+                                log.push_str(&format!("  PASS: duration_ms is {}\n", meta.duration_ms));
+                            }
+
+                            if meta.steps.len() != 3 {
+                                log.push_str(&format!(
+                                    "  FAIL: expected 3 steps, got {}\n",
+                                    meta.steps.len()
+                                ));
+                                failed = true;
+                            } else {
+                                log.push_str("  PASS: exactly 3 steps in meta.json\n");
+
+                                let step_names: Vec<&str> = meta.steps.iter().map(|s| s.name.as_str()).collect();
+                                let expected_names = vec!["cmd1", "ai1", "out1"];
+                                if step_names != expected_names {
+                                    log.push_str(&format!(
+                                        "  FAIL: expected step names {:?}, got {:?}\n",
+                                        expected_names, step_names
+                                    ));
+                                    failed = true;
+                                } else {
+                                    log.push_str("  PASS: step names are correct\n");
+                                }
+
+                                let ai_step = &meta.steps[1];
+                                if ai_step.tokens.is_none() {
+                                    log.push_str("  FAIL: ai1 step has no token usage\n");
+                                    failed = true;
+                                } else {
+                                    let tokens = ai_step.tokens.as_ref().unwrap();
+                                    if tokens.total_tokens == 0 {
+                                        log.push_str("  FAIL: ai1 step has 0 total tokens\n");
+                                        failed = true;
+                                    } else {
+                                        log.push_str(&format!(
+                                            "  PASS: ai1 step has token usage (total: {})\n",
+                                            tokens.total_tokens
+                                        ));
+                                    }
+                                }
+
+                                for (i, step) in meta.steps.iter().enumerate() {
+                                    // Output steps can legitimately complete in < 1ms
+                                    if step.duration_ms == 0 && step.name != "out1" {
+                                        log.push_str(&format!(
+                                            "  FAIL: step {} '{}' has 0 duration_ms\n",
+                                            i, step.name
+                                        ));
+                                        failed = true;
+                                    }
+                                    if step.sections.is_empty() {
+                                        log.push_str(&format!(
+                                            "  FAIL: step {} '{}' has no sections\n",
+                                            i, step.name
+                                        ));
+                                        failed = true;
+                                    }
+                                }
+                            }
+
+                            if meta.tokens.is_none() {
+                                log.push_str("  FAIL: scenario has no total token usage\n");
+                                failed = true;
+                            } else {
+                                let tokens = meta.tokens.as_ref().unwrap();
+                                log.push_str(&format!(
+                                    "  PASS: scenario has total token usage (prompt: {}, completion: {}, total: {})\n",
+                                    tokens.prompt_tokens, tokens.completion_tokens, tokens.total_tokens
+                                ));
+                            }
+                        }
+                        Err(err) => {
+                            log.push_str(&format!(
+                                "  FAIL: could not parse meta.json: {err}\n"
+                            ));
+                            log.push_str(&format!("    content: {meta_content}\n"));
+                            failed = true;
+                        }
+                    }
+                }
+                Err(err) => {
+                    log.push_str(&format!("  FAIL: could not read meta.json: {err}\n"));
+                    failed = true;
+                }
+            }
+        }
     }
 
     (failed, log)

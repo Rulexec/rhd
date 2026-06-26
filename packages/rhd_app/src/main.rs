@@ -2,11 +2,13 @@ mod cli;
 mod client;
 mod config;
 mod daemon;
+mod execution;
 mod ipc;
 mod log;
 mod mcp_cache;
 mod mcp_loader;
 mod scenario;
+mod ws;
 
 use std::path::PathBuf;
 
@@ -53,7 +55,7 @@ async fn run_daemon_command(
     let scenarios = scenario::load_scenarios_dir(&merged.scenarios_dir)?;
     let mcp_configs = mcp_loader::load_mcp_dir(&merged.mcp_dir)?;
     let socket_path = args.socket.unwrap_or_else(cli::default_socket_path);
-    daemon::run_daemon(scenarios, models, mcp_configs, merged.default_model, merged.logs, &socket_path).await?;
+    daemon::run_daemon(scenarios, models, mcp_configs, merged.default_model, merged.logs, &socket_path, merged.ws_port).await?;
     Ok(())
 }
 
@@ -74,5 +76,6 @@ fn merge_config(config: DaemonConfig, args: &cli::DaemonArgs) -> DaemonConfig {
         mcp_dir: args.mcp_dir.clone().unwrap_or(config.mcp_dir),
         default_model: args.default_model.clone().or(config.default_model),
         logs: args.logs.clone().or(config.logs),
+        ws_port: args.ws_port.or(config.ws_port),
     }
 }

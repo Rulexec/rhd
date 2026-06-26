@@ -44,6 +44,15 @@ pub struct FunctionCall {
 #[derive(Debug, Serialize)]
 pub struct ChatResponse {
     pub choices: Vec<Choice>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage: Option<Usage>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Usage {
+    pub prompt_tokens: u64,
+    pub completion_tokens: u64,
+    pub total_tokens: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -135,6 +144,11 @@ pub async fn chat_completions(
                 },
                 finish_reason: Some("tool_calls".to_string()),
             }],
+            usage: Some(Usage {
+                prompt_tokens: 100,
+                completion_tokens: 20,
+                total_tokens: 120,
+            }),
         })
     } else {
         Json(ChatResponse {
@@ -146,6 +160,11 @@ pub async fn chat_completions(
                 },
                 finish_reason: Some("stop".to_string()),
             }],
+            usage: Some(Usage {
+                prompt_tokens: 50,
+                completion_tokens: 10,
+                total_tokens: 60,
+            }),
         })
     }
 }

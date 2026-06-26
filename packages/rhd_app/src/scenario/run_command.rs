@@ -1,6 +1,10 @@
+use std::sync::Arc;
+
 use super::placeholder::{resolve_placeholders, ExecutionContext, StepResult};
 use super::RunCommandAction;
-use crate::log::{LogSink, OutputLine};
+use crate::execution::ExecutionHandle;
+use crate::log::{LogSink, OutputLine, SectionTracker};
+use rhd_api::LogSectionKind;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::mpsc;
 
@@ -10,6 +14,7 @@ pub async fn execute_run_command(
     sink: &mut LogSink,
     step_name: &str,
     client_cwd: &str,
+    handle: Option<Arc<ExecutionHandle>>,
 ) -> StepResult {
     let resolved_command = resolve_placeholders(&cmd.command, context);
     let resolved_args: Vec<String> = cmd
@@ -18,11 +23,15 @@ pub async fn execute_run_command(
         .map(|arg| resolve_placeholders(arg, context))
         .collect();
 
+    let running_tracker = SectionTracker::start(sink, LogSectionKind::RunningCommand);
     sink.log_step(
         step_name,
         "running command",
         &format!("{} {}", resolved_command, resolved_args.join(" ")),
     );
+    if let Some(h) = &handle {
+        h.add_section(running_tracker.end(sink));
+    }
 
     let mut command = tokio::process::Command::new(&resolved_command);
     command.args(&resolved_args);
@@ -97,8 +106,17 @@ pub async fn execute_run_command(
                 Err(_) => (-1, false),
             };
 
+            let exit_tracker = SectionTracker::start(sink, LogSectionKind::ExitCode);
             sink.log_step_dashed(step_name, "command exit code", &exit_code.to_string());
+            if let Some(h) = &handle {
+                h.add_section(exit_tracker.end(sink));
+            }
+
+            let output_tracker = SectionTracker::start(sink, LogSectionKind::CommandOutput);
             sink.log_command_output(step_name, &output_lines);
+            if let Some(h) = &handle {
+                h.add_section(output_tracker.end(sink));
+            }
 
             StepResult {
                 exit_code,

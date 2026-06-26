@@ -1,13 +1,16 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use rhd_ai::config::ModelConfig;
 use rhd_ai::OpenAiClient;
+use rhd_api::LogSectionKind;
 use rhd_mcp_client::McpConfig;
 
 use super::error::ExecuteError;
 use super::placeholder::{resolve_placeholders, ExecutionContext, StepResult};
 use super::{AiChatAction, MaxIterations};
-use crate::log::LogSink;
+use crate::execution::ExecutionHandle;
+use crate::log::{LogSink, SectionTracker};
 use crate::mcp_cache::McpServerCache;
 
 pub async fn execute_ai_chat(
@@ -20,6 +23,7 @@ pub async fn execute_ai_chat(
     scenario_name: &str,
     step_name: &str,
     sink: &mut LogSink,
+    handle: Option<Arc<ExecutionHandle>>,
 ) -> Result<StepResult, ExecuteError> {
     let model_name = match &chat.model {
         Some(m) => m.clone(),
@@ -68,17 +72,32 @@ pub async fn execute_ai_chat(
     let has_mcp = chat.mcp.as_ref().map(|m| !m.is_empty()).unwrap_or(false);
 
     if !has_mcp {
+        let request_tracker = SectionTracker::start(sink, LogSectionKind::AiRequest);
         sink.log_ai_request(step_name, &model_name, &[], &system_prompt, &message);
-        match client.chat(&model_config.model, &system_prompt, &message).await {
-            Ok(response) => {
-                sink.log_step(step_name, "AI response", &response);
+        if let Some(h) = &handle {
+            h.add_section(request_tracker.end(sink));
+        }
+        
+        match client.chat_with_tools(&model_config.model, &system_prompt, &message, &[], &[]).await {
+            Ok(result) => {
+                if let Some(usage) = &result.usage {
+                    if let Some(h) = &handle {
+                        h.add_token_usage(usage);
+                    }
+                }
+                let content = result.content.unwrap_or_default();
+                let response_tracker = SectionTracker::start(sink, LogSectionKind::AiResponse);
+                sink.log_step(step_name, "AI response", &content);
+                if let Some(h) = &handle {
+                    h.add_section(response_tracker.end(sink));
+                }
                 Ok(StepResult {
                     exit_code: 0,
                     stdout: String::new(),
                     stderr: String::new(),
                     stdout_stderr: vec![],
                     success: true,
-                    message: Some(response),
+                    message: Some(content),
                     cwd: None,
                 })
             }
@@ -105,6 +124,7 @@ pub async fn execute_ai_chat(
             scenario_name,
             step_name,
             sink,
+            handle,
         )
         .await
     }
@@ -123,6 +143,7 @@ async fn execute_ai_chat_with_tools(
     scenario_name: &str,
     step_name: &str,
     sink: &mut LogSink,
+    handle: Option<Arc<ExecutionHandle>>,
 ) -> Result<StepResult, ExecuteError> {
     use rhd_ai::{FunctionDefinition, ToolDefinition};
     use rhd_mcp_client::McpClientTrait;
@@ -195,7 +216,11 @@ async fn execute_ai_chat_with_tools(
     }
 
     let tool_names: Vec<String> = tools.iter().map(|t| t.function.name.clone()).collect();
+    let request_tracker = SectionTracker::start(sink, LogSectionKind::AiRequest);
     sink.log_ai_request(step_name, model_name, &tool_names, system_prompt, message);
+    if let Some(h) = &handle {
+        h.add_section(request_tracker.end(sink));
+    }
 
     let mut current_message = message.to_string();
     let mut tool_results: Vec<(String, String)> = Vec::new();
@@ -219,9 +244,19 @@ async fn execute_ai_chat_with_tools(
                 message: e.to_string(),
             })?;
 
+        if let Some(usage) = &result.usage {
+            if let Some(h) = &handle {
+                h.add_token_usage(usage);
+            }
+        }
+
         if result.tool_calls.is_empty() {
             let content = result.content.unwrap_or_default();
+            let response_tracker = SectionTracker::start(sink, LogSectionKind::AiResponse);
             sink.log_step(step_name, "AI response", &content);
+            if let Some(h) = &handle {
+                h.add_section(response_tracker.end(sink));
+            }
             return Ok(StepResult {
                 exit_code: 0,
                 stdout: String::new(),
@@ -237,11 +272,15 @@ async fn execute_ai_chat_with_tools(
         tool_results.clear();
 
         for tool_call in &result.tool_calls {
+            let tool_call_tracker = SectionTracker::start(sink, LogSectionKind::ToolCall);
             sink.log_step(
                 step_name,
                 "tool call",
                 &format!("{}({})", tool_call.name, tool_call.arguments),
             );
+            if let Some(h) = &handle {
+                h.add_section(tool_call_tracker.end(sink));
+            }
 
             let tool_result = if tool_call.name == "rhd_set_flag" {
                 let args: serde_json::Value = serde_json::from_str(&tool_call.arguments)
@@ -276,7 +315,11 @@ async fn execute_ai_chat_with_tools(
                 result_str
             };
 
+            let tool_result_tracker = SectionTracker::start(sink, LogSectionKind::ToolResult);
             sink.log_step(step_name, "tool result", &tool_result);
+            if let Some(h) = &handle {
+                h.add_section(tool_result_tracker.end(sink));
+            }
             tool_results.push((tool_call.id.clone(), tool_result));
         }
 

@@ -15,6 +15,7 @@ rhd/
 ├── packages/
 │   ├── rhd_util/     # Shared error types, utilities, env var substitution
 │   ├── rhd_ai/       # OpenAI-compatible AI client
+│   ├── rhd_api/      # Shared IPC types, protocol definitions, execution tracking types
 │   ├── rhd_app/      # Main binary (daemon + client)
 │   └── rhd_test/     # E2E test runner with mock AI server
 ```
@@ -23,16 +24,26 @@ rhd/
 
 **rhd_util**: Shared error types (`RhdError`, `RhdResult<T>`), `substitute_env_vars()` for `$VAR` expansion in config strings
 
-**rhd_ai**: 
-- `ModelConfig`: AI model configuration (baseUrl, apiKey, model)
+**rhd_ai**:
+- `ModelConfig`: AI model configuration (baseUrl, apiKey, model, optional token pricing)
 - `OpenAiClient`: HTTP client for chat completions API
 - Loads models from `models/*.yaml` at startup
+- Parses token usage from API responses
+
+**rhd_api**:
+- Shared types for execution tracking, WebSocket protocol, and token pricing
+- `ExecutionEvent`, `StepTiming`, `LogSection`, `TokenUsage`, `ScenarioMeta`
+- `WsRequest`, `WsResponse`, `WsEvent`, `ErrorCode` for WebSocket protocol
+- `TokenPriceTier` and `calculate_cost()` for token pricing
 
 **rhd_app**:
 - **Daemon mode**: Unix socket server on `$HOME/rhd.sock` (default), accepts `RunScenario` requests
+- **WebSocket server**: Optional TCP listener on `127.0.0.1:{ws_port}` for Web UI integration
 - **Client mode**: Connects to daemon, sends scenario name, receives output
 - **Scenario executor**: Runs action chains sequentially with placeholder resolution
-- **IPC protocol**: rkyv serialization with version-prefixed framing
+- **Execution tracking**: Tracks step timings, token usage, log sections
+- **IPC protocol**: rkyv serialization with version-prefixed framing (Unix socket)
+- **WebSocket protocol**: JSON over WebSocket (TCP)
 
 ## Key Design Decisions
 
@@ -60,6 +71,12 @@ cmd: "$E2E_SCRIPTS_DIR/run.sh"
 baseUrl: "https://api.openai.com/v1"
 apiKey: "sk-..."
 model: "gpt-4"
+inputTokenPrice: 5.0      # Optional: price per 1M tokens
+outputTokenPrice: 15.0    # Optional: price per 1M tokens
+priceTiers:               # Optional: tiered pricing
+  - afterTokens: 250000
+    inputTokenPrice: 10.0
+    outputTokenPrice: 30.0
 ```
 
 **Scenario** (`scenarios/<name>/scenario.yaml`):
@@ -88,6 +105,17 @@ actions:
 - Request: `IpcRequest::RunScenario { name: String, cwd: String }`
 - Response: `IpcResponse::Success { output: String }` or `IpcResponse::Error { message: String }`
 
+### WebSocket Protocol
+- Optional TCP listener on `127.0.0.1:{ws_port}` (configurable via `--ws-port` or `wsPort` in config)
+- JSON over WebSocket for web-friendly integration
+- **Client → Server requests**:
+  - `runScenario`: Execute a scenario
+  - `subscribe`: Subscribe to execution events
+  - `getFinishedScenarios`: Get list of finished scenarios from meta.json
+- **Server → Client responses**: Request responses with success/error status
+- **Server → Client events**: Real-time execution events (scenarioStarted, stepStarted, scenarioFinished)
+- Multiple subscribers supported via broadcast channel
+
 ### CWD Propagation
 - `rhd run` captures its current working directory and sends it to the daemon via IPC
 - Commands execute in the client's cwd by default (when `cwd` not explicitly set in scenario YAML)
@@ -105,13 +133,14 @@ actions:
 
 ```bash
 # Start daemon
-rhd daemon [--config rhd.yaml] [--models-dir models] [--scenarios-dir scenarios] [--default-model name] [--logs logs] [--socket PATH]
+rhd daemon [--config rhd.yaml] [--models-dir models] [--scenarios-dir scenarios] [--default-model name] [--logs logs] [--socket PATH] [--ws-port PORT]
 
 # Run scenario
 rhd run <scenario_name> [--socket PATH]
 ```
 
 By default, the socket is located at `$HOME/rhd.sock`. The `--socket` flag allows specifying a custom socket path.
+The `--ws-port` flag enables WebSocket server on the specified port (optional).
 
 ## Configuration File
 
@@ -123,12 +152,14 @@ modelsDir: models
 scenariosDir: scenarios
 defaultModel: null
 logs: null
+wsPort: null
 ```
 
 - `modelsDir`: Directory containing model YAML files (default: `models`)
 - `scenariosDir`: Directory containing scenario folders (default: `scenarios`)
 - `defaultModel`: Fallback model for `aiChat` steps without `model` field (default: `null`)
 - `logs`: Directory for execution logs (default: `null`, no logging)
+- `wsPort`: WebSocket server port (default: `null`, disabled)
 
 ### aiChat with MCP Tools
 
@@ -195,6 +226,42 @@ When `logs` is configured, each scenario execution creates a timestamped log dir
 - Format: `<logs>/<scenarioName>-YYYY-MM-DD-HH-MM-SS/`
 - Collision handling: If directory exists, appends `-2`, `-3`, etc.
 - Log file: `log.txt` inside the directory
+- Metadata file: `meta.json` inside the directory (structured execution data)
+
+### meta.json Format
+
+```json
+{
+  "scenario": "my_scenario",
+  "started": "2026-06-26T15:00:00Z",
+  "finished": "2026-06-26T15:01:30Z",
+  "durationMs": 90000,
+  "tokens": {
+    "prompt": 1500,
+    "completion": 800,
+    "total": 2300
+  },
+  "cost": 0.0235,
+  "steps": [
+    {
+      "name": "build",
+      "started": "2026-06-26T15:00:00Z",
+      "finished": "2026-06-26T15:00:10Z",
+      "durationMs": 10000,
+      "sections": [
+        { "kind": "runningCommand", "startLine": 5, "endLine": 6 },
+        { "kind": "exitCode", "startLine": 8, "endLine": 9 },
+        { "kind": "commandOutput", "startLine": 11, "endLine": 15 }
+      ]
+    }
+  ]
+}
+```
+
+- `tokens` and `cost` fields omitted at scenario level if no AI steps
+- Per-step `tokens` and `cost` omitted for non-AI steps
+- `sections` array contains line ranges for all delimited blocks within the step
+- All timestamps are UTC ISO 8601
 
 **Log format** (written to stdout and `log.txt`):
 ```
@@ -286,9 +353,11 @@ packages/rhd_app/src/
 ├── main.rs           # CLI entry point, command dispatch
 ├── cli.rs            # clap argument definitions
 ├── config.rs         # DaemonConfig YAML loading
-├── daemon.rs         # Unix socket server, connection handling
+├── daemon.rs         # Unix socket server, WebSocket server, connection handling
 ├── client.rs         # Unix socket client
-├── log.rs            # LogSink, execution logging
+├── execution.rs      # ExecutionTracker, ExecutionHandle, execution tracking
+├── ws.rs             # WebSocket server, JSON protocol handlers
+├── log.rs            # LogSink, execution logging, meta.json writing/reading
 ├── ipc/
 │   ├── mod.rs
 │   └── protocol.rs   # rkyv message types, read/write helpers
@@ -296,16 +365,24 @@ packages/rhd_app/src/
     ├── mod.rs        # Action/Scenario structs
     ├── loader.rs     # YAML loading, validation
     ├── executor.rs   # Action execution engine
+    ├── ai_chat.rs    # AI chat execution with token tracking
+    ├── run_command.rs # Command execution with section tracking
     └── placeholder.rs # Placeholder resolution, ExecutionContext
 
 packages/rhd_ai/src/
 ├── lib.rs
-├── config.rs         # ModelConfig, load_models()
-└── client.rs         # OpenAiClient, AiError
+├── config.rs         # ModelConfig with optional token pricing, load_models()
+└── client.rs         # OpenAiClient, AiError, token usage parsing
+
+packages/rhd_api/src/
+└── lib.rs            # Shared types: ExecutionEvent, StepTiming, LogSection, TokenUsage, ScenarioMeta, WsRequest, WsResponse, WsEvent, ErrorCode, TokenPriceTier
 
 packages/rhd_util/src/
 └── lib.rs            # RhdError, RhdResult, substitute_env_vars()
 
 packages/rhd_test/src/
-└── main.rs           # E2E test runner: mock AI server, daemon spawn, validation
+├── main.rs           # E2E test runner: mock AI server, daemon spawn, validation
+├── mock_server.rs    # Mock OpenAI-compatible server with token usage
+├── standard_test.rs  # Standard test with meta.json validation
+└── mcp_test.rs       # MCP tool test
 ```

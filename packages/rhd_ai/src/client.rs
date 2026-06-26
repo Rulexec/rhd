@@ -79,6 +79,14 @@ pub struct ToolCall {
 #[derive(Deserialize)]
 struct ChatResponse {
     choices: Vec<Choice>,
+    usage: Option<Usage>,
+}
+
+#[derive(Deserialize)]
+struct Usage {
+    prompt_tokens: u64,
+    completion_tokens: u64,
+    total_tokens: u64,
 }
 
 #[derive(Deserialize)]
@@ -112,6 +120,7 @@ pub struct ChatResult {
     pub content: Option<String>,
     pub tool_calls: Vec<ToolCall>,
     pub finish_reason: Option<String>,
+    pub usage: Option<rhd_api::TokenUsage>,
 }
 
 pub struct OpenAiClient {
@@ -219,10 +228,17 @@ impl OpenAiClient {
             })
             .collect();
 
+        let usage = chat_response.usage.map(|u| rhd_api::TokenUsage {
+            prompt_tokens: u.prompt_tokens,
+            completion_tokens: u.completion_tokens,
+            total_tokens: u.total_tokens,
+        });
+
         Ok(ChatResult {
             content: choice.message.content,
             tool_calls,
             finish_reason: choice.finish_reason,
+            usage,
         })
     }
 }
