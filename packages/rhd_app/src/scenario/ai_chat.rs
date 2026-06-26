@@ -82,7 +82,24 @@ pub async fn execute_ai_chat(
             h.add_section(request_tracker.end(sink));
         }
         
-        match client.chat_with_tools(&model_config.model, &system_prompt, &message, &[], &[]).await {
+        let chat_future = client.chat_with_tools(&model_config.model, &system_prompt, &message, &[], &[]);
+        
+        let result = if let Some(h) = &handle {
+            let mut abort_signal = h.abort_signal();
+            tokio::select! {
+                res = chat_future => res,
+                _ = abort_signal.changed() => {
+                    if *abort_signal.borrow() {
+                        return Err(ExecuteError::Aborted);
+                    }
+                    unreachable!()
+                }
+            }
+        } else {
+            chat_future.await
+        };
+
+        match result {
             Ok(result) => {
                 if let Some(usage) = &result.usage {
                     if let Some(h) = &handle {
@@ -239,14 +256,28 @@ async fn execute_ai_chat_with_tools(
             });
         }
 
-        let result = client
-            .chat_with_tools(model, system_prompt, &current_message, &tools, &tool_results)
-            .await
-            .map_err(|e| ExecuteError::AiFailed {
-                scenario: scenario_name.to_string(),
-                step: step_name.to_string(),
-                message: e.to_string(),
-            })?;
+        let chat_future = client.chat_with_tools(model, system_prompt, &current_message, &tools, &tool_results);
+        
+        let result = if let Some(h) = &handle {
+            let mut abort_signal = h.abort_signal();
+            tokio::select! {
+                res = chat_future => res,
+                _ = abort_signal.changed() => {
+                    if *abort_signal.borrow() {
+                        return Err(ExecuteError::Aborted);
+                    }
+                    unreachable!()
+                }
+            }
+        } else {
+            chat_future.await
+        };
+
+        let result = result.map_err(|e| ExecuteError::AiFailed {
+            scenario: scenario_name.to_string(),
+            step: step_name.to_string(),
+            message: e.to_string(),
+        })?;
 
         if let Some(usage) = &result.usage {
             if let Some(h) = &handle {

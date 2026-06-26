@@ -5,6 +5,7 @@ mod loader;
 mod placeholder;
 mod run_command;
 
+pub use error::ExecuteError;
 pub use executor::execute_scenario;
 pub use loader::load_scenarios_dir;
 

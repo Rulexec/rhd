@@ -107,3 +107,10 @@ export async function getFinishedScenarios(lastId) {
   const response = await sendRequest(request);
   return response;
 }
+
+export async function abortScenario(executionId) {
+  const id = generateRequestId();
+  const request = { type: 'abortScenario', id, executionId };
+  const response = await sendRequest(request);
+  return response;
+}

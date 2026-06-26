@@ -88,6 +88,7 @@ fn handle_ws_message(text: &str, state: &Arc<DaemonState>) -> WsResponse {
         }
         WsRequest::Subscribe { id } => handle_subscribe(id, state),
         WsRequest::GetFinishedScenarios { id, last_id } => handle_get_finished(id, last_id, state),
+        WsRequest::AbortScenario { id, execution_id } => handle_abort_scenario(id, execution_id, state),
     }
 }
 
@@ -129,7 +130,16 @@ fn handle_run_scenario(
         Some(handle.clone()),
     ));
 
-    let finished = handle.finished();
+    let status = match &result {
+        Ok(_) => rhd_api::ScenarioStatus::Success,
+        Err(crate::scenario::ExecuteError::Aborted) => {
+            sink.log_aborted();
+            rhd_api::ScenarioStatus::Aborted
+        }
+        Err(_) => rhd_api::ScenarioStatus::Error,
+    };
+
+    let finished = handle.finished(status);
 
     match result {
         Ok(output) => {
@@ -139,6 +149,11 @@ fn handle_run_scenario(
             });
             WsResponse::success(id, data)
         }
+        Err(crate::scenario::ExecuteError::Aborted) => WsResponse::error(
+            id,
+            ErrorCode::ScenarioAborted,
+            "scenario aborted".to_string(),
+        ),
         Err(err) => WsResponse::error(
             id,
             ErrorCode::ScenarioExecutionFailed,
@@ -175,4 +190,9 @@ fn handle_get_finished(id: String, last_id: Option<u64>, state: &Arc<DaemonState
 
     let data = serde_json::to_value(filtered).unwrap_or(serde_json::json!([]));
     WsResponse::success(id, data)
+}
+
+fn handle_abort_scenario(id: String, execution_id: u64, state: &Arc<DaemonState>) -> WsResponse {
+    state.execution_tracker.abort(execution_id);
+    WsResponse::success(id, serde_json::json!({ "aborted": true }))
 }

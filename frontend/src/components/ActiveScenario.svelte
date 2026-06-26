@@ -1,5 +1,6 @@
 <script>
   import { formatDuration, elapsedSeconds } from '../lib/utils.js';
+  import { abortScenario } from '../lib/ws.js';
 
   let { scenario } = $props();
 
@@ -15,12 +16,17 @@
 
     return () => clearInterval(intervalId);
   });
+
+  function handleAbort() {
+    abortScenario(scenario.id);
+  }
 </script>
 
 <div class="active-scenario">
   <div class="scenario-header">
     <span class="scenario-name">{scenario.scenarioName}</span>
     <span class="badge">running</span>
+    <button class="abort-button" onclick={handleAbort}>Abort</button>
   </div>
   <div class="scenario-details">
     {#if scenario.currentStep}
@@ -57,6 +63,23 @@
     background: var(--color-primary);
     color: white;
     font-weight: 500;
+  }
+
+  .abort-button {
+    margin-left: auto;
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    color: white;
+    background: var(--color-danger, #dc2626);
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+
+  .abort-button:hover {
+    background: var(--color-danger-hover, #b91c1c);
   }
 
   .scenario-details {

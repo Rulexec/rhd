@@ -14,6 +14,7 @@
 <div class="finished-scenario">
   <div class="scenario-header">
     <span class="scenario-name">{scenario.scenario}</span>
+    <span class="status-badge status-{scenario.status}">{scenario.status}</span>
     <span class="timestamp">{formatDateTime(scenario.finished)}</span>
   </div>
   <div class="scenario-details">
@@ -51,6 +52,34 @@
   .timestamp {
     font-size: 12px;
     color: var(--color-text-muted);
+  }
+
+  .status-badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-weight: 500;
+    text-transform: uppercase;
+  }
+
+  .status-success {
+    background: var(--color-success, #10b981);
+    color: white;
+  }
+
+  .status-error {
+    background: var(--color-danger, #dc2626);
+    color: white;
+  }
+
+  .status-aborted {
+    background: var(--color-warning, #f59e0b);
+    color: white;
+  }
+
+  .status-executing {
+    background: var(--color-primary, #3b82f6);
+    color: white;
   }
 
   .scenario-details {

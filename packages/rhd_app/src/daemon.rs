@@ -187,11 +187,20 @@ fn handle_request(request: IpcRequest, state: &DaemonState) -> IpcResponse {
                 Some(handle.clone()),
             ));
 
-            let finished = handle.finished();
+            let status = match &result {
+                Ok(_) => rhd_api::ScenarioStatus::Success,
+                Err(crate::scenario::ExecuteError::Aborted) => {
+                    sink.log_aborted();
+                    rhd_api::ScenarioStatus::Aborted
+                }
+                Err(_) => rhd_api::ScenarioStatus::Error,
+            };
+
+            let finished = handle.finished(status);
 
             if let Some(dir) = log_dir {
                 let model_config = state.models.values().next();
-                let meta = build_scenario_meta(&name, &finished, model_config);
+                let meta = build_scenario_meta(&name, &finished, model_config, status);
                 if let Err(err) = crate::log::write_meta_json(&dir, &meta) {
                     eprintln!("failed to write meta.json: {}", err);
                 }
@@ -201,6 +210,7 @@ fn handle_request(request: IpcRequest, state: &DaemonState) -> IpcResponse {
                 Ok(output) => IpcResponse::Success {
                     output: output.outputs.join("\n"),
                 },
+                Err(crate::scenario::ExecuteError::Aborted) => IpcResponse::Aborted,
                 Err(err) => {
                     sink.log("error", "scenario execution error", &err.to_string());
                     IpcResponse::Error {
@@ -216,6 +226,7 @@ fn build_scenario_meta(
     name: &str,
     finished: &crate::execution::FinishedExecution,
     model_config: Option<&ModelConfig>,
+    status: rhd_api::ScenarioStatus,
 ) -> rhd_api::ScenarioMeta {
     let mut step_timings = finished.step_timings.clone();
 
@@ -248,6 +259,7 @@ fn build_scenario_meta(
     rhd_api::ScenarioMeta {
         id: finished.id,
         scenario: name.to_string(),
+        status,
         started: finished.started_at,
         finished: finished.finished_at,
         duration_ms: finished.duration_ms,

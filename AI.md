@@ -121,6 +121,7 @@ actions:
   - `runScenario`: Execute a scenario
   - `subscribe`: Subscribe to execution events (returns list of currently active executions)
   - `getFinishedScenarios`: Get list of finished scenarios from meta.json. Accepts optional `lastId` parameter to fetch only scenarios with id > lastId (for incremental updates)
+  - `abortScenario`: Abort an active scenario execution by execution ID
 - **Server → Client responses**: Request responses with success/error status
 - **Server → Client events**: Real-time execution events (scenarioStarted, stepStarted, scenarioFinished)
   - `scenarioFinished` event data uses same `ScenarioMeta` format as `getFinishedScenarios` response items
@@ -135,7 +136,7 @@ actions:
 
 ### Error Handling
 - Daemon stays alive on scenario errors
-- Client exits with code 0 on success, 1 on error
+- Client exits with code 0 on success, 1 on error, 2 on abort
 - All errors include context (file path, line number, step name)
 - Model validation at daemon startup (exits if invalid)
 
@@ -256,6 +257,7 @@ When `logs` is configured, each scenario execution creates a timestamped log dir
 {
   "id": 1,
   "scenario": "my_scenario",
+  "status": "success",
   "started": "2026-06-26T15:00:00Z",
   "finished": "2026-06-26T15:01:30Z",
   "durationMs": 90000,
@@ -303,6 +305,7 @@ When `logs` is configured, each scenario execution creates a timestamped log dir
 ```
 
 - `id` field contains the execution ID (unique per scenario execution)
+- `status` field contains execution status: `executing`, `success`, `error`, or `aborted`
 - Every step includes `type` field: `runCommand`, `aiChat`, or `output`
 - `runCommand` steps include `exitCode` field
 - `aiChat` steps include `model` field
@@ -347,6 +350,8 @@ available tools: <tool1>, <tool2>, ...   (only when MCP tools configured)
 
 ===== <stepName>: output step =====
 <resolved output>
+
+===== ABORTED =====
 ```
 
 ## Development Practices
@@ -406,7 +411,9 @@ Svelte-based web UI in `frontend/` directory for monitoring scenario execution.
 ### Features
 - **Scenarios tab**:
   - Shows active scenarios with real-time updates (current step, elapsed time, token counts)
-  - Shows finished scenarios list (sorted by date, newest first)
+  - Abort button to stop active scenario execution
+  - Shows finished scenarios list (sorted by date, newest first) with status badges
+  - Status badges: executing (blue), success (green), error (red), aborted (orange)
   - Caches finished scenarios; uses `lastId` parameter for incremental fetching
 - **Chats tab**: Placeholder (not implemented yet)
 

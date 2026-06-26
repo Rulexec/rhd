@@ -15,6 +15,7 @@ pub enum IpcRequest {
 pub enum IpcResponse {
     Success { output: String },
     Error { message: String },
+    Aborted,
 }
 
 pub fn write_message<T: rkyv::Serialize<rkyv::ser::serializers::AllocSerializer<256>>>(

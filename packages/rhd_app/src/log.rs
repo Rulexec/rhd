@@ -60,6 +60,11 @@ impl LogSink {
         self.write_block(&block);
     }
 
+    pub fn log_aborted(&mut self) {
+        let block = "===== ABORTED =====\n".to_string();
+        self.write_block(&block);
+    }
+
     pub fn log_step(&mut self, step: &str, header: &str, body: &str) {
         let block = format!("===== {step}: {header} =====\n{body}\n");
         self.write_block(&block);

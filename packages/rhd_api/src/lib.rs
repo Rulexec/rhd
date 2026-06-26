@@ -110,11 +110,21 @@ impl TokenUsage {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ScenarioStatus {
+    Executing,
+    Success,
+    Error,
+    Aborted,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScenarioMeta {
     pub id: u64,
     pub scenario: String,
+    pub status: ScenarioStatus,
     pub started: DateTime<Utc>,
     pub finished: DateTime<Utc>,
     pub duration_ms: u64,
@@ -143,6 +153,8 @@ pub enum WsRequest {
     Subscribe { id: String },
     #[serde(rename = "getFinishedScenarios")]
     GetFinishedScenarios { id: String, last_id: Option<u64> },
+    #[serde(rename = "abortScenario")]
+    AbortScenario { id: String, #[serde(rename = "executionId")] execution_id: u64 },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -206,6 +218,7 @@ impl WsEvent {
 pub enum ErrorCode {
     UnknownScenario,
     ScenarioExecutionFailed,
+    ScenarioAborted,
     InvalidRequest,
     InternalError,
 }

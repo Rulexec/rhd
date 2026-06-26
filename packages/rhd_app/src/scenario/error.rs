@@ -20,6 +20,9 @@ pub enum ExecuteError {
         step: String,
         message: String,
     },
+
+    #[error("scenario aborted")]
+    Aborted,
 }
 
 impl From<rhd_ai::AiError> for ExecuteError {

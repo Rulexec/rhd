@@ -56,5 +56,9 @@ pub async fn run_scenario(name: &str, socket_path: &Path) -> Result<(), Box<dyn 
             Ok(())
         }
         IpcResponse::Error { message } => Err(message.into()),
+        IpcResponse::Aborted => {
+            println!("ABORTED");
+            Err("ABORTED".into())
+        }
     }
 }

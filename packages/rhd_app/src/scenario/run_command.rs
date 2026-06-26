@@ -89,21 +89,53 @@ pub async fn execute_run_command(
             let mut output_lines = Vec::new();
             let mut stdout_buf = String::new();
             let mut stderr_buf = String::new();
+            let mut aborted = false;
 
-            while let Some(output_line) = rx.recv().await {
-                match &output_line {
-                    OutputLine::Stdout(s) => stdout_buf.push_str(s),
-                    OutputLine::Stderr(s) => stderr_buf.push_str(s),
+            if let Some(h) = &handle {
+                let mut abort_signal = h.abort_signal();
+                loop {
+                    tokio::select! {
+                        output_line = rx.recv() => {
+                            match output_line {
+                                Some(line) => {
+                                    match &line {
+                                        OutputLine::Stdout(s) => stdout_buf.push_str(s),
+                                        OutputLine::Stderr(s) => stderr_buf.push_str(s),
+                                    }
+                                    output_lines.push(line);
+                                }
+                                None => break,
+                            }
+                        }
+                        _ = abort_signal.changed() => {
+                            if *abort_signal.borrow() {
+                                aborted = true;
+                                let _ = child.kill().await;
+                                break;
+                            }
+                        }
+                    }
                 }
-                output_lines.push(output_line);
+            } else {
+                while let Some(output_line) = rx.recv().await {
+                    match &output_line {
+                        OutputLine::Stdout(s) => stdout_buf.push_str(s),
+                        OutputLine::Stderr(s) => stderr_buf.push_str(s),
+                    }
+                    output_lines.push(output_line);
+                }
             }
 
             let _ = tokio::join!(stdout_task, stderr_task);
             let status = child.wait().await;
 
-            let (exit_code, success) = match status {
-                Ok(s) => (s.code().unwrap_or(-1), s.success()),
-                Err(_) => (-1, false),
+            let (exit_code, success) = if aborted {
+                (-1, false)
+            } else {
+                match status {
+                    Ok(s) => (s.code().unwrap_or(-1), s.success()),
+                    Err(_) => (-1, false),
+                }
             };
 
             let exit_tracker = SectionTracker::start(sink, LogSectionKind::ExitCode);

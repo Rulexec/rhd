@@ -31,6 +31,12 @@ pub async fn execute_scenario(
     sink.log(scenario_name, "executing scenario", "");
 
     for action in &scenario.actions {
+        if let Some(h) = &handle {
+            if *h.abort_signal().borrow() {
+                return Err(ExecuteError::Aborted);
+            }
+        }
+
         match action {
             Action::RunCommand(cmd) => {
                 let step_name = cmd.name.clone().unwrap_or_else(|| cmd.command.clone());

@@ -2,9 +2,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Utc};
-use rhd_api::{EventData, EventType, ExecutionEvent, LogSection, ScenarioMeta, StepTiming, StepType, TokenUsage};
+use rhd_api::{EventData, EventType, ExecutionEvent, LogSection, ScenarioMeta, ScenarioStatus, StepTiming, StepType, TokenUsage};
 use rhd_db::ScenarioDb;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, watch};
 
 pub struct ExecutionTracker {
     db: Arc<ScenarioDb>,
@@ -15,6 +15,26 @@ pub struct ExecutionTracker {
 struct ActiveExecution {
     scenario_name: String,
     started_at: DateTime<Utc>,
+    abort_handle: AbortHandle,
+}
+
+pub struct AbortHandle {
+    sender: watch::Sender<bool>,
+}
+
+impl AbortHandle {
+    pub fn new() -> Self {
+        let (sender, _) = watch::channel(false);
+        Self { sender }
+    }
+
+    pub fn abort(&self) {
+        let _ = self.sender.send(true);
+    }
+
+    pub fn receiver(&self) -> watch::Receiver<bool> {
+        self.sender.subscribe()
+    }
 }
 
 struct ExecutionState {
@@ -35,6 +55,7 @@ pub struct ExecutionHandle {
     scenario_name: String,
     started_at: DateTime<Utc>,
     state: Mutex<ExecutionState>,
+    abort_receiver: watch::Receiver<bool>,
 }
 
 impl ExecutionTracker {
@@ -50,6 +71,8 @@ impl ExecutionTracker {
     pub fn start(self: &Arc<Self>, scenario_name: String) -> Arc<ExecutionHandle> {
         let id = self.db.next_id().expect("failed to get next scenario ID from database");
         let started_at = Utc::now();
+        let abort_handle = AbortHandle::new();
+        let abort_receiver = abort_handle.receiver();
 
         {
             let mut active = self.active.lock().unwrap();
@@ -58,6 +81,7 @@ impl ExecutionTracker {
                 ActiveExecution {
                     scenario_name: scenario_name.clone(),
                     started_at,
+                    abort_handle,
                 },
             );
         }
@@ -88,7 +112,15 @@ impl ExecutionTracker {
                 current_step_tokens: TokenUsage::default(),
                 current_step_sections: Vec::new(),
             }),
+            abort_receiver,
         })
+    }
+
+    pub fn abort(&self, id: u64) {
+        let active = self.active.lock().unwrap();
+        if let Some(exec) = active.get(&id) {
+            exec.abort_handle.abort();
+        }
     }
 
     pub fn subscribe(&self) -> broadcast::Receiver<ExecutionEvent> {
@@ -164,7 +196,11 @@ impl ExecutionHandle {
         state.current_step_model = Some(model);
     }
 
-    pub fn finished(self: Arc<Self>) -> FinishedExecution {
+    pub fn abort_signal(&self) -> watch::Receiver<bool> {
+        self.abort_receiver.clone()
+    }
+
+    pub fn finished(self: Arc<Self>, status: ScenarioStatus) -> FinishedExecution {
         let now = Utc::now();
         let mut state = self.state.lock().unwrap();
         Self::finalize_current_step(&mut state, now);
@@ -179,6 +215,7 @@ impl ExecutionHandle {
         let meta = ScenarioMeta {
             id: self.id,
             scenario: self.scenario_name.clone(),
+            status,
             started: self.started_at,
             finished: now,
             duration_ms: (now - self.started_at).num_milliseconds() as u64,
