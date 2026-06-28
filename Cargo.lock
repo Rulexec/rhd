@@ -1295,6 +1295,7 @@ dependencies = [
 name = "rhd_db"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "rusqlite",
  "thiserror",
 ]

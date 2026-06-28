@@ -102,13 +102,13 @@ impl ChatDb {
 
 ## Success Criteria
 
-- [ ] `ChatDb::new()` creates DB file and tables
-- [ ] Chat CRUD operations work correctly
-- [ ] Message CRUD operations work correctly
-- [ ] Truncation removes only messages after specified id
-- [ ] Cascade delete removes messages when chat deleted
-- [ ] All unit tests pass
-- [ ] WAL mode enabled
+- [x] `ChatDb::new()` creates DB file and tables
+- [x] Chat CRUD operations work correctly
+- [x] Message CRUD operations work correctly
+- [x] Truncation removes only messages after specified id
+- [x] Cascade delete removes messages when chat deleted
+- [x] All unit tests pass
+- [x] WAL mode enabled
 
 ## Dependencies
 
