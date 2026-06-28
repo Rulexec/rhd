@@ -4,7 +4,7 @@ use std::sync::Mutex;
 
 use crate::{DbError, DbResult};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ChatInfo {
     pub id: i64,
     pub title: String,
@@ -12,7 +12,7 @@ pub struct ChatInfo {
     pub updated_at: String,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Message {
     pub id: i64,
     pub chat_id: i64,
@@ -219,6 +219,29 @@ impl ChatDb {
             params![chat_id, after_message_id],
         )?;
         Ok(())
+    }
+
+    pub fn get_message(&self, message_id: i64) -> DbResult<Option<Message>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| DbError::InitializationError(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, chat_id, role, content, created_at FROM messages WHERE id = ?1",
+        )?;
+        let mut rows = stmt.query_map(params![message_id], |row| {
+            Ok(Message {
+                id: row.get(0)?,
+                chat_id: row.get(1)?,
+                role: row.get(2)?,
+                content: row.get(3)?,
+                created_at: row.get(4)?,
+            })
+        })?;
+        match rows.next() {
+            Some(row) => Ok(Some(row?)),
+            None => Ok(None),
+        }
     }
 
     pub fn update_message(&self, message_id: i64, content: &str) -> DbResult<()> {

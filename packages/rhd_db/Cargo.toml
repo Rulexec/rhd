@@ -7,3 +7,4 @@ edition = "2021"
 rusqlite = { workspace = true }
 thiserror = { workspace = true }
 chrono = { workspace = true }
+serde = { workspace = true }
