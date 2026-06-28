@@ -12,7 +12,7 @@ This master plan is split into separate implementation plans covering distinct s
 2. [x] **[Chat AI Streaming Plan](../chat-ai-streaming-plan.md)** — Streaming support in `OpenAiClient`
 3. [x] **[Chat API Protocol Plan](../chat-api-protocol-plan.md)** — WebSocket protocol extensions
 4. [x] **[Chat Backend Plan](../chat-backend-plan.md)** — `ChatManager`, daemon integration, WS handlers
-5. [ ] **[Chat Frontend Plan](../chat-frontend-plan.md)** — Svelte UI components and stores
+5. [x] **[Chat Frontend Plan](../chat-frontend-plan.md)** — Svelte UI components and stores
 
 ## Dependency Graph
 

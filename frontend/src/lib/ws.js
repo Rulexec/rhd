@@ -9,7 +9,7 @@ let requestIdCounter = 0;
 const pendingRequests = new Map();
 let reconnectTimer = null;
 
-function generateRequestId() {
+export function generateRequestId() {
   requestIdCounter += 1;
   return `req-${requestIdCounter}`;
 }
@@ -56,7 +56,7 @@ function scheduleReconnect() {
   }, RECONNECT_DELAY_MS);
 }
 
-function sendRequest(request) {
+export function sendRequest(request) {
   return new Promise((resolve, reject) => {
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       reject(new Error('WebSocket not connected'));
@@ -69,6 +69,13 @@ function sendRequest(request) {
 
 function handleEvent(message) {
   const { event, data } = message;
+
+  if (event.startsWith('chat')) {
+    import('./chatWs.js').then(({ handleChatEvent }) => {
+      handleChatEvent(event, data);
+    });
+    return;
+  }
 
   switch (event) {
     case 'scenariostarted':
