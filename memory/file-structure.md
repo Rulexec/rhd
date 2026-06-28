@@ -4,18 +4,23 @@
 frontend/
 ├── .nvmrc              # Node.js version (v24.13.0)
 ├── package.json        # Dependencies and scripts
+├── tsconfig.json       # TypeScript configuration
 ├── vite.config.js      # Vite configuration
 ├── index.html          # Entry HTML
 ├── svelte.config.js    # Svelte configuration
 └── src/
-    ├── main.js         # App entry point
+    ├── main.ts         # App entry point
+    ├── vite-env.d.ts   # Vite/Svelte type declarations
     ├── App.svelte      # Root component
     ├── lib/
-    │   ├── ws.js       # WebSocket connection service
-    │   ├── stores.js   # Svelte stores for scenario state
-    │   ├── chatStores.js # Svelte stores for chat state
-    │   ├── chatWs.js   # Chat WebSocket functions and event handlers
-    │   └── utils.js    # Helper functions
+    │   ├── ws.ts       # WebSocket connection service with Zod validation
+    │   ├── stores.ts   # Svelte stores for scenario state
+    │   ├── chatStores.ts # Svelte stores for chat state
+    │   ├── chatWs.ts   # Chat WebSocket functions and event handlers
+    │   ├── utils.ts    # Helper functions
+    │   └── types/
+    │       ├── index.ts    # Domain types with Zod schemas
+    │       └── ws.ts       # WebSocket protocol schemas
     ├── components/
     │   ├── TabNav.svelte
     │   ├── ScenariosTab.svelte

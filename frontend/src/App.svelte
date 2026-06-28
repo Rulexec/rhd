@@ -1,10 +1,10 @@
-<script>
+<script lang="ts">
   import TabNav from './components/TabNav.svelte';
   import ScenariosTab from './components/ScenariosTab.svelte';
   import ChatsTab from './components/ChatsTab.svelte';
-  import { initWebSocket } from './lib/ws.js';
+  import { initWebSocket } from './lib/ws';
 
-  let activeTab = $state('scenarios');
+  let activeTab = $state<'scenarios' | 'chats'>('scenarios');
 
   initWebSocket();
 </script>

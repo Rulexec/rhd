@@ -1,7 +1,7 @@
-<script>
+<script lang="ts">
   import { onMount } from 'svelte';
-  import { currentChatId } from '../lib/chatStores.js';
-  import { loadChats } from '../lib/chatWs.js';
+  import { currentChatId } from '../lib/chatStores';
+  import { loadChats } from '../lib/chatWs';
   import ChatList from './ChatList.svelte';
   import ChatView from './ChatView.svelte';
 

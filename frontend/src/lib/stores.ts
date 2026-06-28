@@ -1,7 +1,16 @@
 import { writable, derived } from 'svelte/store';
+import type { Writable, Readable } from 'svelte/store';
+import type { ActiveScenario, FinishedScenario } from './types/index';
 
-function createActiveScenariosStore() {
-  const { subscribe, update, set } = writable(new Map());
+interface ActiveScenarioStore extends Readable<Map<string, ActiveScenario>> {
+  setFromList(list: Array<{ id: string; scenarioName: string; startedAt: string }>): void;
+  addScenario(data: { id: string; name: string; startedAt: string }): void;
+  updateStep(executionId: string, stepName: string, stepStartedAt: string): void;
+  removeScenario(id: string): void;
+}
+
+function createActiveScenariosStore(): ActiveScenarioStore {
+  const { subscribe, update, set } = writable(new Map<string, ActiveScenario>());
 
   return {
     subscribe,
@@ -51,8 +60,13 @@ function createActiveScenariosStore() {
   };
 }
 
-function createFinishedScenariosStore() {
-  const { subscribe, update, set } = writable([]);
+interface FinishedScenariosStore extends Readable<FinishedScenario[]> {
+  setAll(list: FinishedScenario[]): void;
+  prepend(scenarioMeta: FinishedScenario): void;
+}
+
+function createFinishedScenariosStore(): FinishedScenariosStore {
+  const { subscribe, update, set } = writable<FinishedScenario[]>([]);
 
   return {
     subscribe,
@@ -67,9 +81,9 @@ function createFinishedScenariosStore() {
 
 export const activeScenarios = createActiveScenariosStore();
 export const finishedScenarios = createFinishedScenariosStore();
-export const lastKnownId = writable(0);
-export const wsConnected = writable(false);
+export const lastKnownId: Writable<number> = writable(0);
+export const wsConnected: Writable<boolean> = writable(false);
 
-export const activeScenariosList = derived(activeScenarios, ($map) =>
-  [...$map.values()].sort((a, b) => b.id - a.id)
+export const activeScenariosList: Readable<ActiveScenario[]> = derived(activeScenarios, ($map) =>
+  [...$map.values()].sort((a, b) => b.id.localeCompare(a.id))
 );

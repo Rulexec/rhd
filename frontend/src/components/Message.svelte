@@ -1,7 +1,8 @@
-<script>
-  import { editMessage } from '../lib/chatWs.js';
+<script lang="ts">
+  import { editMessage } from '../lib/chatWs';
+  import type { ChatMessage } from '../lib/types/index';
 
-  export let message;
+  export let message: ChatMessage;
 
   let editing = false;
   let editContent = message.content;
@@ -24,7 +25,7 @@
     editing = false;
   }
 
-  function handleKeydown(event) {
+  function handleKeydown(event: KeyboardEvent) {
     if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
       event.preventDefault();
       saveEdit();

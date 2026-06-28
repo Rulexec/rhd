@@ -1,12 +1,12 @@
-<script>
-  import { isStreaming, streamError, currentChatId } from '../lib/chatStores.js';
-  import { sendMessage, abortChat } from '../lib/chatWs.js';
+<script lang="ts">
+  import { isStreaming, streamError, currentChatId } from '../lib/chatStores';
+  import { sendMessage, abortChat } from '../lib/chatWs';
 
   let input = '';
   let model = 'gpt4';
-  let textareaElement;
+  let textareaElement: HTMLTextAreaElement;
 
-  function handleKeydown(event) {
+  function handleKeydown(event: KeyboardEvent) {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       send();
@@ -26,7 +26,7 @@
     abortChat();
   }
 
-  function handleInput(event) {
+  function handleInput(event: Event) {
     if (textareaElement) {
       textareaElement.style.height = 'auto';
       textareaElement.style.height = textareaElement.scrollHeight + 'px';

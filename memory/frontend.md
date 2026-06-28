@@ -1,11 +1,13 @@
 # Frontend
 
-Svelte-based web UI in `frontend/` directory for monitoring scenario execution and chat interactions.
+Svelte-based web UI in `frontend/` directory for monitoring scenario execution and chat interactions. Written in TypeScript with Zod validation for WebSocket messages.
 
 ## Setup
 
 - Requires Node.js v24.13.0 (specified in `.nvmrc`)
 - Start with `nvm use && npm run start`
+- Type check with `npm run check` (runs svelte-check)
+- Build with `npm run build`
 - Connects to daemon WebSocket server (default port 9876, configurable via `VITE_WS_PORT` env var)
 
 ## Features
@@ -30,6 +32,7 @@ Svelte-based web UI in `frontend/` directory for monitoring scenario execution a
 ## Architecture
 
 - WebSocket connection with auto-reconnect
+- **Zod validation** for all WebSocket messages (see `src/lib/types/ws.ts`)
 - Svelte stores for state management:
   - Scenario stores: `activeScenarios`, `finishedScenarios`, `lastKnownId`, `wsConnected`
   - Chat stores: `chats`, `currentChatId`, `messages`, `streamingContent`, `isStreaming`, `streamError`, `currentChat` (derived)
@@ -39,7 +42,16 @@ Svelte-based web UI in `frontend/` directory for monitoring scenario execution a
   - Scenarios: `ScenariosTab`, `ActiveScenario`, `FinishedScenario`
   - Chats: `ChatsTab`, `ChatList`, `ChatView`, `MessageList`, `Message`, `MessageInput`, `StreamingMessage`
 
-## Chat Stores (`frontend/src/lib/chatStores.js`)
+## Type System
+
+All types defined with Zod schemas for runtime validation:
+
+- **Domain types** (`src/lib/types/index.ts`): `ActiveScenario`, `FinishedScenario`, `Chat`, `ChatMessage`
+- **WebSocket protocol** (`src/lib/types/ws.ts`): `WsMessageSchema`, `WsResponseSchema`, `WsEventSchema`
+
+Invalid WebSocket messages are logged and ignored via `safeParse`.
+
+## Chat Stores (`frontend/src/lib/chatStores.ts`)
 
 - `chats`: writable array of chat objects
 - `currentChatId`: writable ID of selected chat
@@ -49,7 +61,7 @@ Svelte-based web UI in `frontend/` directory for monitoring scenario execution a
 - `streamError`: writable error message (null when no error)
 - `currentChat`: derived store returning current chat object
 
-## Chat WebSocket Functions (`frontend/src/lib/chatWs.js`)
+## Chat WebSocket Functions (`frontend/src/lib/chatWs.ts`)
 
 - `loadChats()`: Fetches and populates chat list
 - `createChat(title)`: Creates new chat, selects it

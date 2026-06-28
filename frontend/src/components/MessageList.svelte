@@ -1,10 +1,10 @@
-<script>
-  import { onMount, afterUpdate } from 'svelte';
-  import { messages, isStreaming, streamingContent } from '../lib/chatStores.js';
+<script lang="ts">
+  import { afterUpdate } from 'svelte';
+  import { messages, isStreaming, streamingContent } from '../lib/chatStores';
   import Message from './Message.svelte';
   import StreamingMessage from './StreamingMessage.svelte';
 
-  let listElement;
+  let listElement: HTMLDivElement;
 
   afterUpdate(() => {
     if (listElement) {

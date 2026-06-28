@@ -1,8 +1,8 @@
-<script>
+<script lang="ts">
   import ActiveScenario from './ActiveScenario.svelte';
   import FinishedScenario from './FinishedScenario.svelte';
-  import { subscribe, getFinishedScenarios } from '../lib/ws.js';
-  import { activeScenariosList, finishedScenarios, lastKnownId, wsConnected } from '../lib/stores.js';
+  import { subscribe, getFinishedScenarios } from '../lib/ws';
+  import { activeScenariosList, finishedScenarios, lastKnownId, wsConnected } from '../lib/stores';
 
   let loaded = $state(false);
   let dataLoaded = $state(false);

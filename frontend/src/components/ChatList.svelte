@@ -1,6 +1,6 @@
-<script>
-  import { chats, currentChatId } from '../lib/chatStores.js';
-  import { createChat, selectChat, deleteChat } from '../lib/chatWs.js';
+<script lang="ts">
+  import { chats, currentChatId } from '../lib/chatStores';
+  import { createChat, selectChat, deleteChat } from '../lib/chatWs';
 
   async function handleCreateChat() {
     const title = prompt('Enter chat title:');
@@ -9,7 +9,7 @@
     }
   }
 
-  async function handleDeleteChat(event, chatId) {
+  async function handleDeleteChat(event: Event, chatId: number) {
     event.stopPropagation();
     if (confirm('Delete this chat?')) {
       await deleteChat(chatId);

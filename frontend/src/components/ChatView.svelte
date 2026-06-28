@@ -1,5 +1,5 @@
-<script>
-  import { currentChat } from '../lib/chatStores.js';
+<script lang="ts">
+  import { currentChat } from '../lib/chatStores';
   import MessageList from './MessageList.svelte';
   import MessageInput from './MessageInput.svelte';
 </script>
