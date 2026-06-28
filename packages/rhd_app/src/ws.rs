@@ -89,6 +89,11 @@ fn handle_ws_message(text: &str, state: &Arc<DaemonState>) -> WsResponse {
         WsRequest::Subscribe { id } => handle_subscribe(id, state),
         WsRequest::GetFinishedScenarios { id, last_id } => handle_get_finished(id, last_id, state),
         WsRequest::AbortScenario { id, execution_id } => handle_abort_scenario(id, execution_id, state),
+        _ => WsResponse::error(
+            "unknown".to_string(),
+            ErrorCode::InvalidRequest,
+            "chat operations not yet implemented".to_string(),
+        ),
     }
 }
 
