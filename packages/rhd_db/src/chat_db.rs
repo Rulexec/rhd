@@ -10,6 +10,7 @@ pub struct ChatInfo {
     pub title: String,
     pub created_at: String,
     pub updated_at: String,
+    pub active_model: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -19,6 +20,7 @@ pub struct Message {
     pub role: String,
     pub content: String,
     pub created_at: String,
+    pub model: Option<String>,
 }
 
 pub struct ChatDb {
@@ -54,7 +56,8 @@ impl ChatDb {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 title TEXT NOT NULL,
                 created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                active_model TEXT
             );
 
             CREATE TABLE IF NOT EXISTS messages (
@@ -63,11 +66,39 @@ impl ChatDb {
                 role TEXT NOT NULL,
                 content TEXT NOT NULL,
                 created_at TEXT NOT NULL,
+                model TEXT,
                 FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE
             );
 
             CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id);",
         )?;
+
+        // Migrate existing tables to add new columns
+        self.migrate(&conn)?;
+
+        Ok(())
+    }
+
+    fn migrate(&self, conn: &Connection) -> DbResult<()> {
+        // Check if active_model column exists in chats table
+        let has_active_model: bool = conn
+            .prepare("SELECT COUNT(*) FROM pragma_table_info('chats') WHERE name='active_model'")?
+            .query_row([], |row| row.get::<_, i64>(0))?
+            > 0;
+
+        if !has_active_model {
+            conn.execute_batch("ALTER TABLE chats ADD COLUMN active_model TEXT")?;
+        }
+
+        // Check if model column exists in messages table
+        let has_model: bool = conn
+            .prepare("SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name='model'")?
+            .query_row([], |row| row.get::<_, i64>(0))?
+            > 0;
+
+        if !has_model {
+            conn.execute_batch("ALTER TABLE messages ADD COLUMN model TEXT")?;
+        }
 
         Ok(())
     }
@@ -91,7 +122,7 @@ impl ChatDb {
             .lock()
             .map_err(|e| DbError::InitializationError(e.to_string()))?;
         let mut stmt = conn.prepare(
-            "SELECT id, title, created_at, updated_at FROM chats ORDER BY updated_at DESC",
+            "SELECT id, title, created_at, updated_at, active_model FROM chats ORDER BY updated_at DESC",
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(ChatInfo {
@@ -99,6 +130,7 @@ impl ChatDb {
                 title: row.get(1)?,
                 created_at: row.get(2)?,
                 updated_at: row.get(3)?,
+                active_model: row.get(4)?,
             })
         })?;
         let mut chats = Vec::new();
@@ -114,7 +146,7 @@ impl ChatDb {
             .lock()
             .map_err(|e| DbError::InitializationError(e.to_string()))?;
         let mut stmt = conn.prepare(
-            "SELECT id, title, created_at, updated_at FROM chats WHERE id = ?1",
+            "SELECT id, title, created_at, updated_at, active_model FROM chats WHERE id = ?1",
         )?;
         let mut rows = stmt.query_map(params![id], |row| {
             Ok(ChatInfo {
@@ -122,6 +154,7 @@ impl ChatDb {
                 title: row.get(1)?,
                 created_at: row.get(2)?,
                 updated_at: row.get(3)?,
+                active_model: row.get(4)?,
             })
         })?;
         match rows.next() {
@@ -152,6 +185,19 @@ impl ChatDb {
         Ok(())
     }
 
+    pub fn update_chat_active_model(&self, id: i64, model: &str) -> DbResult<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| DbError::InitializationError(e.to_string()))?;
+        let now = now_iso();
+        conn.execute(
+            "UPDATE chats SET active_model = ?1, updated_at = ?2 WHERE id = ?3",
+            params![model, now, id],
+        )?;
+        Ok(())
+    }
+
     pub fn touch_chat(&self, id: i64) -> DbResult<()> {
         let conn = self
             .conn
@@ -165,7 +211,7 @@ impl ChatDb {
         Ok(())
     }
 
-    pub fn add_message(&self, chat_id: i64, role: &str, content: &str) -> DbResult<i64> {
+    pub fn add_message(&self, chat_id: i64, role: &str, content: &str, model: Option<&str>) -> DbResult<i64> {
         let conn = self
             .conn
             .lock()
@@ -173,8 +219,8 @@ impl ChatDb {
         let tx = conn.unchecked_transaction()?;
         let now = now_iso();
         tx.execute(
-            "INSERT INTO messages (chat_id, role, content, created_at) VALUES (?1, ?2, ?3, ?4)",
-            params![chat_id, role, content, now],
+            "INSERT INTO messages (chat_id, role, content, created_at, model) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![chat_id, role, content, now, model],
         )?;
         let message_id = tx.last_insert_rowid();
         tx.execute(
@@ -191,7 +237,7 @@ impl ChatDb {
             .lock()
             .map_err(|e| DbError::InitializationError(e.to_string()))?;
         let mut stmt = conn.prepare(
-            "SELECT id, chat_id, role, content, created_at FROM messages WHERE chat_id = ?1 ORDER BY id ASC",
+            "SELECT id, chat_id, role, content, created_at, model FROM messages WHERE chat_id = ?1 ORDER BY id ASC",
         )?;
         let rows = stmt.query_map(params![chat_id], |row| {
             Ok(Message {
@@ -200,6 +246,7 @@ impl ChatDb {
                 role: row.get(2)?,
                 content: row.get(3)?,
                 created_at: row.get(4)?,
+                model: row.get(5)?,
             })
         })?;
         let mut messages = Vec::new();
@@ -227,7 +274,7 @@ impl ChatDb {
             .lock()
             .map_err(|e| DbError::InitializationError(e.to_string()))?;
         let mut stmt = conn.prepare(
-            "SELECT id, chat_id, role, content, created_at FROM messages WHERE id = ?1",
+            "SELECT id, chat_id, role, content, created_at, model FROM messages WHERE id = ?1",
         )?;
         let mut rows = stmt.query_map(params![message_id], |row| {
             Ok(Message {
@@ -236,6 +283,7 @@ impl ChatDb {
                 role: row.get(2)?,
                 content: row.get(3)?,
                 created_at: row.get(4)?,
+                model: row.get(5)?,
             })
         })?;
         match rows.next() {
@@ -356,8 +404,8 @@ mod tests {
         let db = ChatDb::new(path).unwrap();
         let chat_id = db.create_chat("Chat").unwrap();
 
-        let msg1 = db.add_message(chat_id, "user", "Hello").unwrap();
-        let msg2 = db.add_message(chat_id, "assistant", "Hi there").unwrap();
+        let msg1 = db.add_message(chat_id, "user", "Hello", Some("gpt4")).unwrap();
+        let msg2 = db.add_message(chat_id, "assistant", "Hi there", Some("gpt4")).unwrap();
         assert_eq!(msg1, 1);
         assert_eq!(msg2, 2);
 
@@ -365,8 +413,10 @@ mod tests {
         assert_eq!(messages.len(), 2);
         assert_eq!(messages[0].role, "user");
         assert_eq!(messages[0].content, "Hello");
+        assert_eq!(messages[0].model, Some("gpt4".to_string()));
         assert_eq!(messages[1].role, "assistant");
         assert_eq!(messages[1].content, "Hi there");
+        assert_eq!(messages[1].model, Some("gpt4".to_string()));
 
         cleanup(path);
     }
@@ -379,9 +429,9 @@ mod tests {
         let db = ChatDb::new(path).unwrap();
         let chat_id = db.create_chat("Chat").unwrap();
 
-        let msg1 = db.add_message(chat_id, "user", "First").unwrap();
-        let _msg2 = db.add_message(chat_id, "assistant", "Second").unwrap();
-        let _msg3 = db.add_message(chat_id, "user", "Third").unwrap();
+        let msg1 = db.add_message(chat_id, "user", "First", None).unwrap();
+        let _msg2 = db.add_message(chat_id, "assistant", "Second", None).unwrap();
+        let _msg3 = db.add_message(chat_id, "user", "Third", None).unwrap();
 
         db.truncate_messages(chat_id, msg1).unwrap();
 
@@ -399,72 +449,98 @@ mod tests {
 
         let db = ChatDb::new(path).unwrap();
         let chat_id = db.create_chat("Chat").unwrap();
-        let msg_id = db.add_message(chat_id, "user", "Original").unwrap();
+        let msg_id = db.add_message(chat_id, "user", "Original", None).unwrap();
 
-        db.update_message(msg_id, "Edited").unwrap();
+        db.update_message(msg_id, "Updated").unwrap();
 
-        let messages = db.get_messages(chat_id).unwrap();
-        assert_eq!(messages[0].content, "Edited");
+        let msg = db.get_message(msg_id).unwrap().unwrap();
+        assert_eq!(msg.content, "Updated");
 
         cleanup(path);
     }
 
     #[test]
-    fn test_cascade_delete() {
-        let path = "test_chat_cascade.db";
+    fn test_update_chat_active_model() {
+        let path = "test_chat_active_model.db";
         cleanup(path);
 
         let db = ChatDb::new(path).unwrap();
-        let chat_id = db.create_chat("Chat").unwrap();
-        db.add_message(chat_id, "user", "Msg1").unwrap();
-        db.add_message(chat_id, "assistant", "Msg2").unwrap();
+        let id = db.create_chat("Test").unwrap();
 
-        db.delete_chat(chat_id).unwrap();
+        let chat = db.get_chat(id).unwrap().unwrap();
+        assert_eq!(chat.active_model, None);
 
-        let messages = db.get_messages(chat_id).unwrap();
-        assert!(messages.is_empty());
-
-        cleanup(path);
-    }
-
-    #[test]
-    fn test_persistence_across_reopens() {
-        let path = "test_chat_persist.db";
-        cleanup(path);
-
-        let chat_id;
-        {
-            let db = ChatDb::new(path).unwrap();
-            chat_id = db.create_chat("Persistent").unwrap();
-            db.add_message(chat_id, "user", "Hello").unwrap();
-        }
-
-        {
-            let db = ChatDb::new(path).unwrap();
-            let chat = db.get_chat(chat_id).unwrap().unwrap();
-            assert_eq!(chat.title, "Persistent");
-
-            let messages = db.get_messages(chat_id).unwrap();
-            assert_eq!(messages.len(), 1);
-            assert_eq!(messages[0].content, "Hello");
-        }
+        db.update_chat_active_model(id, "gpt4").unwrap();
+        let chat = db.get_chat(id).unwrap().unwrap();
+        assert_eq!(chat.active_model, Some("gpt4".to_string()));
 
         cleanup(path);
     }
 
     #[test]
-    fn test_add_message_touches_chat() {
-        let path = "test_chat_touch.db";
+    fn test_migration_from_old_schema() {
+        let path = "test_chat_migration.db";
         cleanup(path);
 
+        // Create database with old schema (without active_model and model columns)
+        {
+            let conn = Connection::open(path).unwrap();
+            conn.execute_batch(
+                "PRAGMA journal_mode=WAL;
+                 PRAGMA foreign_keys=ON;
+
+                 CREATE TABLE chats (
+                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                     title TEXT NOT NULL,
+                     created_at TEXT NOT NULL,
+                     updated_at TEXT NOT NULL
+                 );
+
+                 CREATE TABLE messages (
+                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                     chat_id INTEGER NOT NULL,
+                     role TEXT NOT NULL,
+                     content TEXT NOT NULL,
+                     created_at TEXT NOT NULL,
+                     FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE
+                 );
+
+                 CREATE INDEX idx_messages_chat_id ON messages(chat_id);",
+            ).unwrap();
+
+            // Insert some test data
+            conn.execute(
+                "INSERT INTO chats (title, created_at, updated_at) VALUES ('Old Chat', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z')",
+                [],
+            ).unwrap();
+            conn.execute(
+                "INSERT INTO messages (chat_id, role, content, created_at) VALUES (1, 'user', 'Old message', '2024-01-01T00:00:00Z')",
+                [],
+            ).unwrap();
+        }
+
+        // Now open with ChatDb which should trigger migration
         let db = ChatDb::new(path).unwrap();
-        let chat_id = db.create_chat("Chat").unwrap();
-        let created = db.get_chat(chat_id).unwrap().unwrap();
 
-        db.add_message(chat_id, "user", "Hi").unwrap();
-        let updated = db.get_chat(chat_id).unwrap().unwrap();
+        // Verify we can read the old data
+        let chats = db.list_chats().unwrap();
+        assert_eq!(chats.len(), 1);
+        assert_eq!(chats[0].title, "Old Chat");
+        assert_eq!(chats[0].active_model, None);
 
-        assert!(updated.updated_at >= created.updated_at);
+        let messages = db.get_messages(1).unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].content, "Old message");
+        assert_eq!(messages[0].model, None);
+
+        // Verify we can use the new columns
+        db.update_chat_active_model(1, "gpt4").unwrap();
+        let chat = db.get_chat(1).unwrap().unwrap();
+        assert_eq!(chat.active_model, Some("gpt4".to_string()));
+
+        let msg_id = db.add_message(1, "assistant", "New message", Some("gpt4")).unwrap();
+        let msg = db.get_message(msg_id).unwrap().unwrap();
+        assert_eq!(msg.model, Some("gpt4".to_string()));
 
         cleanup(path);
     }

@@ -85,13 +85,17 @@ impl ChatManager {
 
         let model_config = models.get(model).ok_or_else(|| ChatError::ModelNotFound(model.to_string()))?;
 
-        let user_message_id = self.db.add_message(chat_id, "user", &content)?;
+        // Update chat's active model
+        self.db.update_chat_active_model(chat_id, model)?;
+
+        let user_message_id = self.db.add_message(chat_id, "user", &content, Some(model))?;
         let user_message = Message {
             id: user_message_id,
             chat_id,
             role: "user".to_string(),
             content,
             created_at: chrono::Utc::now().to_rfc3339(),
+            model: Some(model.to_string()),
         };
         let _ = event_sender.send(ChatEvent::MessageAdded {
             chat_id,
@@ -144,13 +148,14 @@ impl ChatManager {
         match result {
             Ok(stream_result) => {
                 let full_content = accumulated_content.lock().await.clone();
-                let assistant_message_id = self.db.add_message(chat_id, "assistant", &full_content)?;
+                let assistant_message_id = self.db.add_message(chat_id, "assistant", &full_content, Some(model))?;
                 let assistant_message = Message {
                     id: assistant_message_id,
                     chat_id,
                     role: "assistant".to_string(),
                     content: full_content,
                     created_at: chrono::Utc::now().to_rfc3339(),
+                    model: Some(model.to_string()),
                 };
                 let _ = event_sender.send(ChatEvent::MessageAdded {
                     chat_id,
@@ -197,12 +202,16 @@ impl ChatManager {
         self.db.update_message(message_id, &new_content)?;
         self.db.truncate_messages(chat_id, message_id)?;
 
+        // Update chat's active model
+        self.db.update_chat_active_model(chat_id, model)?;
+
         let updated_message = Message {
             id: message_id,
             chat_id,
             role: original_message.role.clone(),
             content: new_content,
             created_at: chrono::Utc::now().to_rfc3339(),
+            model: Some(model.to_string()),
         };
         let _ = event_sender.send(ChatEvent::MessageAdded {
             chat_id,
@@ -257,13 +266,14 @@ impl ChatManager {
         match result {
             Ok(stream_result) => {
                 let full_content = accumulated_content.lock().await.clone();
-                let assistant_message_id = self.db.add_message(chat_id, "assistant", &full_content)?;
+                let assistant_message_id = self.db.add_message(chat_id, "assistant", &full_content, Some(model))?;
                 let assistant_message = Message {
                     id: assistant_message_id,
                     chat_id,
                     role: "assistant".to_string(),
                     content: full_content,
                     created_at: chrono::Utc::now().to_rfc3339(),
+                    model: Some(model.to_string()),
                 };
                 let _ = event_sender.send(ChatEvent::MessageAdded {
                     chat_id,

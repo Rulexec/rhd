@@ -35,14 +35,29 @@ The `ChatManager` in `packages/rhd_app/src/chat.rs` handles all chat operations:
 
 - Chat data persisted in SQLite database at `<dbDir>/chats.db` (default: `rhd_db/chats.db`)
 - Two tables: `chats` and `messages` with foreign key relationship
-- `chats` table: `id` (INTEGER PRIMARY KEY), `title` (TEXT), `created_at` (TEXT), `updated_at` (TEXT)
-- `messages` table: `id` (INTEGER PRIMARY KEY), `chat_id` (INTEGER FK), `role` (TEXT), `content` (TEXT), `created_at` (TEXT)
+- `chats` table: `id` (INTEGER PRIMARY KEY), `title` (TEXT), `created_at` (TEXT), `updated_at` (TEXT), `active_model` (TEXT, nullable)
+- `messages` table: `id` (INTEGER PRIMARY KEY), `chat_id` (INTEGER FK), `role` (TEXT), `content` (TEXT), `created_at` (TEXT), `model` (TEXT, nullable)
 - Index on `messages.chat_id` for faster retrieval
 - CASCADE DELETE: deleting a chat removes all its messages
 - `add_message()` automatically updates chat's `updated_at` timestamp
 - `truncate_messages(chat_id, after_message_id)`: deletes messages with id > after_message_id (for edit-and-resend)
 - WAL mode and foreign keys enabled
 - Thread-safe via `Mutex<Connection>`
+
+### Model Tracking
+
+- Each chat tracks its `active_model` (the currently selected model for that chat)
+- Each message stores which `model` was used to generate it
+- When sending a message, the chat's `active_model` is updated to match the model used
+- Model indicators are shown in the UI when the model changes between messages (visual only, not sent to AI)
+
+### Database Migration
+
+- On initialization, `ChatDb` checks if the `active_model` column exists in the `chats` table
+- If missing, it adds the column using `ALTER TABLE chats ADD COLUMN active_model TEXT`
+- Similarly checks and adds the `model` column to the `messages` table if missing
+- Migration is automatic and transparent to the application
+- Existing data is preserved; new columns default to NULL for old records
 
 ## Daemon Integration
 

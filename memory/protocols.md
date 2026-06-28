@@ -24,6 +24,7 @@
   - `sendMessage`: Send a message to a chat and stream AI response
   - `editMessage`: Edit a user message, truncate subsequent messages, and re-stream AI response
   - `abortChat`: Abort an active streaming response in a chat
+  - `getAvailableModels`: Get list of available models (real models only, excludes aliases)
 - **Server → Client responses**: Request responses with success/error status
 - **Server → Client events**: Real-time execution events (scenarioStarted, stepStarted, scenarioFinished)
   - `scenarioFinished` event data uses same `ScenarioMeta` format as `getFinishedScenarios` response items

@@ -1,10 +1,14 @@
 <script lang="ts">
-  import { isStreaming, streamError, currentChatId } from '../lib/chatStores';
-  import { sendMessage, abortChat } from '../lib/chatWs';
+  import { onMount } from 'svelte';
+  import { isStreaming, streamError, currentChatId, availableModels, selectedModel } from '../lib/chatStores';
+  import { sendMessage, abortChat, loadAvailableModels } from '../lib/chatWs';
 
   let input = '';
-  let model = 'gpt4';
   let textareaElement: HTMLTextAreaElement;
+
+  onMount(() => {
+    loadAvailableModels();
+  });
 
   function handleKeydown(event: KeyboardEvent) {
     if (event.key === 'Enter' && !event.shiftKey) {
@@ -14,8 +18,8 @@
   }
 
   function send() {
-    if (!input.trim() || $isStreaming || !$currentChatId) return;
-    sendMessage(input.trim(), model);
+    if (!input.trim() || $isStreaming || !$currentChatId || !$selectedModel) return;
+    sendMessage(input.trim(), $selectedModel);
     input = '';
     if (textareaElement) {
       textareaElement.style.height = 'auto';
@@ -45,6 +49,23 @@
       <button on:click={retry} class="retry-btn">Retry</button>
     </div>
   {/if}
+  <div class="model-selector-row">
+    <label for="model-select">Model:</label>
+    <select
+      id="model-select"
+      bind:value={$selectedModel}
+      disabled={$isStreaming || $availableModels.length === 0}
+      class="model-select"
+    >
+      {#if $availableModels.length === 0}
+        <option value="">No models available</option>
+      {:else}
+        {#each $availableModels as model}
+          <option value={model}>{model}</option>
+        {/each}
+      {/if}
+    </select>
+  </div>
   <div class="input-row">
     <textarea
       bind:this={textareaElement}
@@ -94,6 +115,34 @@
     padding: var(--spacing-xs) var(--spacing-s);
     cursor: pointer;
     font-size: 12px;
+  }
+
+  .model-selector-row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-s);
+    margin-bottom: var(--spacing-s);
+  }
+
+  .model-selector-row label {
+    font-size: 14px;
+    color: var(--color-text-secondary, #666);
+  }
+
+  .model-select {
+    padding: var(--spacing-xs) var(--spacing-s);
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    font-size: 14px;
+    background: var(--color-bg);
+    cursor: pointer;
+    min-width: 150px;
+  }
+
+  .model-select:disabled {
+    background: var(--color-bg-active);
+    cursor: not-allowed;
+    opacity: 0.6;
   }
 
   .input-row {

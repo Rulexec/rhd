@@ -183,6 +183,8 @@ pub enum WsRequest {
     },
     #[serde(rename = "abortChat", rename_all = "camelCase")]
     AbortChat { id: String, chat_id: i64 },
+    #[serde(rename = "getAvailableModels")]
+    GetAvailableModels { id: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -295,6 +297,7 @@ pub struct ChatMessageDto {
     pub role: String,
     pub content: String,
     pub created_at: String,
+    pub model: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -509,11 +512,13 @@ mod tests {
             role: "assistant".to_string(),
             content: "Hello!".to_string(),
             created_at: "2026-06-28T15:00:00Z".to_string(),
+            model: Some("gpt-4".to_string()),
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains(r#""chatId":1"#));
         assert!(json.contains(r#""role":"assistant""#));
         assert!(json.contains(r#""createdAt":"2026-06-28T15:00:00Z""#));
+        assert!(json.contains(r#""model":"gpt-4""#));
     }
 
     #[test]
@@ -526,11 +531,13 @@ mod tests {
                 role: "user".to_string(),
                 content: "Hi".to_string(),
                 created_at: "2026-06-28T15:00:00Z".to_string(),
+                model: Some("gpt-4".to_string()),
             },
         };
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains(r#""chatId":1"#));
         assert!(json.contains(r#""role":"user""#));
+        assert!(json.contains(r#""model":"gpt-4""#));
     }
 
     #[test]

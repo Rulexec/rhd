@@ -28,6 +28,8 @@ Svelte-based web UI in `frontend/` directory for monitoring scenario execution a
 - Abort active streaming responses
 - Real-time streaming display with loading indicator
 - Error states with retry button
+- Model selector dropdown in message input (shows available models, persists per chat)
+- Model indicators in message list (visual dividers showing when model changes between messages)
 
 ## Architecture
 
@@ -60,12 +62,15 @@ Invalid WebSocket messages are logged and ignored via `safeParse`.
 - `isStreaming`: writable boolean indicating active stream
 - `streamError`: writable error message (null when no error)
 - `currentChat`: derived store returning current chat object
+- `availableModels`: writable array of available model names (fetched from backend)
+- `selectedModel`: writable string|null, currently selected model for the active chat
 
 ## Chat WebSocket Functions (`frontend/src/lib/chatWs.ts`)
 
 - `loadChats()`: Fetches and populates chat list
+- `loadAvailableModels()`: Fetches list of available models from backend
 - `createChat(title)`: Creates new chat, selects it
-- `selectChat(chatId)`: Loads chat and messages
+- `selectChat(chatId)`: Loads chat and messages, sets selectedModel from chat's activeModel
 - `deleteChat(chatId)`: Removes chat from list
 - `sendMessage(content, model)`: Sends message, starts streaming
 - `editMessage(messageId, newContent, model)`: Edits message, truncates, re-streams
@@ -77,7 +82,20 @@ Invalid WebSocket messages are logged and ignored via `safeParse`.
 - **`ChatsTab.svelte`**: Main chat tab layout with sidebar and view area
 - **`ChatList.svelte`**: Sidebar with chat list, new chat button, delete buttons
 - **`ChatView.svelte`**: Main chat area with header, message list, and input
-- **`MessageList.svelte`**: Scrollable message list with auto-scroll on new content
+- **`MessageList.svelte`**: Scrollable message list with auto-scroll on new content, shows model indicators when model changes between messages
 - **`Message.svelte`**: Individual message display with edit mode for user messages
-- **`MessageInput.svelte`**: Textarea with send/abort buttons, error display with retry
+- **`MessageInput.svelte`**: Textarea with send/abort buttons, error display with retry, model selector dropdown
 - **`StreamingMessage.svelte`**: Streaming response display with loading dots animation
+
+### Model Selection UI
+
+The `MessageInput` component includes a model selector dropdown that:
+- Fetches available models on mount via `loadAvailableModels()`
+- Binds to the `selectedModel` store
+- Shows only real models (aliases are filtered out on backend)
+- Persists the selected model per chat (stored in `chats.active_model`)
+
+The `MessageList` component displays model indicators:
+- Shows a visual divider when the model changes between messages
+- Indicators are purely visual and not sent to the AI
+- Helps users track which model was used for each part of the conversation

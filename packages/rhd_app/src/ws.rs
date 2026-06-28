@@ -94,6 +94,7 @@ async fn handle_ws_connection(
                                         role: message.role,
                                         content: message.content,
                                         created_at: message.created_at,
+                                        model: message.model,
                                     },
                                 };
                                 WsEvent::new("chatMessageAdded", serde_json::to_value(&payload)?)
@@ -142,7 +143,19 @@ async fn handle_ws_message(text: &str, state: &Arc<DaemonState>) -> WsResponse {
             handle_edit_message(id, message_id, content, model, state).await
         }
         WsRequest::AbortChat { id, chat_id } => handle_abort_chat(id, chat_id, state).await,
+        WsRequest::GetAvailableModels { id } => handle_get_available_models(id, state),
     }
+}
+
+fn handle_get_available_models(id: String, state: &Arc<DaemonState>) -> WsResponse {
+    let mut model_names: Vec<String> = state
+        .models
+        .iter()
+        .filter(|(_, config)| !config.is_alias)
+        .map(|(name, _)| name.clone())
+        .collect();
+    model_names.sort();
+    WsResponse::success(id, serde_json::to_value(&model_names).unwrap())
 }
 
 fn handle_run_scenario(

@@ -30,6 +30,7 @@ export const ChatSchema = z.object({
   title: z.string(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  activeModel: z.string().nullable(),
 });
 export type Chat = z.infer<typeof ChatSchema>;
 
@@ -39,5 +40,6 @@ export const ChatMessageSchema = z.object({
   role: z.enum(['user', 'assistant']),
   content: z.string(),
   createdAt: z.string(),
+  model: z.string().nullable(),
 });
 export type ChatMessage = z.infer<typeof ChatMessageSchema>;

@@ -8,6 +8,8 @@ import {
   streamingContent,
   isStreaming,
   streamError,
+  availableModels,
+  selectedModel,
 } from './chatStores';
 import type { WsEvent } from './types/ws';
 
@@ -16,6 +18,15 @@ export async function loadChats(): Promise<WsResponse> {
   const response = await sendRequest({ type: 'listChats', id });
   if (response.success) {
     chats.set(response.data || []);
+  }
+  return response;
+}
+
+export async function loadAvailableModels(): Promise<WsResponse> {
+  const id = generateRequestId();
+  const response = await sendRequest({ type: 'getAvailableModels', id });
+  if (response.success) {
+    availableModels.set(response.data || []);
   }
   return response;
 }
@@ -30,10 +41,12 @@ export async function createChat(title: string): Promise<WsResponse> {
       title,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      activeModel: null,
     };
     chats.update((list) => [...list, newChat]);
     currentChatId.set(chatId);
     messages.set([]);
+    selectedModel.set(null);
   }
   return response;
 }
@@ -47,6 +60,7 @@ export async function selectChat(chatId: number): Promise<WsResponse> {
     streamingContent.set('');
     isStreaming.set(false);
     streamError.set(null);
+    selectedModel.set(response.data.chat.activeModel || null);
   }
   return response;
 }
@@ -76,6 +90,7 @@ export async function sendMessage(content: string, model: string): Promise<WsRes
     role: 'user' as const,
     content,
     createdAt: new Date().toISOString(),
+    model,
   };
   messages.update((list) => [...list, userMessage]);
 
@@ -145,6 +160,7 @@ export function handleChatEvent(event: string, data: unknown): void {
           role: 'assistant' as const,
           content: get(streamingContent),
           createdAt: new Date().toISOString(),
+          model: get(selectedModel),
         },
       ]);
       isStreaming.set(false);
