@@ -1,3 +1,4 @@
+import { get } from 'svelte/store';
 import { sendRequest, generateRequestId } from './ws.js';
 import {
   chats,
@@ -53,7 +54,7 @@ export async function deleteChat(chatId) {
   const response = await sendRequest({ type: 'deleteChat', id, chatId });
   if (response.success) {
     chats.update((list) => list.filter((c) => c.id !== chatId));
-    const currentId = currentChatId.get();
+    const currentId = get(currentChatId);
     if (currentId === chatId) {
       currentChatId.set(null);
       messages.set([]);
@@ -63,7 +64,7 @@ export async function deleteChat(chatId) {
 }
 
 export async function sendMessage(content, model) {
-  const chatId = currentChatId.get();
+  const chatId = get(currentChatId);
   if (!chatId) return;
 
   const tempId = Date.now();
@@ -90,7 +91,7 @@ export async function sendMessage(content, model) {
 }
 
 export async function editMessage(messageId, newContent, model) {
-  const chatId = currentChatId.get();
+  const chatId = get(currentChatId);
   if (!chatId) return;
 
   messages.update((list) => {
@@ -117,7 +118,7 @@ export async function editMessage(messageId, newContent, model) {
 }
 
 export async function abortChat() {
-  const chatId = currentChatId.get();
+  const chatId = get(currentChatId);
   if (!chatId) return;
 
   const id = generateRequestId();
@@ -137,7 +138,7 @@ export function handleChatEvent(event, data) {
           id: data.messageId,
           chatId: data.chatId,
           role: 'assistant',
-          content: streamingContent.get(),
+          content: get(streamingContent),
           createdAt: new Date().toISOString(),
         },
       ]);
