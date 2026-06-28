@@ -9,7 +9,7 @@ Implement persistent chat functionality where users can create chats, send messa
 This master plan is split into separate implementation plans covering distinct system parts:
 
 1. [x] **[Chat Database Plan](../chat-db-plan.md)** — `ChatDb` in `rhd_db` crate for persistence
-2. [ ] **[Chat AI Streaming Plan](../chat-ai-streaming-plan.md)** — Streaming support in `OpenAiClient`
+2. [x] **[Chat AI Streaming Plan](../chat-ai-streaming-plan.md)** — Streaming support in `OpenAiClient`
 3. [ ] **[Chat API Protocol Plan](../chat-api-protocol-plan.md)** — WebSocket protocol extensions
 4. [ ] **[Chat Backend Plan](../chat-backend-plan.md)** — `ChatManager`, daemon integration, WS handlers
 5. [ ] **[Chat Frontend Plan](../chat-frontend-plan.md)** — Svelte UI components and stores
