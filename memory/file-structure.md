@@ -1,0 +1,88 @@
+# File Structure Reference
+
+```
+frontend/
+├── .nvmrc              # Node.js version (v24.13.0)
+├── package.json        # Dependencies and scripts
+├── vite.config.js      # Vite configuration
+├── index.html          # Entry HTML
+├── svelte.config.js    # Svelte configuration
+└── src/
+    ├── main.js         # App entry point
+    ├── App.svelte      # Root component
+    ├── lib/
+    │   ├── ws.js       # WebSocket connection service
+    │   ├── stores.js   # Svelte stores for scenario state
+    │   ├── chatStores.js # Svelte stores for chat state
+    │   ├── chatWs.js   # Chat WebSocket functions and event handlers
+    │   └── utils.js    # Helper functions
+    ├── components/
+    │   ├── TabNav.svelte
+    │   ├── ScenariosTab.svelte
+    │   ├── ChatsTab.svelte
+    │   ├── ChatList.svelte
+    │   ├── ChatView.svelte
+    │   ├── MessageList.svelte
+    │   ├── Message.svelte
+    │   ├── MessageInput.svelte
+    │   ├── StreamingMessage.svelte
+    │   ├── ActiveScenario.svelte
+    │   └── FinishedScenario.svelte
+    └── styles/
+        ├── global.css
+        ├── utilities.css
+        └── components/
+
+packages/rhd_app/src/
+├── main.rs           # CLI entry point, command dispatch
+├── cli.rs            # clap argument definitions
+├── config.rs         # DaemonConfig YAML loading
+├── daemon.rs         # Unix socket server, WebSocket server, connection handling
+├── client.rs         # Unix socket client
+├── execution.rs      # ExecutionTracker, ExecutionHandle, execution tracking
+├── chat.rs           # ChatManager, ChatEvent, ChatError
+├── ws.rs             # WebSocket server, JSON protocol handlers, chat handlers
+├── log.rs            # LogSink, execution logging, meta.json writing/reading
+├── mcp_cache.rs      # MCP server instance caching
+├── mcp_loader.rs     # MCP config loading from mcp/<name>/mcp.yaml
+├── ipc/
+│   ├── mod.rs
+│   └── protocol.rs   # rkyv message types, read/write helpers
+└── scenario/
+    ├── mod.rs        # Action/Scenario structs
+    ├── loader.rs     # YAML loading, validation
+    ├── executor.rs   # Action execution engine
+    ├── error.rs      # ExecuteError, ExecuteOutput types
+    ├── ai_chat.rs    # AI chat execution with token tracking
+    ├── run_command.rs # Command execution with section tracking
+    └── placeholder.rs # Placeholder resolution, ExecutionContext
+
+packages/rhd_ai/src/
+├── lib.rs
+├── config.rs         # ModelConfig with optional token pricing, load_models()
+└── client.rs         # OpenAiClient, ChatMessage, streaming support, AiError
+
+packages/rhd_api/src/
+└── lib.rs            # Shared types: ExecutionEvent, StepTiming, LogSection, TokenUsage, ScenarioMeta, WsRequest, WsResponse, WsEvent, ErrorCode, TokenPriceTier, Chat event types
+
+packages/rhd_util/src/
+└── lib.rs            # RhdError, RhdResult, substitute_env_vars()
+
+packages/rhd_db/src/
+├── lib.rs            # Module exports
+├── lib.rs            # ScenarioDb, DbError, SQLite wrapper for ID persistence
+└── chat_db.rs        # ChatDb, ChatInfo, Message, chat/message persistence
+
+packages/rhd_mcp_client/src/
+├── lib.rs            # McpConfig, ToolDefinition, ToolResult, McpClientTrait
+├── client.rs         # MCP client implementation
+├── protocol.rs       # MCP JSON-RPC protocol types
+├── transport.rs      # stdio transport for MCP servers
+└── builtin.rs        # Built-in tools (rhd_set_flag)
+
+packages/rhd_test/src/
+├── main.rs           # E2E test runner: mock AI server, daemon spawn, validation
+├── mock_server.rs    # Mock OpenAI-compatible server with token usage
+├── standard_test.rs  # Standard test with meta.json validation
+└── mcp_test.rs       # MCP tool test
+```
