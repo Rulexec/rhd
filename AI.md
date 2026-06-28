@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-RHD is a Rust-based automation tool for AI-assisted task execution. It uses a daemon/client architecture where a long-running daemon process executes scenarios (action chains) on behalf of client requests via Unix socket IPC.
+RHD is a Rust-based automation tool for AI-assisted task execution. It uses a daemon/client architecture where a long-running daemon process executes scenarios (action chains) on behalf of client requests via Unix socket IPC. The system also includes a persistent chat feature for direct AI conversations with streaming responses.
 
 ## Architecture
 
@@ -29,7 +29,11 @@ rhd/
 
 **rhd_ai**:
 - `ModelConfig`: AI model configuration (model_id, baseUrl, apiKey, model, optional token pricing)
-- `OpenAiClient`: HTTP client for chat completions API
+- `OpenAiClient`: HTTP client for chat completions API with streaming support
+- `ChatMessage`: Public enum for building message history (System, User, Assistant, Tool variants)
+- `chat_stream()`: Streaming chat completion with callback-based chunk processing
+- `chat_stream_cancellable()`: Streaming with `CancellationToken` for abort support
+- `StreamChunk`, `StreamResult`: Types for streaming response handling
 - Loads models from `models/*.yaml` at startup
 - Parses token usage from API responses
 
@@ -37,14 +41,21 @@ rhd/
 - Shared types for execution tracking, WebSocket protocol, and token pricing
 - `ExecutionEvent`, `StepTiming`, `LogSection`, `TokenUsage`, `ScenarioMeta`
 - `WsRequest`, `WsResponse`, `WsEvent`, `ErrorCode` for WebSocket protocol
+- Chat request types: `CreateChat`, `ListChats`, `GetChat`, `DeleteChat`, `SendMessage`, `EditMessage`, `AbortChat`
+- Chat event types: `ChatStreamChunkEvent`, `ChatStreamFinishedEvent`, `ChatStreamErrorEvent`, `ChatMessageAddedEvent`, `ChatUpdatedEvent`
+- `ChatMessageDto`: Data transfer object for chat messages
 - `TokenPriceTier` and `calculate_cost()` for token pricing
+- Error codes: `ChatNotFound`, `MessageNotFound`, `ChatStreamFailed`
 
 **rhd_db**:
 - `ScenarioDb`: SQLite database wrapper for persisting scenario execution IDs
+- `ChatDb`: SQLite database wrapper for chat persistence (chats and messages)
 - Uses WAL mode for better concurrency and crash recovery
 - Thread-safe via `Mutex<Connection>`
 - `next_id()`: Atomically retrieves and increments the next scenario ID
-- Database file: `<dbDir>/meta.db` (default: `rhd_db/meta.db`)
+- Chat operations: `create_chat()`, `list_chats()`, `get_chat()`, `delete_chat()`, `update_chat_title()`, `touch_chat()`
+- Message operations: `add_message()`, `get_messages()`, `get_message()`, `truncate_messages()`, `update_message()`
+- Database files: `<dbDir>/meta.db` (scenarios), `<dbDir>/chats.db` (chats)
 
 **rhd_mcp_client**:
 - `McpConfig`: MCP server configuration (cmd, args, cwd, env)
@@ -59,6 +70,7 @@ rhd/
 - **Client mode**: Connects to daemon, sends scenario name, receives output
 - **Scenario executor**: Runs action chains sequentially with placeholder resolution
 - **Execution tracking**: Tracks step timings, token usage, log sections
+- **Chat manager**: `ChatManager` handles chat operations with streaming AI responses
 - **IPC protocol**: rkyv serialization with version-prefixed framing (Unix socket)
 - **WebSocket protocol**: JSON over WebSocket (TCP)
 - **MCP integration**: Loads MCP configs, caches server instances, handles tool calls
@@ -160,10 +172,23 @@ actions:
   - `subscribe`: Subscribe to execution events (returns list of currently active executions)
   - `getFinishedScenarios`: Get list of finished scenarios from meta.json. Accepts optional `lastId` parameter to fetch only scenarios with id > lastId (for incremental updates)
   - `abortScenario`: Abort an active scenario execution by execution ID
+  - `createChat`: Create a new chat with title
+  - `listChats`: Get list of all chats (sorted by updated_at DESC)
+  - `getChat`: Get chat info and messages by chat_id
+  - `deleteChat`: Delete a chat and all its messages
+  - `sendMessage`: Send a message to a chat and stream AI response
+  - `editMessage`: Edit a user message, truncate subsequent messages, and re-stream AI response
+  - `abortChat`: Abort an active streaming response in a chat
 - **Server → Client responses**: Request responses with success/error status
 - **Server → Client events**: Real-time execution events (scenarioStarted, stepStarted, scenarioFinished)
   - `scenarioFinished` event data uses same `ScenarioMeta` format as `getFinishedScenarios` response items
-- Multiple subscribers supported via broadcast channel
+- **Chat streaming events**:
+  - `chatStreamChunk`: Contains `chatId` and `content` (incremental text)
+  - `chatStreamFinished`: Contains `chatId`, `messageId`, and `finishReason`
+  - `chatStreamError`: Contains `chatId` and `error` message
+  - `chatMessageAdded`: Contains `chatId` and `message` object (user or assistant message persisted)
+  - `chatUpdated`: Contains `chatId` and `title` (when chat title changes)
+- Multiple subscribers supported via broadcast channels (separate for execution events and chat events)
 
 ### CWD Propagation
 - `rhd run` captures its current working directory and sends it to the daemon via IPC
@@ -186,6 +211,18 @@ actions:
 - WAL mode enabled for better concurrency and crash recovery
 - Database directory is created automatically if it doesn't exist
 - Fails fast if database cannot be opened or accessed
+
+### Chat Database
+- Chat data persisted in SQLite database at `<dbDir>/chats.db` (default: `rhd_db/chats.db`)
+- Two tables: `chats` and `messages` with foreign key relationship
+- `chats` table: `id` (INTEGER PRIMARY KEY), `title` (TEXT), `created_at` (TEXT), `updated_at` (TEXT)
+- `messages` table: `id` (INTEGER PRIMARY KEY), `chat_id` (INTEGER FK), `role` (TEXT), `content` (TEXT), `created_at` (TEXT)
+- Index on `messages.chat_id` for faster retrieval
+- CASCADE DELETE: deleting a chat removes all its messages
+- `add_message()` automatically updates chat's `updated_at` timestamp
+- `truncate_messages(chat_id, after_message_id)`: deletes messages with id > after_message_id (for edit-and-resend)
+- WAL mode and foreign keys enabled
+- Thread-safe via `Mutex<Connection>`
 
 ## CLI Usage
 
@@ -337,6 +374,45 @@ Steps can be conditionally skipped based on flags set by `rhd_set_flag`:
 - Accessible to all subsequent steps
 - If flag is `true` → skip step, if `false`/absent → execute
 - Applies to all step types except `output`
+
+## Chat Feature
+
+### Chat Backend (`ChatManager`)
+
+The `ChatManager` in `packages/rhd_app/src/chat.rs` handles all chat operations:
+
+- **State**: Holds `Arc<ChatDb>` for persistence and `Mutex<HashMap<i64, CancellationToken>>` for tracking active streams per chat
+- **`create_chat(title)`**: Creates new chat, returns chat_id
+- **`list_chats()`**: Returns all chats sorted by updated_at DESC
+- **`get_chat(id)`**: Returns chat info and all messages
+- **`delete_chat(id)`**: Deletes chat and cascades to messages
+- **`send_message(chat_id, content, model, models, event_sender)`**:
+  - Validates chat exists and model is available
+  - Adds user message to DB, emits `MessageAdded` event
+  - Builds message history from DB, calls `chat_stream_cancellable()`
+  - Accumulates streaming content, emits `StreamChunk` events
+  - On success: adds assistant message to DB, emits `MessageAdded` and `StreamFinished` events
+  - On abort/error: emits `StreamError` event
+  - Returns assistant message_id on success
+- **`edit_and_resend(message_id, new_content, model, models, event_sender)`**:
+  - Validates message exists
+  - Updates message content in DB, truncates subsequent messages
+  - Emits `MessageAdded` event for updated message
+  - Re-streams AI response (same flow as `send_message`)
+- **`abort_chat(chat_id)`**: Cancels active stream token if present, returns true if aborted
+
+**Chat Events** (`ChatEvent` enum):
+- `StreamChunk { chat_id, content }`: Incremental text from streaming
+- `StreamFinished { chat_id, message_id, finish_reason }`: Stream completed successfully
+- `StreamError { chat_id, error }`: Stream failed or aborted
+- `MessageAdded { chat_id, message }`: Message persisted to DB (user or assistant)
+
+**Daemon Integration**:
+- `ChatDb` initialized at `<dbDir>/chats.db` alongside `meta.db`
+- `ChatManager` created with `Arc<ChatDb>`
+- `broadcast::channel(100)` for chat events (separate from execution events)
+- `DaemonState` holds `chat_db`, `chat_manager`, `chat_event_sender`
+- WebSocket handler subscribes to both execution and chat event channels
 
 ## Execution Logs
 
@@ -497,7 +573,7 @@ available tools: <tool1>, <tool2>, ...   (only when MCP tools configured)
 
 ## Frontend
 
-Svelte-based web UI in `frontend/` directory for monitoring scenario execution.
+Svelte-based web UI in `frontend/` directory for monitoring scenario execution and chat interactions.
 
 ### Setup
 - Requires Node.js v24.13.0 (specified in `.nvmrc`)
@@ -511,13 +587,54 @@ Svelte-based web UI in `frontend/` directory for monitoring scenario execution.
   - Shows finished scenarios list (sorted by date, newest first) with status badges
   - Status badges: executing (blue), success (green), error (red), aborted (orange)
   - Caches finished scenarios; uses `lastId` parameter for incremental fetching
-- **Chats tab**: Placeholder (not implemented yet)
+- **Chats tab**:
+  - Chat list sidebar with "New Chat" button
+  - Chat view with message history and streaming responses
+  - Create, delete, and select chats
+  - Send messages with Enter (Shift+Enter for newline)
+  - Edit user messages (truncates subsequent messages and re-streams)
+  - Abort active streaming responses
+  - Real-time streaming display with loading indicator
+  - Error states with retry button
 
 ### Architecture
 - WebSocket connection with auto-reconnect
-- Svelte stores for state management (`activeScenarios`, `finishedScenarios`, `lastKnownId`, `wsConnected`)
+- Svelte stores for state management:
+  - Scenario stores: `activeScenarios`, `finishedScenarios`, `lastKnownId`, `wsConnected`
+  - Chat stores: `chats`, `currentChatId`, `messages`, `streamingContent`, `isStreaming`, `streamError`, `currentChat` (derived)
 - CSS modules + utility classes (Tailwind-like approach)
-- Components: `TabNav`, `ScenariosTab`, `ChatsTab`, `ActiveScenario`, `FinishedScenario`
+- Components:
+  - Layout: `TabNav`, `App`
+  - Scenarios: `ScenariosTab`, `ActiveScenario`, `FinishedScenario`
+  - Chats: `ChatsTab`, `ChatList`, `ChatView`, `MessageList`, `Message`, `MessageInput`, `StreamingMessage`
+
+### Chat Stores (`frontend/src/lib/chatStores.js`)
+- `chats`: writable array of chat objects
+- `currentChatId`: writable ID of selected chat
+- `messages`: writable array of messages for current chat
+- `streamingContent`: writable string accumulating streamed text
+- `isStreaming`: writable boolean indicating active stream
+- `streamError`: writable error message (null when no error)
+- `currentChat`: derived store returning current chat object
+
+### Chat WebSocket Functions (`frontend/src/lib/chatWs.js`)
+- `loadChats()`: Fetches and populates chat list
+- `createChat(title)`: Creates new chat, selects it
+- `selectChat(chatId)`: Loads chat and messages
+- `deleteChat(chatId)`: Removes chat from list
+- `sendMessage(content, model)`: Sends message, starts streaming
+- `editMessage(messageId, newContent, model)`: Edits message, truncates, re-streams
+- `abortChat()`: Aborts active stream
+- `handleChatEvent(event, data)`: Processes chat events from WebSocket
+
+### Chat Components
+- **`ChatsTab.svelte`**: Main chat tab layout with sidebar and view area
+- **`ChatList.svelte`**: Sidebar with chat list, new chat button, delete buttons
+- **`ChatView.svelte`**: Main chat area with header, message list, and input
+- **`MessageList.svelte`**: Scrollable message list with auto-scroll on new content
+- **`Message.svelte`**: Individual message display with edit mode for user messages
+- **`MessageInput.svelte`**: Textarea with send/abort buttons, error display with retry
+- **`StreamingMessage.svelte`**: Streaming response display with loading dots animation
 
 ## File Structure Reference
 
@@ -533,12 +650,20 @@ frontend/
     ├── App.svelte      # Root component
     ├── lib/
     │   ├── ws.js       # WebSocket connection service
-    │   ├── stores.js   # Svelte stores for state
+    │   ├── stores.js   # Svelte stores for scenario state
+    │   ├── chatStores.js # Svelte stores for chat state
+    │   ├── chatWs.js   # Chat WebSocket functions and event handlers
     │   └── utils.js    # Helper functions
     ├── components/
     │   ├── TabNav.svelte
     │   ├── ScenariosTab.svelte
     │   ├── ChatsTab.svelte
+    │   ├── ChatList.svelte
+    │   ├── ChatView.svelte
+    │   ├── MessageList.svelte
+    │   ├── Message.svelte
+    │   ├── MessageInput.svelte
+    │   ├── StreamingMessage.svelte
     │   ├── ActiveScenario.svelte
     │   └── FinishedScenario.svelte
     └── styles/
@@ -553,7 +678,8 @@ packages/rhd_app/src/
 ├── daemon.rs         # Unix socket server, WebSocket server, connection handling
 ├── client.rs         # Unix socket client
 ├── execution.rs      # ExecutionTracker, ExecutionHandle, execution tracking
-├── ws.rs             # WebSocket server, JSON protocol handlers
+├── chat.rs           # ChatManager, ChatEvent, ChatError
+├── ws.rs             # WebSocket server, JSON protocol handlers, chat handlers
 ├── log.rs            # LogSink, execution logging, meta.json writing/reading
 ├── mcp_cache.rs      # MCP server instance caching
 ├── mcp_loader.rs     # MCP config loading from mcp/<name>/mcp.yaml
@@ -572,16 +698,18 @@ packages/rhd_app/src/
 packages/rhd_ai/src/
 ├── lib.rs
 ├── config.rs         # ModelConfig with optional token pricing, load_models()
-└── client.rs         # OpenAiClient, AiError, token usage parsing
+└── client.rs         # OpenAiClient, ChatMessage, streaming support, AiError
 
 packages/rhd_api/src/
-└── lib.rs            # Shared types: ExecutionEvent, StepTiming, LogSection, TokenUsage, ScenarioMeta, WsRequest, WsResponse, WsEvent, ErrorCode, TokenPriceTier
+└── lib.rs            # Shared types: ExecutionEvent, StepTiming, LogSection, TokenUsage, ScenarioMeta, WsRequest, WsResponse, WsEvent, ErrorCode, TokenPriceTier, Chat event types
 
 packages/rhd_util/src/
 └── lib.rs            # RhdError, RhdResult, substitute_env_vars()
 
 packages/rhd_db/src/
-└── lib.rs            # ScenarioDb, DbError, SQLite wrapper for ID persistence
+├── lib.rs            # Module exports
+├── lib.rs            # ScenarioDb, DbError, SQLite wrapper for ID persistence
+└── chat_db.rs        # ChatDb, ChatInfo, Message, chat/message persistence
 
 packages/rhd_mcp_client/src/
 ├── lib.rs            # McpConfig, ToolDefinition, ToolResult, McpClientTrait
