@@ -443,7 +443,7 @@ impl OpenAiClient {
         model: &str,
         messages: &[ChatMessage],
         cancel: CancellationToken,
-        mut on_chunk: impl FnMut(StreamChunk),
+        mut on_chunk: impl FnMut(StreamChunk) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>,
     ) -> Result<StreamResult, AiError> {
         let url = format!("{}/chat/completions", self.base_url);
 
@@ -528,7 +528,7 @@ impl OpenAiClient {
                                 finish_reason: None,
                             };
 
-                            on_chunk(stream_chunk);
+                            on_chunk(stream_chunk).await;
                         }
 
                         if let Some(u) = stream_response.usage {

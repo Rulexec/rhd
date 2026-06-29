@@ -129,14 +129,18 @@ impl ChatManager {
 
         let result = client
             .chat_stream_cancellable(model, &chat_messages, cancel_token.clone(), move |chunk| {
-                if let Some(content) = chunk.content {
-                    let _ = sender_for_closure.send(ChatEvent::StreamChunk {
-                        chat_id,
-                        content: content.clone(),
-                    });
-                    let mut acc = accumulated_clone.blocking_lock();
-                    acc.push_str(&content);
-                }
+                let sender = sender_for_closure.clone();
+                let acc = accumulated_clone.clone();
+                Box::pin(async move {
+                    if let Some(content) = chunk.content {
+                        let _ = sender.send(ChatEvent::StreamChunk {
+                            chat_id,
+                            content: content.clone(),
+                        });
+                        let mut acc_guard = acc.lock().await;
+                        acc_guard.push_str(&content);
+                    }
+                })
             })
             .await;
 
@@ -247,14 +251,18 @@ impl ChatManager {
 
         let result = client
             .chat_stream_cancellable(model, &chat_messages, cancel_token.clone(), move |chunk| {
-                if let Some(content) = chunk.content {
-                    let _ = sender_for_closure.send(ChatEvent::StreamChunk {
-                        chat_id,
-                        content: content.clone(),
-                    });
-                    let mut acc = accumulated_clone.blocking_lock();
-                    acc.push_str(&content);
-                }
+                let sender = sender_for_closure.clone();
+                let acc = accumulated_clone.clone();
+                Box::pin(async move {
+                    if let Some(content) = chunk.content {
+                        let _ = sender.send(ChatEvent::StreamChunk {
+                            chat_id,
+                            content: content.clone(),
+                        });
+                        let mut acc_guard = acc.lock().await;
+                        acc_guard.push_str(&content);
+                    }
+                })
             })
             .await;
 
