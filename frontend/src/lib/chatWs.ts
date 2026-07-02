@@ -151,18 +151,6 @@ export function handleChatEvent(event: string, data: unknown): void {
       break;
     }
     case 'chatStreamFinished': {
-      const finished = data as { messageId: number; chatId: number };
-      messages.update((list) => [
-        ...list,
-        {
-          id: finished.messageId,
-          chatId: finished.chatId,
-          role: 'assistant' as const,
-          content: get(streamingContent),
-          createdAt: new Date().toISOString(),
-          model: get(selectedModel),
-        },
-      ]);
       isStreaming.set(false);
       streamingContent.set('');
       streamError.set(null);
@@ -175,10 +163,20 @@ export function handleChatEvent(event: string, data: unknown): void {
       break;
     }
     case 'chatMessageAdded': {
-      const added = data as { message: { id: number } };
+      const added = data as { message: { id: number; role: string; content: string } };
       messages.update((list) => {
         if (list.some((m) => m.id === added.message.id)) {
           return list;
+        }
+        if (added.message.role === 'user') {
+          const tempIdx = list.findIndex(
+            (m) => m.role === 'user' && m.content === added.message.content && ((m.id as number) < 0 || (m.id as number) > 1000000000000)
+          );
+          if (tempIdx !== -1) {
+            const updated = [...list];
+            updated[tempIdx] = added.message as any;
+            return updated;
+          }
         }
         return [...list, added.message as any];
       });

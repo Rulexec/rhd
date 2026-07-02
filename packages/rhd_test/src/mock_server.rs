@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex};
 
-use axum::{extract::State, routing::post, Json, Router};
+use axum::{extract::State, response::{sse::{Event, Sse}, IntoResponse}, routing::post, Json, Router};
+use futures_util::stream;
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 
@@ -10,6 +11,8 @@ pub struct ChatRequest {
     pub messages: Vec<ChatMessage>,
     #[serde(default)]
     pub tools: Option<Vec<serde_json::Value>>,
+    #[serde(default)]
+    pub stream: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -92,6 +95,24 @@ pub struct RecordedRequest {
     pub user_content: String,
 }
 
+#[derive(Debug, Serialize)]
+struct StreamChoice {
+    delta: StreamDelta,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    finish_reason: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct StreamDelta {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    content: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct StreamResponse {
+    choices: Vec<StreamChoice>,
+}
+
 pub type SharedRequests = Arc<Mutex<Vec<RecordedRequest>>>;
 pub type SharedResponse = Arc<Mutex<String>>;
 pub type SharedFlagValue = Arc<Mutex<bool>>;
@@ -99,7 +120,7 @@ pub type SharedFlagValue = Arc<Mutex<bool>>;
 pub async fn chat_completions(
     State((requests, response, flag_value)): State<(SharedRequests, SharedResponse, SharedFlagValue)>,
     Json(body): Json<ChatRequest>,
-) -> Json<ChatResponse> {
+) -> impl axum::response::IntoResponse {
     let system_content = body
         .messages
         .iter()
@@ -125,47 +146,91 @@ pub async fn chat_completions(
 
     let response_content = response.lock().unwrap().clone();
 
-    if should_call_tool {
-        let expected_flag = *flag_value.lock().unwrap();
-        let arguments = format!(r#"{{"name":"test_flag","value":{}}}"#, expected_flag);
-        Json(ChatResponse {
-            choices: vec![Choice {
-                message: ResponseMessage {
-                    role: "assistant".to_string(),
-                    content: None,
-                    tool_calls: Some(vec![ToolCallResponse {
-                        id: "call_1".to_string(),
-                        call_type: "function".to_string(),
-                        function: FunctionCallResponse {
-                            name: "rhd_set_flag".to_string(),
-                            arguments,
-                        },
-                    }]),
-                },
-                finish_reason: Some("tool_calls".to_string()),
-            }],
-            usage: Some(Usage {
-                prompt_tokens: 100,
-                completion_tokens: 20,
-                total_tokens: 120,
-            }),
-        })
+    if body.stream {
+        // Streaming response
+        let events: Vec<Event> = if should_call_tool {
+            // Tool calls not supported in streaming for simplicity, return empty content
+            vec![
+                Event::default().data(r#"{"choices":[{"delta":{"content":""},"finish_reason":null}]}"#),
+                Event::default().data("[DONE]"),
+            ]
+        } else {
+            // Split response into chunks for streaming effect
+            let mut events = Vec::new();
+            let words: Vec<&str> = response_content.split_whitespace().collect();
+            for (i, word) in words.iter().enumerate() {
+                let content = if i == 0 {
+                    word.to_string()
+                } else {
+                    format!(" {}", word)
+                };
+                let stream_resp = StreamResponse {
+                    choices: vec![StreamChoice {
+                        delta: StreamDelta { content: Some(content) },
+                        finish_reason: None,
+                    }],
+                };
+                let json = serde_json::to_string(&stream_resp).unwrap();
+                events.push(Event::default().data(json));
+            }
+            // Final event with finish_reason
+            let final_resp = StreamResponse {
+                choices: vec![StreamChoice {
+                    delta: StreamDelta { content: None },
+                    finish_reason: Some("stop".to_string()),
+                }],
+            };
+            let json = serde_json::to_string(&final_resp).unwrap();
+            events.push(Event::default().data(json));
+            events.push(Event::default().data("[DONE]"));
+            events
+        };
+        Sse::new(stream::iter(events.into_iter().map(Ok::<_, std::convert::Infallible>))).into_response()
     } else {
-        Json(ChatResponse {
-            choices: vec![Choice {
-                message: ResponseMessage {
-                    role: "assistant".to_string(),
-                    content: Some(response_content),
-                    tool_calls: None,
-                },
-                finish_reason: Some("stop".to_string()),
-            }],
-            usage: Some(Usage {
-                prompt_tokens: 50,
-                completion_tokens: 10,
-                total_tokens: 60,
-            }),
-        })
+        // Non-streaming response
+        let chat_response = if should_call_tool {
+            let expected_flag = *flag_value.lock().unwrap();
+            let arguments = format!(r#"{{"name":"test_flag","value":{}}}"#, expected_flag);
+            ChatResponse {
+                choices: vec![Choice {
+                    message: ResponseMessage {
+                        role: "assistant".to_string(),
+                        content: None,
+                        tool_calls: Some(vec![ToolCallResponse {
+                            id: "call_1".to_string(),
+                            call_type: "function".to_string(),
+                            function: FunctionCallResponse {
+                                name: "rhd_set_flag".to_string(),
+                                arguments,
+                            },
+                        }]),
+                    },
+                    finish_reason: Some("tool_calls".to_string()),
+                }],
+                usage: Some(Usage {
+                    prompt_tokens: 100,
+                    completion_tokens: 20,
+                    total_tokens: 120,
+                }),
+            }
+        } else {
+            ChatResponse {
+                choices: vec![Choice {
+                    message: ResponseMessage {
+                        role: "assistant".to_string(),
+                        content: Some(response_content),
+                        tool_calls: None,
+                    },
+                    finish_reason: Some("stop".to_string()),
+                }],
+                usage: Some(Usage {
+                    prompt_tokens: 50,
+                    completion_tokens: 10,
+                    total_tokens: 60,
+                }),
+            }
+        };
+        Json(chat_response).into_response()
     }
 }
 
