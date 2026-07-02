@@ -1,12 +1,23 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import { currentChatId } from '../lib/chatStores';
-  import { loadChats } from '../lib/chatWs';
+  import { wsConnected } from '../lib/stores';
+  import { loadChats, selectChat } from '../lib/chatWs';
+  import { parseHash } from '../lib/router';
   import ChatList from './ChatList.svelte';
   import ChatView from './ChatView.svelte';
 
-  onMount(() => {
-    loadChats();
+  let chatsLoaded = $state(false);
+
+  $effect(() => {
+    if ($wsConnected && !chatsLoaded) {
+      chatsLoaded = true;
+      loadChats().then(() => {
+        const parsed = parseHash();
+        if (parsed.chatId && parsed.tab === 'chats') {
+          selectChat(parsed.chatId);
+        }
+      });
+    }
   });
 </script>
 
