@@ -6,6 +6,10 @@
   let input = '';
   let textareaElement: HTMLTextAreaElement;
 
+  $: if ($availableModels.length > 0 && $selectedModel === null) {
+    selectedModel.set($availableModels[0]);
+  }
+
   onMount(() => {
     loadAvailableModels();
   });

@@ -21,7 +21,6 @@ Svelte-based web UI in `frontend/` directory for monitoring scenario execution a
   - `configureMock(content)` - sets mock AI response
   - `getRecordedRequests()` - fetches recorded AI requests
 - WebSocket port dynamically set via `setWsPort()` and `connectWebSocket()` from `src/lib/ws.ts`
-- **Known issue**: Chat UI does not auto-select first model when creating new chat
 
 ## Features
 
@@ -107,6 +106,7 @@ The `MessageInput` component includes a model selector dropdown that:
 - Binds to the `selectedModel` store
 - Shows only real models (aliases are filtered out on backend)
 - Persists the selected model per chat (stored in `chats.active_model`)
+- Auto-selects the first available model when no model is currently selected
 
 The `MessageList` component displays model indicators:
 - Shows a visual divider when the model changes between messages

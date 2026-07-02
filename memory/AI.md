@@ -24,6 +24,8 @@ rhd/
 
 ## Knowledge Base Index
 
+**IMPORTANT**: Always read [development.md](development.md) before starting any work. It contains project conventions, testing practices, and commit guidelines.
+
 Detailed documentation is split into topic-specific files. Read the relevant file when you need deep knowledge about a specific area:
 
 | File | When to read |

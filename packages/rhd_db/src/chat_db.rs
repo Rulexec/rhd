@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use crate::{DbError, DbResult};
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ChatInfo {
     pub id: i64,
     pub title: String,
@@ -14,6 +15,7 @@ pub struct ChatInfo {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Message {
     pub id: i64,
     pub chat_id: i64,

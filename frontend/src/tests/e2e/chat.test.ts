@@ -87,10 +87,30 @@ describe('Chat UI', () => {
     await waitFor(
       () => {
         const modelSelect = screen.getByLabelText('Model:') as HTMLSelectElement;
-        expect(modelSelect).toBeTruthy();
-        // Note: Due to a known bug, the model is not auto-selected
-        // Just verify the select exists and has options
-        expect(modelSelect.options.length).toBeGreaterThan(0);
+        if (!modelSelect) {
+          throw new Error('Model select element should be present');
+        }
+      },
+      { timeout: 5000 }
+    );
+
+    await waitFor(
+      () => {
+        const modelSelect = screen.getByLabelText('Model:') as HTMLSelectElement;
+        if (modelSelect.options.length === 0) {
+          throw new Error('Model options should be loaded');
+        }
+      },
+      { timeout: 5000 }
+    );
+
+    await waitFor(
+      () => {
+        const modelSelect = screen.getByLabelText('Model:') as HTMLSelectElement;
+        const expectedValue = modelSelect.options[0].value;
+        if (modelSelect.value !== expectedValue) {
+          throw new Error(`First model should be auto-selected: expected "${expectedValue}", got "${modelSelect.value}"`);
+        }
       },
       { timeout: 5000 }
     );
