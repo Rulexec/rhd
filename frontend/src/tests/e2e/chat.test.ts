@@ -3,10 +3,10 @@ import { spawn, ChildProcess } from 'child_process';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { get } from 'svelte/store';
-import { waitForWebSocket, setControlPort, setWsPort } from './testUtils';
-import { setWsPort as setWsWsPort, connectWebSocket } from '../lib/ws';
-import { wsConnected } from '../lib/stores';
-import ChatsTab from '../components/ChatsTab.svelte';
+import { waitForWebSocket, setControlPort, setWsPort } from '../testUtils';
+import { setWsPort as setWsWsPort, connectWebSocket } from '../../lib/ws';
+import { wsConnected } from '../../lib/stores';
+import ChatsTab from '../../components/ChatsTab.svelte';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -14,7 +14,7 @@ const __dirname = dirname(__filename);
 let rhdProcess: ChildProcess | null = null;
 
 beforeAll(async () => {
-  const workspaceRoot = resolve(__dirname, '../../..');
+  const workspaceRoot = resolve(__dirname, '../../../..');
   const rhdTestBin = resolve(workspaceRoot, 'target/debug/rhd_test');
 
   rhdProcess = spawn(rhdTestBin, ['frontend'], {

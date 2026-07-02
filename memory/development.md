@@ -15,25 +15,33 @@
 
 ## Testing
 
-### E2E Tests (Backend)
+**Prefer running tests via mise** — commands defined in `mise.toml` at project root.
 
-- E2E tests via `rhd_test` crate: `cargo build && cargo run -p rhd_test [-- --seed <N> --repetitions <N>]`
-- **Important**: Always prepend `cargo build &&` when running e2e tests to ensure the test binary and daemon are rebuilt with latest changes
-- `rhd_test` accepts `--seed` (default 42) for deterministic random generation and `--repetitions` (default 10) to run tests in loop
-- Each iteration uses seed `base_seed + i`, prints iteration seed for reproducibility on failure
-- `rhd_test` starts a mock OpenAI-compatible HTTP server (axum, reused across iterations), spawns daemon per iteration, runs scenario, validates AI request payloads and output
-- Test scenarios in `test_e2e/scenarios/<name>/scenario.yaml`
-- Test models in `test_e2e/models/*.yaml`
+### Mise Test Commands
 
-### Frontend UI Tests
+| Command | Description |
+|---------|-------------|
+| `mise run test-frontend-unit` | Frontend unit tests (vitest, no daemon) |
+| `mise run test-frontend-e2e` | Frontend e2e tests (vitest, spawns daemon) |
+| `mise run test-cargo` | Cargo unit tests (`cargo test`) |
+| `mise run test-e2e` | Backend e2e tests (`cargo build && cargo run -p rhd_test`) |
+| `mise run test-all` | All tests above |
 
-- Frontend UI tests use Vitest with happy-dom environment
-- Test command: `cd frontend && ./node_modules/.bin/vitest run`
+Pass arguments to rhd_test: `mise run test-e2e -- --seed 100 --repetitions 5`
+
+### Frontend Tests
+
+Frontend tests split into two categories:
+
+**Unit tests** — pure component/utils tests, no daemon spawn. Co-located with source files (e.g., `src/lib/utils.test.ts`). Config: `frontend/vitest.config.unit.ts`.
+
+**E2E tests** — spawn daemon via `rhd_test frontend`. Located in `frontend/src/tests/e2e/`. Config: `frontend/vitest.config.e2e.ts`.
+
+E2E test infrastructure:
 - Tests spawn `rhd_test frontend` which starts:
   - Mock AI server on random port
   - Control HTTP server on random port (for test coordination)
   - rhd daemon with WebSocket server on random port
-- Test files in `frontend/src/tests/*.test.ts`
 - Test utilities in `frontend/src/tests/testUtils.ts`:
   - `waitForWebSocket()` - waits for daemon to be ready
   - `configureMock(content)` - sets mock AI response
@@ -41,6 +49,15 @@
 - Tests use `@testing-library/svelte` for component rendering and interaction
 - WebSocket port is dynamically set via `setWsPort()` and `connectWebSocket()` from `src/lib/ws.ts`
 - **Known issue**: Chat UI does not auto-select first model when creating new chat (test works around this)
+
+### Backend E2E Tests
+
+- E2E tests via `rhd_test` crate
+- `rhd_test` accepts `--seed` (default 42) for deterministic random generation and `--repetitions` (default 10) to run tests in loop
+- Each iteration uses seed `base_seed + i`, prints iteration seed for reproducibility on failure
+- `rhd_test` starts a mock OpenAI-compatible HTTP server (axum, reused across iterations), spawns daemon per iteration, runs scenario, validates AI request payloads and output
+- Test scenarios in `test_e2e/scenarios/<name>/scenario.yaml`
+- Test models in `test_e2e/models/*.yaml`
 
 ## Build & Validation
 
