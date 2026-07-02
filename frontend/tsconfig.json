@@ -11,7 +11,8 @@
     "moduleResolution": "bundler",
     "strict": true,
     "noEmit": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "types": ["vitest/globals", "node"]
   },
   "include": ["src/**/*.ts", "src/**/*.svelte"]
 }

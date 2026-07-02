@@ -15,6 +15,8 @@
 
 ## Testing
 
+### E2E Tests (Backend)
+
 - E2E tests via `rhd_test` crate: `cargo build && cargo run -p rhd_test [-- --seed <N> --repetitions <N>]`
 - **Important**: Always prepend `cargo build &&` when running e2e tests to ensure the test binary and daemon are rebuilt with latest changes
 - `rhd_test` accepts `--seed` (default 42) for deterministic random generation and `--repetitions` (default 10) to run tests in loop
@@ -22,6 +24,23 @@
 - `rhd_test` starts a mock OpenAI-compatible HTTP server (axum, reused across iterations), spawns daemon per iteration, runs scenario, validates AI request payloads and output
 - Test scenarios in `test_e2e/scenarios/<name>/scenario.yaml`
 - Test models in `test_e2e/models/*.yaml`
+
+### Frontend UI Tests
+
+- Frontend UI tests use Vitest with happy-dom environment
+- Test command: `cd frontend && ./node_modules/.bin/vitest run`
+- Tests spawn `rhd_test frontend` which starts:
+  - Mock AI server on random port
+  - Control HTTP server on random port (for test coordination)
+  - rhd daemon with WebSocket server on random port
+- Test files in `frontend/src/tests/*.test.ts`
+- Test utilities in `frontend/src/tests/testUtils.ts`:
+  - `waitForWebSocket()` - waits for daemon to be ready
+  - `configureMock(content)` - sets mock AI response
+  - `getRecordedRequests()` - fetches recorded AI requests
+- Tests use `@testing-library/svelte` for component rendering and interaction
+- WebSocket port is dynamically set via `setWsPort()` and `connectWebSocket()` from `src/lib/ws.ts`
+- **Known issue**: Chat UI does not auto-select first model when creating new chat (test works around this)
 
 ## Build & Validation
 

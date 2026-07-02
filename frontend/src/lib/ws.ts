@@ -3,9 +3,18 @@ import { WsMessageSchema } from './types/ws';
 import type { WsEvent, WsResponse } from './types/ws';
 import { handleChatEvent } from './chatWs';
 
-const WS_PORT = import.meta.env.VITE_WS_PORT || 9876;
-const WS_URL = `ws://127.0.0.1:${WS_PORT}`;
+let WS_PORT = import.meta.env.VITE_WS_PORT || 9876;
+let WS_URL = `ws://127.0.0.1:${WS_PORT}`;
 const RECONNECT_DELAY_MS = 2000;
+
+export function setWsPort(port: number): void {
+  WS_PORT = port;
+  WS_URL = `ws://127.0.0.1:${WS_PORT}`;
+}
+
+export function connectWebSocket(): void {
+  connect();
+}
 
 let socket: WebSocket | null = null;
 let requestIdCounter = 0;

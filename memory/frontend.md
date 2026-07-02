@@ -10,6 +10,19 @@ Svelte-based web UI in `frontend/` directory for monitoring scenario execution a
 - Build with `npm run build`
 - Connects to daemon WebSocket server (default port 9876, configurable via `VITE_WS_PORT` env var)
 
+## Testing
+
+- UI tests use Vitest with happy-dom environment
+- Run tests: `cd frontend && ./node_modules/.bin/vitest run`
+- Tests spawn `rhd_test frontend` which starts mock AI server, control server, and daemon
+- Test files in `src/tests/*.test.ts`
+- Test utilities in `src/tests/testUtils.ts`:
+  - `waitForWebSocket()` - waits for daemon to be ready
+  - `configureMock(content)` - sets mock AI response
+  - `getRecordedRequests()` - fetches recorded AI requests
+- WebSocket port dynamically set via `setWsPort()` and `connectWebSocket()` from `src/lib/ws.ts`
+- **Known issue**: Chat UI does not auto-select first model when creating new chat
+
 ## Features
 
 ### Scenarios Tab
