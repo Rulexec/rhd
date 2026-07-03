@@ -1,11 +1,15 @@
 # File Structure Reference
 
+> **Note**: This file list may not be fully accurate. If you find issues like references to non-existing files or inaccurate descriptions, fix them immediately.
+
 ```
 frontend/
 ├── .nvmrc              # Node.js version (v24.13.0)
 ├── package.json        # Dependencies and scripts
 ├── tsconfig.json       # TypeScript configuration
 ├── vite.config.js      # Vite configuration
+├── vitest.config.unit.ts  # Unit test config
+├── vitest.config.e2e.ts   # E2E test config
 ├── index.html          # Entry HTML
 ├── svelte.config.js    # Svelte configuration
 └── src/
@@ -18,6 +22,7 @@ frontend/
     │   ├── chatStores.ts # Svelte stores for chat state
     │   ├── chatWs.ts   # Chat WebSocket functions and event handlers
     │   ├── utils.ts    # Helper functions
+    │   ├── router.ts   # Hash-based routing
     │   └── types/
     │       ├── index.ts    # Domain types with Zod schemas
     │       └── ws.ts       # WebSocket protocol schemas
@@ -33,10 +38,17 @@ frontend/
     │   ├── StreamingMessage.svelte
     │   ├── ActiveScenario.svelte
     │   └── FinishedScenario.svelte
-    └── styles/
-        ├── global.css
-        ├── utilities.css
-        └── components/
+    ├── styles/
+    │   ├── global.css
+    │   ├── utilities.css
+    │   └── components/
+    └── tests/
+        ├── setup.ts        # Test setup
+        ├── testUtils.ts    # E2E test utilities
+        └── e2e/
+            ├── chat.test.ts
+            ├── chat-messageflow.test.ts
+            └── chat-streaming.test.ts
 
 packages/rhd_app/src/
 ├── main.rs           # CLI entry point, command dispatch
@@ -74,8 +86,7 @@ packages/rhd_util/src/
 └── lib.rs            # RhdError, RhdResult, substitute_env_vars()
 
 packages/rhd_db/src/
-├── lib.rs            # Module exports
-├── lib.rs            # ScenarioDb, DbError, SQLite wrapper for ID persistence
+├── lib.rs            # Module exports, ScenarioDb, DbError, SQLite wrapper for ID persistence
 └── chat_db.rs        # ChatDb, ChatInfo, Message, chat/message persistence
 
 packages/rhd_mcp_client/src/
@@ -86,8 +97,13 @@ packages/rhd_mcp_client/src/
 └── builtin.rs        # Built-in tools (rhd_set_flag)
 
 packages/rhd_test/src/
-├── main.rs           # E2E test runner: mock AI server, daemon spawn, validation
-├── mock_server.rs    # Mock OpenAI-compatible server with token usage
+├── main.rs           # E2E test runner entry point
+├── args.rs           # CLI argument definitions
+├── mock_server.rs    # Mock OpenAI-compatible server with token usage and streaming
+├── control_server.rs # HTTP control server for test coordination
 ├── standard_test.rs  # Standard test with meta.json validation
-└── mcp_test.rs       # MCP tool test
+├── mcp_test.rs       # MCP tool test
+├── sse_test.rs       # SSE streaming test
+├── frontend_test.rs  # Frontend E2E test orchestrator
+└── utils.rs          # Test utilities
 ```

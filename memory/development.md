@@ -31,43 +31,12 @@ Pass arguments to rhd_test: `mise run test-e2e -- --seed 100 --repetitions 5`
 
 ### Frontend Tests
 
-Frontend tests split into two categories:
-
-**Unit tests** — pure component/utils tests, no daemon spawn. Co-located with source files (e.g., `src/lib/utils.test.ts`). Config: `frontend/vitest.config.unit.ts`.
-
-**E2E tests** — spawn daemon via `rhd_test frontend`. Located in `frontend/src/tests/e2e/`. Config: `frontend/vitest.config.e2e.ts`.
-
-E2E test infrastructure:
-- Tests spawn `rhd_test frontend` which starts:
-  - Mock AI server on random port
-  - Control HTTP server on random port (for test coordination)
-  - rhd daemon with WebSocket server on random port
-- Test utilities in `frontend/src/tests/testUtils.ts`:
-  - `waitForWebSocket()` - waits for daemon to be ready
-  - `configureMock(content)` - sets mock AI response
-  - `getRecordedRequests()` - fetches recorded AI requests
-  - `emitStreamChunk(content)` - emits a streaming chunk via control server (returns JSON with status)
-  - `finishStream()` - finishes the stream via control server (returns JSON with status)
-  - `waitForStreamReady()` - polls control server until stream is ready
-  - All control server methods check response status and throw errors if not OK
-- Tests use `@testing-library/svelte` for component rendering and interaction
-- WebSocket port is dynamically set via `setWsPort()` and `connectWebSocket()` from `src/lib/ws.ts`
-- **Known issue**: Chat UI does not auto-select first model when creating new chat (test works around this)
+- Unit tests: pure component/utils tests, no daemon spawn. Config: `frontend/vitest.config.unit.ts`
+- E2E tests: see [frontend-e2e.md](frontend-e2e.md)
 
 ### Backend E2E Tests
 
-- E2E tests via `rhd_test` crate
-- `rhd_test` accepts `--seed` (default 42) for deterministic random generation and `--repetitions` (default 10) to run tests in loop
-- Each iteration uses seed `base_seed + i`, prints iteration seed for reproducibility on failure
-- `rhd_test` starts a mock OpenAI-compatible HTTP server (axum, reused across iterations), spawns daemon per iteration, runs scenario, validates AI request payloads and output
-- Mock server supports controlled streaming via `mpsc` channel:
-  - `StreamChunkSender` type: `Arc<Mutex<Option<mpsc::Sender<Option<String>>>>>`
-  - When streaming request arrives, creates channel and stores sender
-  - Control server endpoints send chunks via the sender
-  - SSE stream uses `async_stream::stream!` with keep-alive (1s interval)
-  - Control server returns JSON responses: `{"status":"OK"}` or `{"status":"ERROR","message":"..."}`
-- Test scenarios in `test_e2e/scenarios/<name>/scenario.yaml`
-- Test models in `test_e2e/models/*.yaml`
+See [backend-e2e.md](backend-e2e.md)
 
 ## Build & Validation
 

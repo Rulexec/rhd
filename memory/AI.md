@@ -39,3 +39,6 @@ Detailed documentation is split into topic-specific files. Read the relevant fil
 | [frontend.md](frontend.md) | When working on the Svelte web UI, chat stores, WebSocket client, or frontend components |
 | [development.md](development.md) | When planning features, running tests, committing code, or needing to understand project conventions and error handling |
 | [file-structure.md](file-structure.md) | When you need to find which file contains specific functionality or understand the project layout |
+| [frontend-e2e.md](frontend-e2e.md) | When working on frontend E2E tests, test utilities, or test infrastructure |
+| [backend-e2e.md](backend-e2e.md) | When working on backend E2E tests, rhd_test crate, mock server, or test scenarios |
+| [debugging.md](debugging.md) | When any test fails |
