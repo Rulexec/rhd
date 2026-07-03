@@ -3,11 +3,13 @@ use std::path::Path;
 use std::sync::Arc;
 
 use rhd_ai::config::ModelConfig;
-use rhd_db::ScenarioDb;
+use rhd_db::{ChatDb, ScenarioDb};
 use rhd_mcp_client::McpConfig;
 use tokio::net::UnixListener;
 use tokio::signal::unix::{signal, SignalKind};
+use tokio::sync::broadcast;
 
+use crate::chat::{ChatEvent, ChatManager};
 use crate::execution::ExecutionTracker;
 use crate::ipc::protocol::{read_message, write_message, IpcRequest, IpcResponse};
 use crate::log::{create_log_dir, open_log_file, LogSink};
@@ -22,6 +24,9 @@ pub struct DaemonState {
     pub default_model: Option<String>,
     pub logs: Option<std::path::PathBuf>,
     pub execution_tracker: Arc<ExecutionTracker>,
+    pub chat_db: Arc<ChatDb>,
+    pub chat_manager: Arc<ChatManager>,
+    pub chat_event_sender: broadcast::Sender<ChatEvent>,
 }
 
 pub async fn run_daemon(
@@ -51,6 +56,12 @@ pub async fn run_daemon(
     let db = Arc::new(ScenarioDb::new(db_path).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?);
     let execution_tracker = Arc::new(ExecutionTracker::new(db));
 
+    let db_path_obj = std::path::Path::new(db_path);
+    let chat_db_path = format!("{}/chats.db", db_path_obj.parent().unwrap_or(Path::new(".")).display());
+    let chat_db = Arc::new(ChatDb::new(&chat_db_path).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?);
+    let chat_manager = Arc::new(ChatManager::new(chat_db.clone()));
+    let (chat_event_sender, _) = broadcast::channel(100);
+
     let state = Arc::new(DaemonState {
         scenarios,
         models,
@@ -59,6 +70,9 @@ pub async fn run_daemon(
         default_model,
         logs,
         execution_tracker: execution_tracker.clone(),
+        chat_db,
+        chat_manager,
+        chat_event_sender,
     });
 
     let scenario_names: Vec<&String> = state.scenarios.keys().collect();

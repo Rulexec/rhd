@@ -1,6 +1,8 @@
+use futures_util::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use tokio_util::sync::CancellationToken;
 
 #[derive(Debug, Error)]
 pub enum AiError {
@@ -23,36 +25,101 @@ pub enum AiError {
         source: reqwest::Error,
     },
 
+    #[error("failed to parse JSON for {model}: {source}")]
+    JsonParse {
+        model: String,
+        source: serde_json::Error,
+    },
+
     #[error("no choices in response for {model}")]
     NoChoices { model: String },
+
+    #[error("streaming aborted for {model}")]
+    Aborted { model: String },
+
+    #[error("SSE stream error for {model} at event {event_index}: {message}")]
+    StreamError {
+        model: String,
+        event_index: usize,
+        message: String,
+        source: reqwest::Error,
+    },
 }
 
 #[derive(Serialize)]
 struct ChatRequest<'a> {
     model: &'a str,
-    messages: Vec<ChatMessage<'a>>,
+    messages: Vec<ChatMessage>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tools: Option<&'a [ToolDefinition]>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    stream: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(untagged)]
-#[allow(dead_code)]
-enum ChatMessage<'a> {
-    System { role: &'a str, content: &'a str },
-    User { role: &'a str, content: &'a str },
+pub enum ChatMessage {
+    System { role: String, content: String },
+    User { role: String, content: String },
     Assistant {
-        role: &'a str,
+        role: String,
         #[serde(skip_serializing_if = "Option::is_none")]
-        content: Option<&'a str>,
+        content: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        tool_calls: Option<&'a [ToolCall]>,
+        tool_calls: Option<Vec<ToolCall>>,
     },
     Tool {
-        role: &'a str,
-        tool_call_id: &'a str,
-        content: &'a str,
+        role: String,
+        tool_call_id: String,
+        content: String,
     },
+}
+
+impl ChatMessage {
+    pub fn user(content: impl Into<String>) -> Self {
+        ChatMessage::User {
+            role: "user".to_string(),
+            content: content.into(),
+        }
+    }
+
+    pub fn system(content: impl Into<String>) -> Self {
+        ChatMessage::System {
+            role: "system".to_string(),
+            content: content.into(),
+        }
+    }
+
+    pub fn assistant(content: impl Into<String>) -> Self {
+        ChatMessage::Assistant {
+            role: "assistant".to_string(),
+            content: Some(content.into()),
+            tool_calls: None,
+        }
+    }
+
+    pub fn assistant_with_tool_calls(
+        content: Option<String>,
+        tool_calls: Vec<ToolCall>,
+    ) -> Self {
+        ChatMessage::Assistant {
+            role: "assistant".to_string(),
+            content,
+            tool_calls: if tool_calls.is_empty() {
+                None
+            } else {
+                Some(tool_calls)
+            },
+        }
+    }
+
+    pub fn tool(tool_call_id: impl Into<String>, content: impl Into<String>) -> Self {
+        ChatMessage::Tool {
+            role: "tool".to_string(),
+            tool_call_id: tool_call_id.into(),
+            content: content.into(),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -69,7 +136,7 @@ pub struct FunctionDefinition {
     pub parameters: serde_json::Value,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ToolCall {
     pub id: String,
     pub name: String,
@@ -123,6 +190,35 @@ pub struct ChatResult {
     pub usage: Option<rhd_api::TokenUsage>,
 }
 
+#[derive(Debug, Clone)]
+pub struct StreamChunk {
+    pub content: Option<String>,
+    pub finish_reason: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct StreamResult {
+    pub finish_reason: Option<String>,
+    pub usage: Option<rhd_api::TokenUsage>,
+}
+
+#[derive(Deserialize)]
+struct StreamResponse {
+    choices: Vec<StreamChoice>,
+    usage: Option<Usage>,
+}
+
+#[derive(Deserialize)]
+struct StreamChoice {
+    delta: StreamDelta,
+    finish_reason: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct StreamDelta {
+    content: Option<String>,
+}
+
 pub struct OpenAiClient {
     base_url: String,
     api_key: String,
@@ -159,23 +255,20 @@ impl OpenAiClient {
         let url = format!("{}/chat/completions", self.base_url);
 
         let mut messages = vec![
-            ChatMessage::System { role: "system", content: system },
-            ChatMessage::User { role: "user", content: message },
+            ChatMessage::system(system),
+            ChatMessage::user(message),
         ];
 
         // Add tool results if any
         for (tool_call_id, content) in tool_results {
-            messages.push(ChatMessage::Tool {
-                role: "tool",
-                tool_call_id,
-                content,
-            });
+            messages.push(ChatMessage::tool(tool_call_id, content));
         }
 
         let request = ChatRequest {
             model,
             messages,
             tools: if tools.is_empty() { None } else { Some(tools) },
+            stream: false,
         };
 
         let response = self
@@ -238,6 +331,232 @@ impl OpenAiClient {
             content: choice.message.content,
             tool_calls,
             finish_reason: choice.finish_reason,
+            usage,
+        })
+    }
+
+    pub async fn chat_stream<F>(
+        &self,
+        model: &str,
+        messages: &[ChatMessage],
+        mut on_chunk: F,
+    ) -> Result<StreamResult, AiError>
+    where
+        F: FnMut(StreamChunk) -> bool,
+    {
+        let url = format!("{}/chat/completions", self.base_url);
+
+        let request = ChatRequest {
+            model,
+            messages: messages.to_vec(),
+            tools: None,
+            stream: true,
+        };
+
+        let response = self
+            .http
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&request)
+            .send()
+            .await
+            .map_err(|source| AiError::Network {
+                model: model.to_string(),
+                source,
+            })?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(AiError::Api {
+                model: model.to_string(),
+                status: status.as_u16(),
+                body,
+            });
+        }
+
+        let mut stream = response.bytes_stream();
+        let mut buffer = String::new();
+        let mut finish_reason = None;
+        let mut usage = None;
+
+        while let Some(chunk_result) = stream.next().await {
+            let chunk = chunk_result.map_err(|source| AiError::Network {
+                model: model.to_string(),
+                source,
+            })?;
+
+            let text = String::from_utf8_lossy(&chunk);
+            buffer.push_str(&text);
+
+            // Process complete SSE events (separated by \n\n)
+            while let Some(event_end) = buffer.find("\n\n") {
+                let event = buffer[..event_end].to_string();
+                buffer = buffer[event_end + 2..].to_string();
+
+                for line in event.lines() {
+                    if line.starts_with("data: ") {
+                        let data = &line[6..];
+
+                        if data == "[DONE]" {
+                            return Ok(StreamResult {
+                                finish_reason,
+                                usage,
+                            });
+                        }
+
+                        let stream_response: StreamResponse =
+                            serde_json::from_str(data).map_err(|source| AiError::JsonParse {
+                                model: model.to_string(),
+                                source,
+                            })?;
+
+                        if let Some(choice) = stream_response.choices.into_iter().next() {
+                            let content = choice.delta.content;
+                            finish_reason = choice.finish_reason.or(finish_reason);
+
+                            let stream_chunk = StreamChunk {
+                                content,
+                                finish_reason: None,
+                            };
+
+                            if !on_chunk(stream_chunk) {
+                                return Err(AiError::Aborted {
+                                    model: model.to_string(),
+                                });
+                            }
+                        }
+
+                        if let Some(u) = stream_response.usage {
+                            usage = Some(rhd_api::TokenUsage {
+                                prompt_tokens: u.prompt_tokens,
+                                completion_tokens: u.completion_tokens,
+                                total_tokens: u.total_tokens,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(StreamResult {
+            finish_reason,
+            usage,
+        })
+    }
+
+    pub async fn chat_stream_cancellable(
+        &self,
+        model: &str,
+        messages: &[ChatMessage],
+        cancel: CancellationToken,
+        mut on_chunk: impl FnMut(StreamChunk) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>,
+    ) -> Result<StreamResult, AiError> {
+        let url = format!("{}/chat/completions", self.base_url);
+
+        let request = ChatRequest {
+            model,
+            messages: messages.to_vec(),
+            tools: None,
+            stream: true,
+        };
+
+        let response = self
+            .http
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&request)
+            .send()
+            .await
+            .map_err(|source| AiError::Network {
+                model: model.to_string(),
+                source,
+            })?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(AiError::Api {
+                model: model.to_string(),
+                status: status.as_u16(),
+                body,
+            });
+        }
+
+        let mut stream = response.bytes_stream();
+        let mut buffer = String::new();
+        let mut finish_reason = None;
+        let mut usage = None;
+        let mut event_index = 0;
+
+        while let Some(chunk_result) = stream.next().await {
+            if cancel.is_cancelled() {
+                return Err(AiError::Aborted {
+                    model: model.to_string(),
+                });
+            }
+
+            let chunk = chunk_result.map_err(|source| AiError::StreamError {
+                model: model.to_string(),
+                event_index,
+                message: format!("Failed to read SSE chunk: {}", source),
+                source,
+            })?;
+
+            let text = String::from_utf8_lossy(&chunk);
+            buffer.push_str(&text);
+
+            // Process complete SSE events (separated by \n\n)
+            while let Some(event_end) = buffer.find("\n\n") {
+                let event = buffer[..event_end].to_string();
+                buffer = buffer[event_end + 2..].to_string();
+
+                for line in event.lines() {
+                    if line.starts_with("data: ") {
+                        let data = &line[6..];
+
+                        if data == "[DONE]" {
+                            return Ok(StreamResult {
+                                finish_reason,
+                                usage,
+                            });
+                        }
+
+                        let stream_response: StreamResponse =
+                            serde_json::from_str(data).map_err(|source| AiError::JsonParse {
+                                model: model.to_string(),
+                                source,
+                            })?;
+
+                        if let Some(choice) = stream_response.choices.into_iter().next() {
+                            let content = choice.delta.content;
+                            finish_reason = choice.finish_reason.or(finish_reason);
+
+                            let stream_chunk = StreamChunk {
+                                content,
+                                finish_reason: None,
+                            };
+
+                            on_chunk(stream_chunk).await;
+                        }
+
+                        if let Some(u) = stream_response.usage {
+                            usage = Some(rhd_api::TokenUsage {
+                                prompt_tokens: u.prompt_tokens,
+                                completion_tokens: u.completion_tokens,
+                                total_tokens: u.total_tokens,
+                            });
+                        }
+                    }
+                }
+                event_index += 1;
+            }
+        }
+
+        Ok(StreamResult {
+            finish_reason,
             usage,
         })
     }

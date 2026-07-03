@@ -1,11 +1,12 @@
-<script>
-  import { formatDuration, elapsedSeconds } from '../lib/utils.js';
-  import { abortScenario } from '../lib/ws.js';
+<script lang="ts">
+  import { formatDuration, elapsedSeconds } from '../lib/utils';
+  import { abortScenario } from '../lib/ws';
+  import type { ActiveScenario } from '../lib/types/index';
 
-  let { scenario } = $props();
+  let { scenario }: { scenario: ActiveScenario } = $props();
 
   let elapsed = $state(0);
-  let intervalId;
+  let intervalId: ReturnType<typeof setInterval>;
 
   $effect(() => {
     const startTime = scenario.currentStepStartedAt || scenario.startedAt;

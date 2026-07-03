@@ -1,7 +1,8 @@
-<script>
-  import { formatDateTime, formatDuration, formatCost } from '../lib/utils.js';
+<script lang="ts">
+  import { formatDateTime, formatDuration, formatCost } from '../lib/utils';
+  import type { FinishedScenario } from '../lib/types/index';
 
-  let { scenario } = $props();
+  let { scenario }: { scenario: FinishedScenario } = $props();
 
   let totalPromptTokens = $derived(
     scenario.tokens?.promptTokens ?? 0

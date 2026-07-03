@@ -1,9 +1,9 @@
-<script>
-  let { activeTab = $bindable() } = $props();
+<script lang="ts">
+  let { activeTab = $bindable() }: { activeTab: 'scenarios' | 'chats' } = $props();
 
   const tabs = [
-    { id: 'scenarios', label: 'Scenarios' },
-    { id: 'chats', label: 'Chats' },
+    { id: 'scenarios' as const, label: 'Scenarios' },
+    { id: 'chats' as const, label: 'Chats' },
   ];
 </script>
 

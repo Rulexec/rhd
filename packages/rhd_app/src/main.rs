@@ -1,3 +1,4 @@
+mod chat;
 mod cli;
 mod client;
 mod config;

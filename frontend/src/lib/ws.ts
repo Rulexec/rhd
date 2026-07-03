@@ -1,20 +1,32 @@
-import { activeScenarios, finishedScenarios, lastKnownId, wsConnected } from './stores.js';
+import { activeScenarios, finishedScenarios, lastKnownId, wsConnected } from './stores';
+import { WsMessageSchema } from './types/ws';
+import type { WsEvent, WsResponse } from './types/ws';
+import { handleChatEvent } from './chatWs';
 
-const WS_PORT = import.meta.env.VITE_WS_PORT || 9876;
-const WS_URL = `ws://127.0.0.1:${WS_PORT}`;
+let WS_PORT = import.meta.env.VITE_WS_PORT || 9876;
+let WS_URL = `ws://127.0.0.1:${WS_PORT}`;
 const RECONNECT_DELAY_MS = 2000;
 
-let socket = null;
-let requestIdCounter = 0;
-const pendingRequests = new Map();
-let reconnectTimer = null;
+export function setWsPort(port: number): void {
+  WS_PORT = port;
+  WS_URL = `ws://127.0.0.1:${WS_PORT}`;
+}
 
-function generateRequestId() {
+export function connectWebSocket(): void {
+  connect();
+}
+
+let socket: WebSocket | null = null;
+let requestIdCounter = 0;
+const pendingRequests = new Map<string, (message: WsResponse) => void>();
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+export function generateRequestId(): string {
   requestIdCounter += 1;
   return `req-${requestIdCounter}`;
 }
 
-function connect() {
+function connect(): void {
   if (socket && socket.readyState === WebSocket.OPEN) return;
 
   socket = new WebSocket(WS_URL);
@@ -33,8 +45,16 @@ function connect() {
     socket?.close();
   };
 
-  socket.onmessage = (event) => {
-    const message = JSON.parse(event.data);
+  socket.onmessage = (event: MessageEvent) => {
+    const raw = JSON.parse(event.data);
+    const result = WsMessageSchema.safeParse(raw);
+
+    if (!result.success) {
+      console.error('Invalid WebSocket message:', result.error);
+      return;
+    }
+
+    const message = result.data;
 
     if (message.type === 'response') {
       const resolver = pendingRequests.get(message.id);
@@ -48,7 +68,7 @@ function connect() {
   };
 }
 
-function scheduleReconnect() {
+function scheduleReconnect(): void {
   if (reconnectTimer) return;
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
@@ -56,19 +76,24 @@ function scheduleReconnect() {
   }, RECONNECT_DELAY_MS);
 }
 
-function sendRequest(request) {
+export function sendRequest(request: Record<string, unknown>): Promise<WsResponse> {
   return new Promise((resolve, reject) => {
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       reject(new Error('WebSocket not connected'));
       return;
     }
-    pendingRequests.set(request.id, resolve);
+    pendingRequests.set(request.id as string, resolve);
     socket.send(JSON.stringify(request));
   });
 }
 
-function handleEvent(message) {
+function handleEvent(message: WsEvent): void {
   const { event, data } = message;
+
+  if (event.startsWith('chat')) {
+    handleChatEvent(event, data);
+    return;
+  }
 
   switch (event) {
     case 'scenariostarted':
@@ -78,18 +103,18 @@ function handleEvent(message) {
       activeScenarios.updateStep(data.executionId, data.stepName, data.startedAt);
       break;
     case 'scenariofinished':
-      activeScenarios.removeScenario(data.id);
+      activeScenarios.removeScenario(String(data.id));
       finishedScenarios.prepend(data);
       lastKnownId.set(data.id);
       break;
   }
 }
 
-export function initWebSocket() {
+export function initWebSocket(): void {
   connect();
 }
 
-export async function subscribe() {
+export async function subscribe(): Promise<WsResponse> {
   const id = generateRequestId();
   const response = await sendRequest({ type: 'subscribe', id });
   if (response.success && response.data?.activeExecutions) {
@@ -98,9 +123,9 @@ export async function subscribe() {
   return response;
 }
 
-export async function getFinishedScenarios(lastId) {
+export async function getFinishedScenarios(lastId?: number): Promise<WsResponse> {
   const id = generateRequestId();
-  const request = { type: 'getFinishedScenarios', id };
+  const request: Record<string, unknown> = { type: 'getFinishedScenarios', id };
   if (lastId !== undefined && lastId !== null) {
     request.lastId = lastId;
   }
@@ -108,7 +133,7 @@ export async function getFinishedScenarios(lastId) {
   return response;
 }
 
-export async function abortScenario(executionId) {
+export async function abortScenario(executionId: string): Promise<WsResponse> {
   const id = generateRequestId();
   const request = { type: 'abortScenario', id, executionId };
   const response = await sendRequest(request);

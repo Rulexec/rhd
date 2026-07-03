@@ -12,7 +12,11 @@ tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 axum = "0.7"
+futures-util = { workspace = true }
 tempfile = "3"
 rand = "0.8"
 clap = { version = "4", features = ["derive"] }
+async-stream = "0.3"
+tokio-stream = "0.1"
 rhd_api = { path = "../rhd_api" }
+rhd_ai = { path = "../rhd_ai" }

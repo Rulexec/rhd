@@ -47,6 +47,7 @@ pub struct ModelConfig {
     pub input_token_price: Option<f64>,
     pub output_token_price: Option<f64>,
     pub price_tiers: Option<Vec<rhd_api::TokenPriceTier>>,
+    pub is_alias: bool,
 }
 
 #[derive(Debug, Error)]
@@ -181,6 +182,7 @@ pub fn load_models(
                     input_token_price: raw_config.input_token_price,
                     output_token_price: raw_config.output_token_price,
                     price_tiers: raw_config.price_tiers.clone(),
+                    is_alias: false,
                 };
                 models.insert(name.clone(), config);
             }
@@ -202,6 +204,7 @@ pub fn load_models(
                         input_token_price: raw_config.input_token_price,
                         output_token_price: raw_config.output_token_price,
                         price_tiers: raw_config.price_tiers.clone(),
+                        is_alias: true,
                     }
                 }
                 _ => {

@@ -1,12 +1,16 @@
 mod args;
+mod control_server;
+mod frontend_test;
 mod mcp_test;
 mod mock_server;
+mod sse_test;
 mod standard_test;
 mod utils;
 
 use clap::Parser;
 
-use args::Args;
+use args::{Args, Commands};
+use frontend_test::run_frontend_test;
 use mcp_test::run_mcp_test;
 use mock_server::start_mock_server;
 use standard_test::run_single_test;
@@ -15,14 +19,34 @@ use standard_test::run_single_test;
 async fn main() {
     let args = Args::parse();
 
-    let (port, requests, response, flag_value) = start_mock_server().await;
+    match args.command {
+        Some(Commands::Frontend { ws_port, control_port }) => {
+            let success = run_frontend_test(ws_port, control_port).await;
+            if !success {
+                eprintln!("\nFRONTEND TEST FAILED");
+                std::process::exit(1);
+            } else {
+                println!("\nFRONTEND TEST PASSED");
+            }
+        }
+        Some(Commands::SseTest) => {
+            sse_test::run_sse_test().await;
+        }
+        None => {
+            run_standard_tests(args.seed, args.repetitions).await;
+        }
+    }
+}
+
+async fn run_standard_tests(seed: u64, repetitions: u32) {
+    let (port, requests, response, flag_value, _stream_sender, _auto_stream) = start_mock_server().await;
     println!("Mock AI server started on port {port}");
 
     let mut failures: Vec<u64> = Vec::new();
     let mut mcp_failures: Vec<u64> = Vec::new();
 
-    for i in 0..args.repetitions {
-        let iter_seed = args.seed + i as u64;
+    for i in 0..repetitions {
+        let iter_seed = seed + i as u64;
 
         requests.lock().unwrap().clear();
 
@@ -33,7 +57,7 @@ async fn main() {
             println!(
                 "\n=== Repetition {}/{} (seed: {}) FAILED ===",
                 i + 1,
-                args.repetitions,
+                repetitions,
                 iter_seed
             );
             print!("{log}");
@@ -49,7 +73,7 @@ async fn main() {
             println!(
                 "\n=== MCP Test Repetition {}/{} (seed: {}) FAILED ===",
                 i + 1,
-                args.repetitions,
+                repetitions,
                 iter_seed
             );
             print!("{mcp_log}");
@@ -60,14 +84,14 @@ async fn main() {
     println!("\n=== Summary ===");
     println!(
         "Standard Test - Total: {}, Passed: {}, Failed: {}",
-        args.repetitions,
-        args.repetitions as usize - failures.len(),
+        repetitions,
+        repetitions as usize - failures.len(),
         failures.len()
     );
     println!(
         "MCP Test - Total: {}, Passed: {}, Failed: {}",
-        args.repetitions,
-        args.repetitions as usize - mcp_failures.len(),
+        repetitions,
+        repetitions as usize - mcp_failures.len(),
         mcp_failures.len()
     );
 

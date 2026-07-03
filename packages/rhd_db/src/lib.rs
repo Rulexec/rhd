@@ -1,6 +1,10 @@
+mod chat_db;
+
 use rusqlite::{Connection, params};
 use std::sync::Mutex;
 use thiserror::Error;
+
+pub use chat_db::{ChatDb, ChatInfo, Message};
 
 #[derive(Error, Debug)]
 pub enum DbError {

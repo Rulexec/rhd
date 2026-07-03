@@ -3,6 +3,6 @@ import App from './App.svelte';
 import './styles/global.css';
 import './styles/utilities.css';
 
-const app = mount(App, { target: document.getElementById('app') });
+const app = mount(App, { target: document.getElementById('app')! });
 
 export default app;
