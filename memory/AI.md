@@ -10,8 +10,11 @@ RHD is a Rust-based automation tool for AI-assisted task execution. It uses a da
 rhd/
 ├── Cargo.toml (workspace root)
 ├── plans/            # Implementation plans
+│   ├── archive/      # Completed/historical plans
+│   └── milestones/   # Feature milestone plans
 ├── frontend/         # Svelte web UI
 ├── memory/           # This knowledge base (split by topic)
+│   └── features/     # Product-scoped feature documentation
 ├── packages/
 │   ├── rhd_util/     # Shared error types, utilities, env var substitution
 │   ├── rhd_ai/       # OpenAI-compatible AI client
@@ -42,3 +45,17 @@ Detailed documentation is split into topic-specific files. Read the relevant fil
 | [frontend-e2e.md](frontend-e2e.md) | When working on frontend E2E tests, test utilities, or test infrastructure |
 | [backend-e2e.md](backend-e2e.md) | When working on backend E2E tests, rhd_test crate, mock server, or test scenarios |
 | [debugging.md](debugging.md) | When any test fails |
+
+## Product Features
+
+Product-scoped feature documentation (what the feature does, not how it's implemented):
+
+| File | When to read |
+|------|-------------|
+| [features/scenario-execution.md](features/scenario-execution.md) | Understanding how scenarios run, action types, placeholders, abort, pause/resume |
+| [features/chat.md](features/chat.md) | Understanding chat feature, streaming, model selection, message editing |
+| [features/mcp-tools.md](features/mcp-tools.md) | Understanding MCP tool integration, built-in tools, flags, skip conditions |
+| [features/configuration.md](features/configuration.md) | Understanding config files, credentials, model aliases, CLI arguments |
+| [features/frontend-ui.md](features/frontend-ui.md) | Understanding web UI structure, tabs, routing, notifications |
+| [features/testing.md](features/testing.md) | Understanding E2E test infrastructure, mock server, test utilities |
+| [features/logging-monitoring.md](features/logging-monitoring.md) | Understanding log files, meta.json, WebSocket events, notifications |
