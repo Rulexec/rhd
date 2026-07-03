@@ -89,3 +89,37 @@ export async function waitForWebSocket(timeout = 5000): Promise<void> {
   }
   throw new Error('WebSocket connection timeout');
 }
+
+export async function injectFinishedScenario(scenario: {
+  id: number;
+  scenario: string;
+  status: string;
+  started: string;
+  finished: string;
+  durationMs: number;
+}): Promise<void> {
+  const response = await fetch(`${CONTROL_URL}/scenarios/finished`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(scenario),
+  });
+  await checkControlResponse(response, 'injectFinishedScenario');
+}
+
+export async function testScenarioStarted(id: number, name: string): Promise<void> {
+  const response = await fetch(`${CONTROL_URL}/test/scenario-started`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, name }),
+  });
+  await checkControlResponse(response, 'testScenarioStarted');
+}
+
+export async function testScenarioFinished(id: number, name: string): Promise<void> {
+  const response = await fetch(`${CONTROL_URL}/test/scenario-finished`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, name }),
+  });
+  await checkControlResponse(response, 'testScenarioFinished');
+}

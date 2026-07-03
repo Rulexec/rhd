@@ -12,9 +12,9 @@ export type WsResponse = z.infer<typeof WsResponseSchema>;
 
 export const ScenarioStartedEventSchema = z.object({
   type: z.literal('event'),
-  event: z.literal('scenariostarted'),
+  event: z.literal('scenarioStarted'),
   data: z.object({
-    id: z.string(),
+    id: z.union([z.string(), z.number()]),
     name: z.string(),
     startedAt: z.string(),
   }),
@@ -22,9 +22,9 @@ export const ScenarioStartedEventSchema = z.object({
 
 export const StepStartedEventSchema = z.object({
   type: z.literal('event'),
-  event: z.literal('stepstarted'),
+  event: z.literal('stepStarted'),
   data: z.object({
-    executionId: z.string(),
+    executionId: z.union([z.string(), z.number()]),
     stepName: z.string(),
     startedAt: z.string(),
   }),
@@ -32,7 +32,7 @@ export const StepStartedEventSchema = z.object({
 
 export const ScenarioFinishedEventSchema = z.object({
   type: z.literal('event'),
-  event: z.literal('scenariofinished'),
+  event: z.literal('scenarioFinished'),
   data: FinishedScenarioSchema,
 });
 
@@ -78,6 +78,35 @@ export const ChatUpdatedEventSchema = z.object({
   }),
 });
 
+export const ScenarioPausedEventSchema = z.object({
+  type: z.literal('event'),
+  event: z.literal('scenarioPaused'),
+  data: z.object({
+    executionId: z.union([z.string(), z.number()]),
+    scenarioName: z.string(),
+    error: z.string(),
+    stepName: z.string(),
+    availableModels: z.array(z.string()),
+  }),
+});
+
+export const ScenarioResumedEventSchema = z.object({
+  type: z.literal('event'),
+  event: z.literal('scenarioResumed'),
+  data: z.object({
+    executionId: z.union([z.string(), z.number()]),
+  }),
+});
+
+export const DevNotificationEventSchema = z.object({
+  type: z.literal('event'),
+  event: z.literal('devNotification'),
+  data: z.object({
+    title: z.string(),
+    message: z.string(),
+  }),
+});
+
 export const WsEventSchema = z.discriminatedUnion('event', [
   ScenarioStartedEventSchema,
   StepStartedEventSchema,
@@ -87,6 +116,9 @@ export const WsEventSchema = z.discriminatedUnion('event', [
   ChatStreamErrorEventSchema,
   ChatMessageAddedEventSchema,
   ChatUpdatedEventSchema,
+  ScenarioPausedEventSchema,
+  ScenarioResumedEventSchema,
+  DevNotificationEventSchema,
 ]);
 export type WsEvent = z.infer<typeof WsEventSchema>;
 

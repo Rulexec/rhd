@@ -18,6 +18,7 @@ pub enum EventType {
     ScenarioStarted,
     StepStarted,
     ScenarioFinished,
+    ScenarioResumed,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,6 +42,10 @@ pub enum EventData {
         started_at: DateTime<Utc>,
     },
     ScenarioFinished(ScenarioMeta),
+    ScenarioResumed {
+        #[serde(rename = "executionId")]
+        execution_id: u64,
+    },
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -185,6 +190,18 @@ pub enum WsRequest {
     AbortChat { id: String, chat_id: i64 },
     #[serde(rename = "getAvailableModels")]
     GetAvailableModels { id: String },
+
+    // Scenario pause/resume operations
+    #[serde(rename = "retryScenario", rename_all = "camelCase")]
+    RetryScenario {
+        id: String,
+        execution_id: u64,
+        model: Option<String>,
+    },
+    #[serde(rename = "abortScenarioWithError", rename_all = "camelCase")]
+    AbortScenarioWithError { id: String, execution_id: u64 },
+    #[serde(rename = "devNotification")]
+    DevNotification { id: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -305,6 +322,32 @@ pub struct ChatMessageDto {
 pub struct ChatUpdatedEvent {
     pub chat_id: i64,
     pub title: String,
+}
+
+// ============================================================================
+// Scenario pause/resume event types
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScenarioPausedEvent {
+    pub execution_id: u64,
+    pub error: String,
+    pub step_name: String,
+    pub available_models: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScenarioResumedEvent {
+    pub execution_id: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DevNotificationEvent {
+    pub title: String,
+    pub message: String,
 }
 
 // ============================================================================
@@ -590,5 +633,20 @@ mod tests {
         };
 
         assert!(calculate_cost(&usage, None, None, None).is_none());
+    }
+
+    #[test]
+    fn test_event_type_debug_lowercase_serialization() {
+        let event = EventType::ScenarioResumed;
+        let debug_str = format!("{:?}", event);
+        let lowercase = debug_str.to_lowercase();
+        assert_eq!(lowercase, "scenarioresumed");
+    }
+
+    #[test]
+    fn test_event_type_serde_serialization() {
+        let event = EventType::ScenarioResumed;
+        let json = serde_json::to_string(&event).unwrap();
+        assert_eq!(json, r#""scenarioResumed""#);
     }
 }

@@ -5,14 +5,15 @@ use rhd_mcp_client::client::McpClient;
 use rhd_mcp_client::McpConfig;
 use tokio::sync::Mutex;
 
+#[derive(Clone)]
 pub struct McpServerCache {
-    cache: Mutex<HashMap<String, Arc<McpClient>>>,
+    cache: Arc<Mutex<HashMap<String, Arc<McpClient>>>>,
 }
 
 impl McpServerCache {
     pub fn new() -> Self {
         Self {
-            cache: Mutex::new(HashMap::new()),
+            cache: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 

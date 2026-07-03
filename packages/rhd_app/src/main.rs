@@ -9,6 +9,7 @@ mod ipc;
 mod log;
 mod mcp_cache;
 mod mcp_loader;
+mod notifications;
 mod scenario;
 mod ws;
 
@@ -48,6 +49,30 @@ async fn main() {
                 std::process::exit(1);
             }
         }
+        Command::Dev(args) => {
+            if let Err(err) = args.validate() {
+                eprintln!("error: {err}");
+                std::process::exit(1);
+            }
+            match args.command {
+                cli::DevCommand::DaemonNotification => {
+                    let socket_path = cli::default_socket_path();
+                    if let Err(err) = client::send_daemon_notification(&socket_path).await {
+                        eprintln!("error: {err}");
+                        std::process::exit(1);
+                    }
+                    println!("Daemon notification sent");
+                }
+                cli::DevCommand::FrontendNotification => {
+                    let socket_path = cli::default_socket_path();
+                    if let Err(err) = client::send_frontend_notification(&socket_path).await {
+                        eprintln!("error: {err}");
+                        std::process::exit(1);
+                    }
+                    println!("Frontend notification request sent");
+                }
+            }
+        }
     }
 }
 
@@ -71,7 +96,7 @@ async fn run_daemon_command(
     let mcp_configs = mcp_loader::load_mcp_dir(&merged.mcp_dir)?;
     let socket_path = args.socket.unwrap_or_else(cli::default_socket_path);
     let db_file = merged.db_dir.join("meta.db");
-    daemon::run_daemon(scenarios, models, mcp_configs, merged.default_model, merged.logs, &socket_path, merged.ws_port, db_file.to_str().unwrap_or("db/meta.db")).await?;
+    daemon::run_daemon(scenarios, models, mcp_configs, merged.default_model, merged.logs, &socket_path, merged.ws_port, db_file.to_str().unwrap_or("db/meta.db"), merged.never_fail).await?;
     Ok(())
 }
 
@@ -95,5 +120,6 @@ fn merge_config(config: DaemonConfig, args: &cli::DaemonArgs) -> DaemonConfig {
         ws_port: args.ws_port.or(config.ws_port),
         db_dir: args.db_dir.clone().unwrap_or(config.db_dir),
         credentials_config: config.credentials_config,
+        never_fail: config.never_fail,
     }
 }

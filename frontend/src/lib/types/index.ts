@@ -25,6 +25,16 @@ export const FinishedScenarioSchema = z.object({
 });
 export type FinishedScenario = z.infer<typeof FinishedScenarioSchema>;
 
+export const PausedScenarioSchema = z.object({
+  executionId: z.string(),
+  scenarioName: z.string(),
+  error: z.string(),
+  stepName: z.string(),
+  availableModels: z.array(z.string()),
+  selectedModel: z.string().nullable(),
+});
+export type PausedScenario = z.infer<typeof PausedScenarioSchema>;
+
 export const ChatSchema = z.object({
   id: z.number(),
   title: z.string(),

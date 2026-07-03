@@ -7,9 +7,10 @@ use rhd_api::LogSectionKind;
 use rhd_mcp_client::McpConfig;
 
 use super::error::ExecuteError;
+use super::executor::ExecutionConfig;
 use super::placeholder::{resolve_placeholders, ExecutionContext, StepResult};
 use super::{AiChatAction, MaxIterations};
-use crate::execution::ExecutionHandle;
+use crate::execution::{ExecutionHandle, ResumeAction};
 use crate::log::{LogSink, SectionTracker};
 use crate::mcp_cache::McpServerCache;
 
@@ -25,6 +26,7 @@ pub async fn execute_ai_chat(
     sink: &mut LogSink,
     handle: Option<Arc<ExecutionHandle>>,
     model_aliases: &[(String, String)],
+    exec_config: &ExecutionConfig,
 ) -> Result<StepResult, ExecuteError> {
     let model_name = match &chat.model {
         Some(m) => m.clone(),
@@ -79,68 +81,106 @@ pub async fn execute_ai_chat(
     let has_mcp = chat.mcp.as_ref().map(|m| !m.is_empty()).unwrap_or(false);
 
     if !has_mcp {
-        let request_tracker = SectionTracker::start(sink, LogSectionKind::AiRequest);
-        sink.log_ai_request(step_name, &model_config.model_id, &[], &system_prompt, &message);
-        if let Some(h) = &handle {
-            h.add_section(request_tracker.end(sink));
-        }
+        let mut current_model_config = model_config;
+        let mut current_model_name = model_name;
         
-        let chat_future = client.chat_with_tools(&model_config.model, &system_prompt, &message, &[], &[]);
-        
-        let result = if let Some(h) = &handle {
-            let mut abort_signal = h.abort_signal();
-            tokio::select! {
-                res = chat_future => res,
-                _ = abort_signal.changed() => {
-                    if *abort_signal.borrow() {
-                        return Err(ExecuteError::Aborted);
-                    }
-                    unreachable!()
-                }
+        loop {
+            let request_tracker = SectionTracker::start(sink, LogSectionKind::AiRequest);
+            sink.log_ai_request(step_name, &current_model_config.model_id, &[], &system_prompt, &message);
+            if let Some(h) = &handle {
+                h.add_section(request_tracker.end(sink));
             }
-        } else {
-            chat_future.await
-        };
+            
+            let client = OpenAiClient::new(&current_model_config.base_url, &current_model_config.api_key);
+            let chat_future = client.chat_with_tools(&current_model_config.model, &system_prompt, &message, &[], &[]);
+            
+            let result = if let Some(h) = &handle {
+                let mut abort_signal = h.abort_signal();
+                tokio::select! {
+                    res = chat_future => res,
+                    _ = abort_signal.changed() => {
+                        if *abort_signal.borrow() {
+                            return Err(ExecuteError::Aborted);
+                        }
+                        unreachable!()
+                    }
+                }
+            } else {
+                chat_future.await
+            };
 
-        match result {
-            Ok(result) => {
-                if let Some(usage) = &result.usage {
-                    if let Some(h) = &handle {
-                        h.add_token_usage(usage);
+            match result {
+                Ok(result) => {
+                    if let Some(usage) = &result.usage {
+                        if let Some(h) = &handle {
+                            h.add_token_usage(usage);
+                        }
                     }
+                    let content = result.content.unwrap_or_default();
+                    let response_tracker = SectionTracker::start(sink, LogSectionKind::AiResponse);
+                    sink.log_step(step_name, "AI response", &content);
+                    if let Some(h) = &handle {
+                        h.add_section(response_tracker.end(sink));
+                    }
+                    return Ok(StepResult {
+                        exit_code: 0,
+                        stdout: String::new(),
+                        stderr: String::new(),
+                        stdout_stderr: vec![],
+                        success: true,
+                        message: Some(content),
+                        cwd: None,
+                    });
                 }
-                let content = result.content.unwrap_or_default();
-                let response_tracker = SectionTracker::start(sink, LogSectionKind::AiResponse);
-                sink.log_step(step_name, "AI response", &content);
-                if let Some(h) = &handle {
-                    h.add_section(response_tracker.end(sink));
+                Err(err) => {
+                    sink.log_step(step_name, "AI request failed", &err.to_string());
+                    let execute_error = ExecuteError::AiFailed {
+                        scenario: scenario_name.to_string(),
+                        step: step_name.to_string(),
+                        message: err.to_string(),
+                    };
+                    
+                    let should_pause = exec_config.frontend_alive || exec_config.never_fail;
+                    if should_pause {
+                        if let Some(h) = &handle {
+                            let resume_action = h.pause_and_wait(
+                                execute_error.to_string(),
+                                step_name.to_string(),
+                            ).await;
+                            
+                            match resume_action {
+                                ResumeAction::Retry { model_override } => {
+                                    if let Some(new_model_name) = model_override {
+                                        let new_model_name = apply_model_aliases(&new_model_name, model_aliases);
+                                        if let Some(new_config) = models.get(&new_model_name) {
+                                            current_model_config = new_config.clone();
+                                            current_model_name = new_model_name;
+                                            if let Some(h) = &handle {
+                                                h.set_step_model(current_model_config.model_id.clone());
+                                            }
+                                            continue;
+                                        }
+                                    }
+                                    continue;
+                                }
+                                ResumeAction::Abort => {
+                                    return Err(execute_error);
+                                }
+                            }
+                        }
+                    }
+                    return Err(execute_error);
                 }
-                Ok(StepResult {
-                    exit_code: 0,
-                    stdout: String::new(),
-                    stderr: String::new(),
-                    stdout_stderr: vec![],
-                    success: true,
-                    message: Some(content),
-                    cwd: None,
-                })
             }
-            Err(err) => {
-                sink.log_step(step_name, "AI request failed", &err.to_string());
-                Err(ExecuteError::AiFailed {
-                    scenario: scenario_name.to_string(),
-                    step: step_name.to_string(),
-                    message: err.to_string(),
-                })
-            },
         }
     } else {
         execute_ai_chat_with_tools(
             chat,
             context,
-            &client,
-            &model_config.model_id,
-            &model_config.model,
+            models,
+            client,
+            model_config.model_id,
+            model_config.model,
             &system_prompt,
             &message,
             mcp_configs,
@@ -149,6 +189,8 @@ pub async fn execute_ai_chat(
             step_name,
             sink,
             handle,
+            model_aliases,
+            exec_config,
         )
         .await
     }
@@ -157,9 +199,10 @@ pub async fn execute_ai_chat(
 async fn execute_ai_chat_with_tools(
     chat: &AiChatAction,
     context: &mut ExecutionContext,
-    client: &OpenAiClient,
-    display_name: &str,
-    api_model: &str,
+    models: &HashMap<String, ModelConfig>,
+    client: OpenAiClient,
+    display_name: String,
+    api_model: String,
     system_prompt: &str,
     message: &str,
     mcp_configs: &HashMap<String, McpConfig>,
@@ -168,9 +211,15 @@ async fn execute_ai_chat_with_tools(
     step_name: &str,
     sink: &mut LogSink,
     handle: Option<Arc<ExecutionHandle>>,
+    model_aliases: &[(String, String)],
+    exec_config: &ExecutionConfig,
 ) -> Result<StepResult, ExecuteError> {
     use rhd_ai::{FunctionDefinition, ToolDefinition};
     use rhd_mcp_client::McpClientTrait;
+
+    let mut current_client = client;
+    let mut current_display_name = display_name;
+    let mut current_api_model = api_model;
 
     let max_iterations = match &chat.max_tool_iterations {
         Some(MaxIterations::Finite(n)) => *n,
@@ -240,11 +289,6 @@ async fn execute_ai_chat_with_tools(
     }
 
     let tool_names: Vec<String> = tools.iter().map(|t| t.function.name.clone()).collect();
-    let request_tracker = SectionTracker::start(sink, LogSectionKind::AiRequest);
-    sink.log_ai_request(step_name, display_name, &tool_names, system_prompt, message);
-    if let Some(h) = &handle {
-        h.add_section(request_tracker.end(sink));
-    }
 
     let mut current_message = message.to_string();
     let mut tool_results: Vec<(String, String)> = Vec::new();
@@ -259,7 +303,13 @@ async fn execute_ai_chat_with_tools(
             });
         }
 
-        let chat_future = client.chat_with_tools(api_model, system_prompt, &current_message, &tools, &tool_results);
+        let request_tracker = SectionTracker::start(sink, LogSectionKind::AiRequest);
+        sink.log_ai_request(step_name, &current_display_name, &tool_names, system_prompt, &current_message);
+        if let Some(h) = &handle {
+            h.add_section(request_tracker.end(sink));
+        }
+
+        let chat_future = current_client.chat_with_tools(&current_api_model, system_prompt, &current_message, &tools, &tool_results);
         
         let result = if let Some(h) = &handle {
             let mut abort_signal = h.abort_signal();
@@ -276,11 +326,47 @@ async fn execute_ai_chat_with_tools(
             chat_future.await
         };
 
-        let result = result.map_err(|e| ExecuteError::AiFailed {
-            scenario: scenario_name.to_string(),
-            step: step_name.to_string(),
-            message: e.to_string(),
-        })?;
+        let result = match result {
+            Ok(r) => r,
+            Err(e) => {
+                let execute_error = ExecuteError::AiFailed {
+                    scenario: scenario_name.to_string(),
+                    step: step_name.to_string(),
+                    message: e.to_string(),
+                };
+                
+                let should_pause = exec_config.frontend_alive || exec_config.never_fail;
+                if should_pause {
+                    if let Some(h) = &handle {
+                        let resume_action = h.pause_and_wait(
+                            execute_error.to_string(),
+                            step_name.to_string(),
+                        ).await;
+                        
+                        match resume_action {
+                            ResumeAction::Retry { model_override } => {
+                                if let Some(new_model_name) = model_override {
+                                    let new_model_name = apply_model_aliases(&new_model_name, model_aliases);
+                                    if let Some(new_config) = models.get(&new_model_name) {
+                                        current_client = OpenAiClient::new(&new_config.base_url, &new_config.api_key);
+                                        current_display_name = new_config.model_id.clone();
+                                        current_api_model = new_config.model.clone();
+                                        if let Some(h) = &handle {
+                                            h.set_step_model(new_config.model_id.clone());
+                                        }
+                                    }
+                                }
+                                continue;
+                            }
+                            ResumeAction::Abort => {
+                                return Err(execute_error);
+                            }
+                        }
+                    }
+                }
+                return Err(execute_error);
+            }
+        };
 
         if let Some(usage) = &result.usage {
             if let Some(h) = &handle {

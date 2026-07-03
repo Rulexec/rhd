@@ -1,8 +1,9 @@
 <script lang="ts">
   import ActiveScenario from './ActiveScenario.svelte';
   import FinishedScenario from './FinishedScenario.svelte';
+  import PausedScenario from './PausedScenario.svelte';
   import { subscribe, getFinishedScenarios } from '../lib/ws';
-  import { activeScenariosList, finishedScenarios, lastKnownId, wsConnected } from '../lib/stores';
+  import { activeScenariosList, finishedScenarios, pausedScenarios, lastKnownId, wsConnected } from '../lib/stores';
 
   let loaded = $state(false);
   let dataLoaded = $state(false);
@@ -63,12 +64,23 @@
     </section>
   {/if}
 
+  {#if $pausedScenarios.size > 0}
+    <section class="section">
+      <h2 class="section-title">Paused</h2>
+      <div class="scenario-list">
+        {#each Array.from($pausedScenarios.values()) as scenario (scenario.executionId)}
+          <PausedScenario {scenario} />
+        {/each}
+      </div>
+    </section>
+  {/if}
+
   <section class="section">
     <h2 class="section-title">Finished</h2>
     {#if loaded && $finishedScenarios.length === 0}
       <p class="empty-message">No finished scenarios</p>
     {:else}
-      <div class="scenario-list">
+      <div class="scenario-list" data-testid="finished-list">
         {#each $finishedScenarios as scenario, index (index)}
           <FinishedScenario {scenario} />
         {/each}
