@@ -27,4 +27,6 @@ pub enum Commands {
         #[arg(long)]
         control_port: Option<u16>,
     },
+    /// Run simple SSE streaming test
+    SseTest,
 }

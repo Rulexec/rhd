@@ -1,5 +1,6 @@
 <script lang="ts">
   import { editMessage } from '../lib/chatWs';
+  import { streamingMessageId } from '../lib/chatStores';
   import type { ChatMessage } from '../lib/types/index';
 
   export let message: ChatMessage;
@@ -7,6 +8,8 @@
   let editing = false;
   let editContent = message.content;
   let model = 'gpt4';
+
+  $: isStreamingMessage = $streamingMessageId === message.id;
 
   function startEdit() {
     editing = true;
@@ -20,7 +23,9 @@
 
   async function saveEdit() {
     if (editContent.trim() && editContent !== message.content) {
-      await editMessage(message.id, editContent.trim(), model);
+      if (typeof message.id === 'number') {
+        await editMessage(message.id, editContent.trim(), model);
+      }
     }
     editing = false;
   }
@@ -51,7 +56,12 @@
       </div>
     </div>
   {:else}
-    <div class="content">{message.content}</div>
+    <div class="content">
+      {message.content}
+      {#if isStreamingMessage}
+        <span class="streaming-dots"></span>
+      {/if}
+    </div>
     {#if message.role === 'user'}
       <button class="edit-btn" on:click={startEdit} aria-label="Edit message">
         ✎
@@ -83,6 +93,25 @@
     white-space: pre-wrap;
     word-wrap: break-word;
     line-height: 1.6;
+  }
+
+  .streaming-dots {
+    display: inline-block;
+    width: 1.5em;
+    text-align: left;
+    animation: dots 0.6s steps(3, end) infinite;
+  }
+
+  .streaming-dots::after {
+    content: '.';
+    animation: dots-content 0.6s steps(3, end) infinite;
+  }
+
+  @keyframes dots-content {
+    0% { content: '.'; }
+    33% { content: '..'; }
+    66% { content: '...'; }
+    100% { content: '.'; }
   }
 
   .edit-mode {

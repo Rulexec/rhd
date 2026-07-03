@@ -10,6 +10,7 @@ export const isStreaming: Writable<boolean> = writable(false);
 export const streamError: Writable<string | null> = writable(null);
 export const availableModels: Writable<string[]> = writable([]);
 export const selectedModel: Writable<string | null> = writable(null);
+export const streamingMessageId: Writable<string | null> = writable(null);
 
 export const currentChat: Readable<Chat | undefined> = derived(
   [chats, currentChatId],

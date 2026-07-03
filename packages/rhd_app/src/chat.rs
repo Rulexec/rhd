@@ -133,12 +133,14 @@ impl ChatManager {
                 let acc = accumulated_clone.clone();
                 Box::pin(async move {
                     if let Some(content) = chunk.content {
-                        let _ = sender.send(ChatEvent::StreamChunk {
-                            chat_id,
-                            content: content.clone(),
-                        });
-                        let mut acc_guard = acc.lock().await;
-                        acc_guard.push_str(&content);
+                        if !content.is_empty() {
+                            let _ = sender.send(ChatEvent::StreamChunk {
+                                chat_id,
+                                content: content.clone(),
+                            });
+                            let mut acc_guard = acc.lock().await;
+                            acc_guard.push_str(&content);
+                        }
                     }
                 })
             })
@@ -255,12 +257,14 @@ impl ChatManager {
                 let acc = accumulated_clone.clone();
                 Box::pin(async move {
                     if let Some(content) = chunk.content {
-                        let _ = sender.send(ChatEvent::StreamChunk {
-                            chat_id,
-                            content: content.clone(),
-                        });
-                        let mut acc_guard = acc.lock().await;
-                        acc_guard.push_str(&content);
+                        if !content.is_empty() {
+                            let _ = sender.send(ChatEvent::StreamChunk {
+                                chat_id,
+                                content: content.clone(),
+                            });
+                            let mut acc_guard = acc.lock().await;
+                            acc_guard.push_str(&content);
+                        }
                     }
                 })
             })

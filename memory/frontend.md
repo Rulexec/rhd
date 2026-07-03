@@ -38,7 +38,9 @@ Svelte-based web UI in `frontend/` directory for monitoring scenario execution a
 - Send messages with Enter (Shift+Enter for newline)
 - Edit user messages (truncates subsequent messages and re-streams)
 - Abort active streaming responses
-- Real-time streaming display with loading indicator
+- Real-time streaming display with two-phase approach:
+  - Phase 1: Loader shown until first chunk arrives
+  - Phase 2: Optimistic assistant message with animated dots indicator (cycles "." → ".." → "..." every 200ms)
 - Error states with retry button
 - Model selector dropdown in message input (shows available models, persists per chat)
 - Model indicators in message list (visual dividers showing when model changes between messages)
@@ -49,7 +51,7 @@ Svelte-based web UI in `frontend/` directory for monitoring scenario execution a
 - **Zod validation** for all WebSocket messages (see `src/lib/types/ws.ts`)
 - Svelte stores for state management:
   - Scenario stores: `activeScenarios`, `finishedScenarios`, `lastKnownId`, `wsConnected`
-  - Chat stores: `chats`, `currentChatId`, `messages`, `streamingContent`, `isStreaming`, `streamError`, `currentChat` (derived)
+  - Chat stores: `chats`, `currentChatId`, `messages`, `streamingContent`, `isStreaming`, `streamError`, `streamingMessageId`, `currentChat` (derived)
 - CSS modules + utility classes (Tailwind-like approach)
 - Components:
   - Layout: `TabNav`, `App`
@@ -69,10 +71,11 @@ Invalid WebSocket messages are logged and ignored via `safeParse`.
 
 - `chats`: writable array of chat objects
 - `currentChatId`: writable ID of selected chat
-- `messages`: writable array of messages for current chat
-- `streamingContent`: writable string accumulating streamed text
+- `messages`: writable array of messages for current chat (supports both numeric IDs from backend and string temp IDs for optimistic messages)
+- `streamingContent`: writable string accumulating streamed text (legacy, kept for compatibility)
 - `isStreaming`: writable boolean indicating active stream
 - `streamError`: writable error message (null when no error)
+- `streamingMessageId`: writable string|null, tracks the temp ID of the optimistic assistant message during streaming
 - `currentChat`: derived store returning current chat object
 - `availableModels`: writable array of available model names (fetched from backend)
 - `selectedModel`: writable string|null, currently selected model for the active chat
@@ -84,20 +87,24 @@ Invalid WebSocket messages are logged and ignored via `safeParse`.
 - `createChat(title)`: Creates new chat, selects it
 - `selectChat(chatId)`: Loads chat and messages, sets selectedModel from chat's activeModel
 - `deleteChat(chatId)`: Removes chat from list
-- `sendMessage(content, model)`: Sends message, starts streaming
+- `sendMessage(content, model)`: Sends message, starts streaming (sets isStreaming=true, does NOT create optimistic message yet)
 - `editMessage(messageId, newContent, model)`: Edits message, truncates, re-streams
 - `abortChat()`: Aborts active stream
 - `handleChatEvent(event, data)`: Processes chat events from WebSocket
+  - `chatStreamChunk`: On first chunk, creates optimistic assistant message with temp ID and sets streamingMessageId. On subsequent chunks, appends content to the optimistic message.
+  - `chatStreamFinished`: Sets isStreaming=false, waits for chatMessageAdded to replace optimistic message
+  - `chatMessageAdded`: Replaces optimistic message (matched by streamingMessageId) with real message from backend
+  - `chatStreamError`: Clears streamingMessageId, sets isStreaming=false
 
 ## Chat Components
 
 - **`ChatsTab.svelte`**: Main chat tab layout with sidebar and view area
 - **`ChatList.svelte`**: Sidebar with chat list, new chat button, delete buttons
 - **`ChatView.svelte`**: Main chat area with header, message list, and input
-- **`MessageList.svelte`**: Scrollable message list with auto-scroll on new content, shows model indicators when model changes between messages
-- **`Message.svelte`**: Individual message display with edit mode for user messages
+- **`MessageList.svelte`**: Scrollable message list with auto-scroll on new content, shows model indicators when model changes between messages. Shows StreamingMessage loader only when isStreaming=true AND streamingMessageId is null (before first chunk arrives).
+- **`Message.svelte`**: Individual message display with edit mode for user messages. When message.id matches streamingMessageId, displays animated dots indicator (CSS animation cycling through ".", "..", "...")
 - **`MessageInput.svelte`**: Textarea with send/abort buttons, error display with retry, model selector dropdown
-- **`StreamingMessage.svelte`**: Streaming response display with loading dots animation
+- **`StreamingMessage.svelte`**: Loading dots animation shown before first streaming chunk arrives
 
 ### Model Selection UI
 

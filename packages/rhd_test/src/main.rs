@@ -3,6 +3,7 @@ mod control_server;
 mod frontend_test;
 mod mcp_test;
 mod mock_server;
+mod sse_test;
 mod standard_test;
 mod utils;
 
@@ -28,6 +29,9 @@ async fn main() {
                 println!("\nFRONTEND TEST PASSED");
             }
         }
+        Some(Commands::SseTest) => {
+            sse_test::run_sse_test().await;
+        }
         None => {
             run_standard_tests(args.seed, args.repetitions).await;
         }
@@ -35,7 +39,7 @@ async fn main() {
 }
 
 async fn run_standard_tests(seed: u64, repetitions: u32) {
-    let (port, requests, response, flag_value) = start_mock_server().await;
+    let (port, requests, response, flag_value, _stream_sender, _auto_stream) = start_mock_server().await;
     println!("Mock AI server started on port {port}");
 
     let mut failures: Vec<u64> = Vec::new();

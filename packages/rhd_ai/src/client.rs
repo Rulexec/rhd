@@ -36,6 +36,14 @@ pub enum AiError {
 
     #[error("streaming aborted for {model}")]
     Aborted { model: String },
+
+    #[error("SSE stream error for {model} at event {event_index}: {message}")]
+    StreamError {
+        model: String,
+        event_index: usize,
+        message: String,
+        source: reqwest::Error,
+    },
 }
 
 #[derive(Serialize)]
@@ -481,6 +489,7 @@ impl OpenAiClient {
         let mut buffer = String::new();
         let mut finish_reason = None;
         let mut usage = None;
+        let mut event_index = 0;
 
         while let Some(chunk_result) = stream.next().await {
             if cancel.is_cancelled() {
@@ -489,8 +498,10 @@ impl OpenAiClient {
                 });
             }
 
-            let chunk = chunk_result.map_err(|source| AiError::Network {
+            let chunk = chunk_result.map_err(|source| AiError::StreamError {
                 model: model.to_string(),
+                event_index,
+                message: format!("Failed to read SSE chunk: {}", source),
                 source,
             })?;
 
@@ -540,6 +551,7 @@ impl OpenAiClient {
                         }
                     }
                 }
+                event_index += 1;
             }
         }
 

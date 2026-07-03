@@ -12,12 +12,12 @@ pub async fn run_frontend_test(ws_port: Option<u16>, control_port: Option<u16>) 
     let models_dir = workspace_root.join("test_e2e/models");
     let scenarios_dir = workspace_root.join("test_e2e/scenarios");
 
-    let (ai_port, requests, response, _flag_value) = start_mock_server().await;
+    let (ai_port, requests, response, _flag_value, stream_sender, auto_stream) = start_mock_server().await;
     println!("Mock AI server started on port {ai_port}");
 
     let control_port = control_port.unwrap_or_else(|| find_available_port());
     let daemon_ready: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
-    start_control_server(control_port, response.clone(), requests.clone(), daemon_ready.clone()).await;
+    start_control_server(control_port, response.clone(), requests.clone(), daemon_ready.clone(), stream_sender.clone(), auto_stream.clone()).await;
     println!("Control server started on port {control_port}");
 
     let ws_port = ws_port.unwrap_or_else(|| find_available_port());
@@ -42,13 +42,14 @@ pub async fn run_frontend_test(ws_port: Option<u16>, control_port: Option<u16>) 
         .env("E2E_MODEL_PORT", ai_port.to_string())
         .current_dir(daemon_dir.path())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
         .spawn()
         .expect("failed to spawn daemon");
 
     println!("Daemon spawned (PID: {:?})", daemon.id());
 
     let mut stdout = daemon.stdout.take().expect("failed to take stdout");
+    
     let mut found_listening = false;
     let start_time = std::time::Instant::now();
     let timeout = Duration::from_secs(10);

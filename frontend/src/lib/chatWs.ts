@@ -10,6 +10,7 @@ import {
   streamError,
   availableModels,
   selectedModel,
+  streamingMessageId,
 } from './chatStores';
 import type { WsEvent } from './types/ws';
 
@@ -60,6 +61,7 @@ export async function selectChat(chatId: number): Promise<WsResponse> {
     streamingContent.set('');
     isStreaming.set(false);
     streamError.set(null);
+    streamingMessageId.set(null);
     selectedModel.set(response.data.chat.activeModel || null);
   }
   return response;
@@ -97,6 +99,7 @@ export async function sendMessage(content: string, model: string): Promise<WsRes
   isStreaming.set(true);
   streamingContent.set('');
   streamError.set(null);
+  streamingMessageId.set(null);
 
   const id = generateRequestId();
   const response = await sendRequest({ type: 'sendMessage', id, chatId, content, model });
@@ -124,6 +127,7 @@ export async function editMessage(messageId: number, newContent: string, model: 
   isStreaming.set(true);
   streamingContent.set('');
   streamError.set(null);
+  streamingMessageId.set(null);
 
   const id = generateRequestId();
   const response = await sendRequest({ type: 'editMessage', id, messageId, content: newContent, model });
@@ -147,12 +151,34 @@ export function handleChatEvent(event: string, data: unknown): void {
   switch (event) {
     case 'chatStreamChunk': {
       const chunk = data as { content: string };
-      streamingContent.update((c) => c + chunk.content);
+      const tempId = get(streamingMessageId);
+
+      if (!tempId) {
+        const chatId = get(currentChatId);
+        if (!chatId) break;
+
+        const newTempId = `temp-${Date.now()}`;
+        const assistantMessage = {
+          id: newTempId,
+          chatId,
+          role: 'assistant' as const,
+          content: chunk.content,
+          createdAt: new Date().toISOString(),
+          model: get(selectedModel) || '',
+        };
+        messages.update((list) => [...list, assistantMessage as any]);
+        streamingMessageId.set(newTempId);
+      } else {
+        messages.update((list) =>
+          list.map((m) =>
+            m.id === tempId ? { ...m, content: m.content + chunk.content } : m
+          )
+        );
+      }
       break;
     }
     case 'chatStreamFinished': {
       isStreaming.set(false);
-      streamingContent.set('');
       streamError.set(null);
       break;
     }
@@ -160,11 +186,24 @@ export function handleChatEvent(event: string, data: unknown): void {
       const error = data as { error: string };
       streamError.set(error.error);
       isStreaming.set(false);
+      streamingMessageId.set(null);
       break;
     }
     case 'chatMessageAdded': {
       const added = data as { message: { id: number; role: string; content: string } };
+      const tempId = get(streamingMessageId);
+
       messages.update((list) => {
+        if (added.message.role === 'assistant' && tempId) {
+          const tempIdx = list.findIndex((m) => m.id === tempId);
+          if (tempIdx !== -1) {
+            const updated = [...list];
+            updated[tempIdx] = added.message as any;
+            streamingMessageId.set(null);
+            return updated;
+          }
+        }
+
         if (list.some((m) => m.id === added.message.id)) {
           return list;
         }

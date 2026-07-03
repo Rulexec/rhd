@@ -35,7 +35,7 @@ export const ChatSchema = z.object({
 export type Chat = z.infer<typeof ChatSchema>;
 
 export const ChatMessageSchema = z.object({
-  id: z.number(),
+  id: z.union([z.number(), z.string()]),
   chatId: z.number(),
   role: z.enum(['user', 'assistant']),
   content: z.string(),

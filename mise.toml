@@ -1,10 +1,21 @@
 [tasks]
 test-frontend-unit = { dir = "frontend", run = ["npm run test:unit"] }
-test-frontend-e2e = { dir = "frontend", run = ["npm run test:e2e"] }
-test-cargo = "cargo test"
+
+[tasks.test-cargo]
+depends = ["cargo-build"]
+run = ["cargo test"]
+
+[tasks.cargo-build]
+run = ["cargo build"]
+
+[tasks.test-frontend-e2e]
+dir = "frontend"
+depends = ["cargo-build"]
+run = ["npm run test:e2e"]
 
 [tasks.test-e2e]
-run = ["cargo build", "cargo run -p rhd_test{{arg(name='rhd_test_args', var=true, prefix=' -- ', required=false)}}"]
+depends = ["cargo-build"]
+run = ["cargo run -p rhd_test{{arg(name='rhd_test_args', var=true, prefix=' -- ', required=false)}}"]
 
 [tasks.test-all]
 depends = ["test-frontend-unit", "test-frontend-e2e", "test-cargo", "test-e2e"]

@@ -1,9 +1,20 @@
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
-use axum::{extract::State, response::{sse::{Event, Sse}, IntoResponse}, routing::post, Json, Router};
-use futures_util::stream;
+use axum::{
+    extract::State,
+    response::{
+        sse::{Event, KeepAlive, Sse},
+        IntoResponse,
+    },
+    routing::post,
+    Json, Router,
+};
 use serde::{Deserialize, Serialize};
+use std::convert::Infallible;
 use tokio::net::TcpListener;
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 
 #[derive(Debug, Deserialize)]
 pub struct ChatRequest {
@@ -116,11 +127,19 @@ struct StreamResponse {
 pub type SharedRequests = Arc<Mutex<Vec<RecordedRequest>>>;
 pub type SharedResponse = Arc<Mutex<String>>;
 pub type SharedFlagValue = Arc<Mutex<bool>>;
+pub type StreamChunkSender = Arc<Mutex<Option<mpsc::Sender<Option<String>>>>>;
+pub type SharedAutoStream = Arc<Mutex<bool>>;
 
 pub async fn chat_completions(
-    State((requests, response, flag_value)): State<(SharedRequests, SharedResponse, SharedFlagValue)>,
+    State((requests, response, flag_value, stream_sender_holder, auto_stream)): State<(
+        SharedRequests,
+        SharedResponse,
+        SharedFlagValue,
+        StreamChunkSender,
+        SharedAutoStream,
+    )>,
     Json(body): Json<ChatRequest>,
-) -> impl axum::response::IntoResponse {
+) -> impl IntoResponse {
     let system_content = body
         .messages
         .iter()
@@ -148,44 +167,86 @@ pub async fn chat_completions(
 
     if body.stream {
         // Streaming response
-        let events: Vec<Event> = if should_call_tool {
+        if should_call_tool {
             // Tool calls not supported in streaming for simplicity, return empty content
-            vec![
-                Event::default().data(r#"{"choices":[{"delta":{"content":""},"finish_reason":null}]}"#),
-                Event::default().data("[DONE]"),
-            ]
+            let events: Vec<Result<Event, Infallible>> = vec![
+                Ok(Event::default().data(r#"{"choices":[{"delta":{"content":""},"finish_reason":null}]}"#)),
+                Ok(Event::default().data("[DONE]")),
+            ];
+            let stream = futures_util::stream::iter(events.into_iter());
+            Sse::new(stream)
+                .keep_alive(KeepAlive::new().interval(Duration::from_secs(1)))
+                .into_response()
         } else {
-            // Split response into chunks for streaming effect
-            let mut events = Vec::new();
-            let words: Vec<&str> = response_content.split_whitespace().collect();
-            for (i, word) in words.iter().enumerate() {
-                let content = if i == 0 {
-                    word.to_string()
-                } else {
-                    format!(" {}", word)
-                };
-                let stream_resp = StreamResponse {
-                    choices: vec![StreamChoice {
-                        delta: StreamDelta { content: Some(content) },
-                        finish_reason: None,
-                    }],
-                };
-                let json = serde_json::to_string(&stream_resp).unwrap();
-                events.push(Event::default().data(json));
+            let use_auto_stream = *auto_stream.lock().unwrap();
+            
+            if use_auto_stream {
+                // Auto-stream mode: send configured response immediately
+                let content = response_content.clone();
+                let events: Vec<Result<Event, Infallible>> = vec![
+                    Ok(Event::default().data(format!(r#"{{"choices":[{{"delta":{{"content":"{}"}},"finish_reason":null}}]}}"#, content))),
+                    Ok(Event::default().data(r#"{"choices":[{"delta":{"content":null},"finish_reason":"stop"}]}"#)),
+                    Ok(Event::default().data("[DONE]")),
+                ];
+                let stream = futures_util::stream::iter(events.into_iter());
+                Sse::new(stream)
+                    .keep_alive(KeepAlive::new().interval(Duration::from_secs(1)))
+                    .into_response()
+            } else {
+                // Manual control mode: wait for control server chunks
+                // Create channel for controlling stream content
+                let (tx, mut rx) = mpsc::channel::<Option<String>>(100);
+                
+                // Store sender so control server can send chunks
+                *stream_sender_holder.lock().unwrap() = Some(tx);
+                
+                // Create channel for SSE events
+                let (event_tx, event_rx) = mpsc::channel::<Result<Event, Infallible>>(100);
+                
+                // Spawn task to convert control chunks to SSE events
+                tokio::spawn(async move {
+                    loop {
+                        match rx.recv().await {
+                            Some(chunk) => {
+                                match chunk {
+                                    Some(content) => {
+                                        let stream_resp = StreamResponse {
+                                            choices: vec![StreamChoice {
+                                                delta: StreamDelta { content: Some(content) },
+                                                finish_reason: None,
+                                            }],
+                                        };
+                                        let json = serde_json::to_string(&stream_resp).unwrap();
+                                        if event_tx.send(Ok(Event::default().data(json))).await.is_err() {
+                                            break;
+                                        }
+                                    }
+                                    None => {
+                                        // Stream finished
+                                        let final_resp = StreamResponse {
+                                            choices: vec![StreamChoice {
+                                                delta: StreamDelta { content: None },
+                                                finish_reason: Some("stop".to_string()),
+                                            }],
+                                        };
+                                        let json = serde_json::to_string(&final_resp).unwrap();
+                                        let _ = event_tx.send(Ok(Event::default().data(json))).await;
+                                        let _ = event_tx.send(Ok(Event::default().data("[DONE]"))).await;
+                                        break;
+                                    }
+                                }
+                            }
+                            None => break,
+                        }
+                    }
+                });
+                
+                let stream = ReceiverStream::new(event_rx);
+                Sse::new(stream)
+                    .keep_alive(KeepAlive::new().interval(Duration::from_secs(1)))
+                    .into_response()
             }
-            // Final event with finish_reason
-            let final_resp = StreamResponse {
-                choices: vec![StreamChoice {
-                    delta: StreamDelta { content: None },
-                    finish_reason: Some("stop".to_string()),
-                }],
-            };
-            let json = serde_json::to_string(&final_resp).unwrap();
-            events.push(Event::default().data(json));
-            events.push(Event::default().data("[DONE]"));
-            events
-        };
-        Sse::new(stream::iter(events.into_iter().map(Ok::<_, std::convert::Infallible>))).into_response()
+        }
     } else {
         // Non-streaming response
         let chat_response = if should_call_tool {
@@ -234,13 +295,29 @@ pub async fn chat_completions(
     }
 }
 
-pub async fn start_mock_server() -> (u16, SharedRequests, SharedResponse, SharedFlagValue) {
+pub async fn start_mock_server() -> (
+    u16,
+    SharedRequests,
+    SharedResponse,
+    SharedFlagValue,
+    StreamChunkSender,
+    SharedAutoStream,
+) {
     let requests: SharedRequests = Arc::new(Mutex::new(Vec::new()));
     let response: SharedResponse = Arc::new(Mutex::new(String::new()));
     let flag_value: SharedFlagValue = Arc::new(Mutex::new(true));
+    let stream_sender: StreamChunkSender = Arc::new(Mutex::new(None));
+    let auto_stream: SharedAutoStream = Arc::new(Mutex::new(true));
+    
     let app = Router::new()
         .route("/v1/chat/completions", post(chat_completions))
-        .with_state((requests.clone(), response.clone(), flag_value.clone()));
+        .with_state((
+            requests.clone(),
+            response.clone(),
+            flag_value.clone(),
+            stream_sender.clone(),
+            auto_stream.clone(),
+        ));
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -249,5 +326,5 @@ pub async fn start_mock_server() -> (u16, SharedRequests, SharedResponse, Shared
         axum::serve(listener, app).await.unwrap();
     });
 
-    (port, requests, response, flag_value)
+    (port, requests, response, flag_value, stream_sender, auto_stream)
 }

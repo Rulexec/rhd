@@ -46,6 +46,10 @@ E2E test infrastructure:
   - `waitForWebSocket()` - waits for daemon to be ready
   - `configureMock(content)` - sets mock AI response
   - `getRecordedRequests()` - fetches recorded AI requests
+  - `emitStreamChunk(content)` - emits a streaming chunk via control server (returns JSON with status)
+  - `finishStream()` - finishes the stream via control server (returns JSON with status)
+  - `waitForStreamReady()` - polls control server until stream is ready
+  - All control server methods check response status and throw errors if not OK
 - Tests use `@testing-library/svelte` for component rendering and interaction
 - WebSocket port is dynamically set via `setWsPort()` and `connectWebSocket()` from `src/lib/ws.ts`
 - **Known issue**: Chat UI does not auto-select first model when creating new chat (test works around this)
@@ -56,6 +60,12 @@ E2E test infrastructure:
 - `rhd_test` accepts `--seed` (default 42) for deterministic random generation and `--repetitions` (default 10) to run tests in loop
 - Each iteration uses seed `base_seed + i`, prints iteration seed for reproducibility on failure
 - `rhd_test` starts a mock OpenAI-compatible HTTP server (axum, reused across iterations), spawns daemon per iteration, runs scenario, validates AI request payloads and output
+- Mock server supports controlled streaming via `mpsc` channel:
+  - `StreamChunkSender` type: `Arc<Mutex<Option<mpsc::Sender<Option<String>>>>>`
+  - When streaming request arrives, creates channel and stores sender
+  - Control server endpoints send chunks via the sender
+  - SSE stream uses `async_stream::stream!` with keep-alive (1s interval)
+  - Control server returns JSON responses: `{"status":"OK"}` or `{"status":"ERROR","message":"..."}`
 - Test scenarios in `test_e2e/scenarios/<name>/scenario.yaml`
 - Test models in `test_e2e/models/*.yaml`
 

@@ -330,28 +330,19 @@ async fn handle_send_message(
     model: String,
     state: &Arc<DaemonState>,
 ) -> WsResponse {
-    match state
-        .chat_manager
-        .send_message(chat_id, content, &model, &state.models, state.chat_event_sender.clone())
-        .await
-    {
-        Ok(message_id) => WsResponse::success(id, serde_json::json!({ "messageId": message_id })),
-        Err(crate::chat::ChatError::ChatNotFound) => WsResponse::error(
-            id,
-            ErrorCode::ChatNotFound,
-            format!("chat not found: {}", chat_id),
-        ),
-        Err(crate::chat::ChatError::ModelNotFound(model_name)) => WsResponse::error(
-            id,
-            ErrorCode::InvalidRequest,
-            format!("model not found: {}", model_name),
-        ),
-        Err(err) => WsResponse::error(
-            id,
-            ErrorCode::ChatStreamFailed,
-            format!("failed to send message: {}", err),
-        ),
-    }
+    // Spawn the send_message operation in a separate task to avoid blocking the WebSocket select loop
+    let chat_manager = Arc::clone(&state.chat_manager);
+    let models = state.models.clone();
+    let event_sender = state.chat_event_sender.clone();
+    
+    tokio::spawn(async move {
+        let _ = chat_manager
+            .send_message(chat_id, content, &model, &models, event_sender)
+            .await;
+    });
+    
+    // Return immediately with a success response
+    WsResponse::success(id, serde_json::json!({ "status": "sending" }))
 }
 
 async fn handle_edit_message(
