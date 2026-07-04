@@ -11,7 +11,15 @@ import {
   availableModels,
   selectedModel,
   streamingMessageId,
+  isPaused,
+  pendingToolCalls,
 } from './chatStores';
+import {
+  handleMcpStatusEvent,
+  handleProjectAttachedEvent,
+  handleProjectDetachedEvent,
+  loadChatProjects,
+} from './projectStores';
 import type { WsEvent } from './types/ws';
 
 export async function loadChats(): Promise<WsResponse> {
@@ -63,6 +71,7 @@ export async function selectChat(chatId: number): Promise<WsResponse> {
     streamError.set(null);
     streamingMessageId.set(null);
     selectedModel.set(response.data.chat.activeModel || null);
+    loadChatProjects(chatId);
   }
   return response;
 }
@@ -147,6 +156,24 @@ export async function abortChat(): Promise<WsResponse> {
   return response;
 }
 
+export async function pauseChat(): Promise<WsResponse> {
+  const chatId = get(currentChatId);
+  if (!chatId) return { id: '', type: 'response', success: false, error: 'No chat selected' };
+
+  const id = generateRequestId();
+  const response = await sendRequest({ type: 'pauseChat', id, chatId });
+  return response;
+}
+
+export async function resumeChat(): Promise<WsResponse> {
+  const chatId = get(currentChatId);
+  if (!chatId) return { id: '', type: 'response', success: false, error: 'No chat selected' };
+
+  const id = generateRequestId();
+  const response = await sendRequest({ type: 'resumeChat', id, chatId });
+  return response;
+}
+
 export function handleChatEvent(event: string, data: unknown): void {
   switch (event) {
     case 'chatStreamChunk': {
@@ -226,6 +253,87 @@ export function handleChatEvent(event: string, data: unknown): void {
       chats.update((list) =>
         list.map((c) => (c.id === updated.chatId ? { ...c, title: updated.title } : c))
       );
+      break;
+    }
+    case 'projectMcpStatusChanged': {
+      handleMcpStatusEvent(data);
+      break;
+    }
+    case 'projectAttached': {
+      handleProjectAttachedEvent(data);
+      break;
+    }
+    case 'projectDetached': {
+      handleProjectDetachedEvent(data);
+      break;
+    }
+    case 'toolCallStarted': {
+      const { toolCallId, toolName, arguments: args } = data as {
+        chatId: number;
+        toolCallId: string;
+        toolName: string;
+        arguments: string;
+      };
+      const newToolCall = {
+        id: toolCallId,
+        name: toolName,
+        arguments: args,
+        status: 'running' as const,
+      };
+      pendingToolCalls.update((list) => [...list, newToolCall]);
+      
+      const tempId = get(streamingMessageId);
+      if (tempId) {
+        messages.update((list) =>
+          list.map((m) => {
+            if (m.id === tempId) {
+              const existingToolCalls = m.toolCalls || [];
+              return { ...m, toolCalls: [...existingToolCalls, newToolCall] };
+            }
+            return m;
+          })
+        );
+      }
+      break;
+    }
+    case 'toolCallCompleted': {
+      const { toolCallId, result } = data as {
+        chatId: number;
+        toolCallId: string;
+        result: string;
+      };
+      pendingToolCalls.update((list) =>
+        list.map((tc) =>
+          tc.id === toolCallId ? { ...tc, result, status: 'completed' as const } : tc
+        )
+      );
+      
+      const tempId = get(streamingMessageId);
+      if (tempId) {
+        messages.update((list) =>
+          list.map((m) => {
+            if (m.id === tempId && m.toolCalls) {
+              return {
+                ...m,
+                toolCalls: m.toolCalls.map((tc) =>
+                  tc.id === toolCallId ? { ...tc, result, status: 'completed' as const } : tc
+                ),
+              };
+            }
+            return m;
+          })
+        );
+      }
+      break;
+    }
+    case 'chatPaused': {
+      isPaused.set(true);
+      isStreaming.set(false);
+      break;
+    }
+    case 'chatResumed': {
+      isPaused.set(false);
+      isStreaming.set(true);
       break;
     }
   }

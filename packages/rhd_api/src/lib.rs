@@ -1,3 +1,5 @@
+pub mod project;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -191,6 +193,26 @@ pub enum WsRequest {
     #[serde(rename = "getAvailableModels")]
     GetAvailableModels { id: String },
 
+    // Project operations
+    #[serde(rename = "listProjects")]
+    ListProjects { id: String },
+    #[serde(rename = "getProjectMcpStatus", rename_all = "camelCase")]
+    GetProjectMcpStatus { id: String, project_name: String },
+
+    // Chat-Project operations
+    #[serde(rename = "attachProject", rename_all = "camelCase")]
+    AttachProject { id: String, chat_id: i64, project_name: String },
+    #[serde(rename = "detachProject", rename_all = "camelCase")]
+    DetachProject { id: String, chat_id: i64, project_name: String },
+    #[serde(rename = "getChatProjects", rename_all = "camelCase")]
+    GetChatProjects { id: String, chat_id: i64 },
+
+    // Chat pause/resume operations
+    #[serde(rename = "pauseChat", rename_all = "camelCase")]
+    PauseChat { id: String, chat_id: i64 },
+    #[serde(rename = "resumeChat", rename_all = "camelCase")]
+    ResumeChat { id: String, chat_id: i64 },
+
     // Scenario pause/resume operations
     #[serde(rename = "retryScenario", rename_all = "camelCase")]
     RetryScenario {
@@ -322,6 +344,71 @@ pub struct ChatMessageDto {
 pub struct ChatUpdatedEvent {
     pub chat_id: i64,
     pub title: String,
+}
+
+// ============================================================================
+// Project event types
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectMcpStatusChangedEvent {
+    pub project_name: String,
+    pub mcp_name: String,
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectAttachedEvent {
+    pub chat_id: i64,
+    pub project_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectDetachedEvent {
+    pub chat_id: i64,
+    pub project_name: String,
+}
+
+// ============================================================================
+// Tool call event types
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallStartedEvent {
+    pub chat_id: i64,
+    pub tool_call_id: String,
+    pub tool_name: String,
+    pub arguments: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallCompletedEvent {
+    pub chat_id: i64,
+    pub tool_call_id: String,
+    pub result: String,
+}
+
+// ============================================================================
+// Chat pause/resume event types
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatPausedEvent {
+    pub chat_id: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatResumedEvent {
+    pub chat_id: i64,
 }
 
 // ============================================================================

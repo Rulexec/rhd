@@ -3,6 +3,7 @@
   import { messages, isStreaming, streamingContent, streamingMessageId } from '../lib/chatStores';
   import Message from './Message.svelte';
   import StreamingMessage from './StreamingMessage.svelte';
+  import ToolCallMessage from './ToolCallMessage.svelte';
 
   let listElement: HTMLDivElement;
 
@@ -28,6 +29,13 @@
       </div>
     {/if}
     <Message {message} />
+    {#if message.toolCalls && message.toolCalls.length > 0}
+      <div class="tool-calls-container">
+        {#each message.toolCalls as toolCall (toolCall.id)}
+          <ToolCallMessage {toolCall} />
+        {/each}
+      </div>
+    {/if}
   {/each}
   {#if $isStreaming && !$streamingMessageId}
     <StreamingMessage content={$streamingContent} />
@@ -55,5 +63,12 @@
     font-size: 12px;
     font-weight: 500;
     border: 1px solid var(--color-border, #ddd);
+  }
+
+  .tool-calls-container {
+    margin-left: 40px;
+    margin-right: 40px;
+    margin-top: calc(-1 * var(--spacing-s, 8px));
+    margin-bottom: var(--spacing-m);
   }
 </style>

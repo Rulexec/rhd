@@ -91,7 +91,7 @@ export function sendRequest(request: Record<string, unknown>): Promise<WsRespons
 function handleEvent(message: WsEvent): void {
   const { event, data } = message;
 
-  if (event.startsWith('chat')) {
+  if (event.startsWith('chat') || event.startsWith('project')) {
     handleChatEvent(event, data);
     return;
   }

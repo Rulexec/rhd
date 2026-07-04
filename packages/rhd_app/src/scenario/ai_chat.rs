@@ -92,7 +92,8 @@ pub async fn execute_ai_chat(
             }
             
             let client = OpenAiClient::new(&current_model_config.base_url, &current_model_config.api_key);
-            let chat_future = client.chat_with_tools(&current_model_config.model, &system_prompt, &message, &[], &[]);
+            let system_prompts = [system_prompt.as_str()];
+            let chat_future = client.chat_with_tools(&current_model_config.model, &system_prompts, &message, &[], &[]);
             
             let result = if let Some(h) = &handle {
                 let mut abort_signal = h.abort_signal();
@@ -309,7 +310,8 @@ async fn execute_ai_chat_with_tools(
             h.add_section(request_tracker.end(sink));
         }
 
-        let chat_future = current_client.chat_with_tools(&current_api_model, system_prompt, &current_message, &tools, &tool_results);
+        let system_prompts = [system_prompt];
+        let chat_future = current_client.chat_with_tools(&current_api_model, &system_prompts, &current_message, &tools, &tool_results);
         
         let result = if let Some(h) = &handle {
             let mut abort_signal = h.abort_signal();

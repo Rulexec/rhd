@@ -10,6 +10,8 @@ mod log;
 mod mcp_cache;
 mod mcp_loader;
 mod notifications;
+mod project_loader;
+mod project_manager;
 mod scenario;
 mod ws;
 
@@ -94,9 +96,12 @@ async fn run_daemon_command(
     let models = rhd_ai::config::load_models(&merged.models_dir, &credentials)?;
     let scenarios = scenario::load_scenarios_dir(&merged.scenarios_dir)?;
     let mcp_configs = mcp_loader::load_mcp_dir(&merged.mcp_dir)?;
+    let projects = project_loader::load_projects(&merged.projects_dir)
+        .map_err(|e| format!("failed to load projects: {}", e))?;
+    let project_manager = std::sync::Arc::new(project_manager::ProjectManager::new(projects));
     let socket_path = args.socket.unwrap_or_else(cli::default_socket_path);
     let db_file = merged.db_dir.join("meta.db");
-    daemon::run_daemon(scenarios, models, mcp_configs, merged.default_model, merged.logs, &socket_path, merged.ws_port, db_file.to_str().unwrap_or("db/meta.db"), merged.never_fail).await?;
+    daemon::run_daemon(scenarios, models, mcp_configs, merged.default_model, merged.logs, &socket_path, merged.ws_port, db_file.to_str().unwrap_or("db/meta.db"), merged.never_fail, project_manager).await?;
     Ok(())
 }
 
@@ -119,6 +124,7 @@ fn merge_config(config: DaemonConfig, args: &cli::DaemonArgs) -> DaemonConfig {
         logs: args.logs.clone().or(config.logs),
         ws_port: args.ws_port.or(config.ws_port),
         db_dir: args.db_dir.clone().unwrap_or(config.db_dir),
+        projects_dir: args.projects_dir.clone().unwrap_or(config.projects_dir),
         credentials_config: config.credentials_config,
         never_fail: config.never_fail,
     }

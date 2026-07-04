@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { isStreaming, streamError, currentChatId, availableModels, selectedModel } from '../lib/chatStores';
-  import { sendMessage, abortChat, loadAvailableModels } from '../lib/chatWs';
+  import { isStreaming, streamError, currentChatId, availableModels, selectedModel, isPaused } from '../lib/chatStores';
+  import { chatProjects, mcpStatuses } from '../lib/projectStores';
+  import { sendMessage, abortChat, pauseChat, resumeChat, loadAvailableModels } from '../lib/chatWs';
 
   let input = '';
   let textareaElement: HTMLTextAreaElement;
@@ -9,6 +10,10 @@
   $: if ($availableModels.length > 0 && $selectedModel === null) {
     selectedModel.set($availableModels[0]);
   }
+
+  $: hasMcpError = $chatProjects.length > 0 && $mcpStatuses.some(
+    (s) => $chatProjects.some((p) => p.name === s.projectName) && s.status === 'failed'
+  );
 
   onMount(() => {
     loadAvailableModels();
@@ -22,7 +27,7 @@
   }
 
   function send() {
-    if (!input.trim() || $isStreaming || !$currentChatId || !$selectedModel) return;
+    if (!input.trim() || (!$isPaused && $isStreaming) || !$currentChatId || !$selectedModel || hasMcpError) return;
     sendMessage(input.trim(), $selectedModel);
     input = '';
     if (textareaElement) {
@@ -32,6 +37,14 @@
 
   function abort() {
     abortChat();
+  }
+
+  function pause() {
+    pauseChat();
+  }
+
+  function resume() {
+    resumeChat();
   }
 
   function handleInput(event: Event) {
@@ -77,14 +90,21 @@
       on:keydown={handleKeydown}
       on:input={handleInput}
       placeholder="Type a message..."
-      disabled={$isStreaming}
+      disabled={$isStreaming && !$isPaused}
       class="input-textarea"
       rows="1"
     ></textarea>
-    {#if $isStreaming}
+    {#if $isPaused}
+      <button on:click={resume} class="resume-btn">Resume</button>
+      <button on:click={send} disabled={!input.trim() || !$currentChatId || hasMcpError} class="send-btn">
+        Send
+      </button>
+      <button on:click={abort} class="abort-btn">Abort</button>
+    {:else if $isStreaming}
+      <button on:click={pause} class="pause-btn">Pause</button>
       <button on:click={abort} class="abort-btn">Abort</button>
     {:else}
-      <button on:click={send} disabled={!input.trim() || !$currentChatId} class="send-btn">
+      <button on:click={send} disabled={!input.trim() || !$currentChatId || hasMcpError} class="send-btn">
         Send
       </button>
     {/if}
@@ -179,7 +199,9 @@
   }
 
   .send-btn,
-  .abort-btn {
+  .abort-btn,
+  .pause-btn,
+  .resume-btn {
     padding: var(--spacing-s) var(--spacing-m);
     border: none;
     border-radius: 4px;
@@ -201,6 +223,16 @@
 
   .abort-btn {
     background: #c33;
+    color: white;
+  }
+
+  .pause-btn {
+    background: #f0ad4e;
+    color: white;
+  }
+
+  .resume-btn {
+    background: #5cb85c;
     color: white;
   }
 </style>

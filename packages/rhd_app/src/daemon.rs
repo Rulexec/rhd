@@ -15,13 +15,14 @@ use crate::execution::ExecutionTracker;
 use crate::ipc::protocol::{read_message, write_message, IpcRequest, IpcResponse};
 use crate::log::{create_log_dir, open_log_file, LogSink};
 use crate::mcp_cache::McpServerCache;
+use crate::project_manager::ProjectManager;
 use crate::scenario::{execute_scenario, Scenario};
 
 pub struct DaemonState {
     pub scenarios: HashMap<String, Scenario>,
     pub models: HashMap<String, ModelConfig>,
     pub mcp_configs: HashMap<String, McpConfig>,
-    pub mcp_cache: McpServerCache,
+    pub mcp_cache: Arc<McpServerCache>,
     pub default_model: Option<String>,
     pub logs: Option<std::path::PathBuf>,
     pub execution_tracker: Arc<ExecutionTracker>,
@@ -31,6 +32,7 @@ pub struct DaemonState {
     pub frontend_alive: Arc<AtomicBool>,
     pub never_fail: bool,
     pub ws_port: Option<u16>,
+    pub project_manager: Arc<ProjectManager>,
 }
 
 impl DaemonState {
@@ -49,6 +51,7 @@ pub async fn run_daemon(
     ws_port: Option<u16>,
     db_path: &str,
     never_fail: bool,
+    project_manager: Arc<ProjectManager>,
 ) -> std::io::Result<()> {
     let sock_path = socket_path;
     if let Err(err) = std::fs::remove_file(sock_path) {
@@ -78,7 +81,7 @@ pub async fn run_daemon(
         scenarios,
         models,
         mcp_configs,
-        mcp_cache: McpServerCache::new(),
+        mcp_cache: Arc::new(McpServerCache::new()),
         default_model,
         logs,
         execution_tracker: execution_tracker.clone(),
@@ -88,6 +91,7 @@ pub async fn run_daemon(
         frontend_alive,
         never_fail,
         ws_port,
+        project_manager,
     });
 
     let scenario_names: Vec<&String> = state.scenarios.keys().collect();

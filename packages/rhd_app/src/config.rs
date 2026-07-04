@@ -20,6 +20,8 @@ pub struct DaemonConfig {
     pub ws_port: Option<u16>,
     #[serde(default = "default_db_dir")]
     pub db_dir: PathBuf,
+    #[serde(default = "default_projects_dir")]
+    pub projects_dir: PathBuf,
     #[serde(default)]
     pub credentials_config: Option<PathBuf>,
     #[serde(default)]
@@ -42,6 +44,10 @@ fn default_db_dir() -> PathBuf {
     PathBuf::from("rhd_db")
 }
 
+fn default_projects_dir() -> PathBuf {
+    PathBuf::from("projects")
+}
+
 impl Default for DaemonConfig {
     fn default() -> Self {
         Self {
@@ -52,6 +58,7 @@ impl Default for DaemonConfig {
             logs: None,
             ws_port: None,
             db_dir: default_db_dir(),
+            projects_dir: default_projects_dir(),
             credentials_config: None,
             never_fail: false,
         }

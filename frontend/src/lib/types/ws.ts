@@ -107,6 +107,72 @@ export const DevNotificationEventSchema = z.object({
   }),
 });
 
+export const ProjectMcpStatusChangedEventSchema = z.object({
+  type: z.literal('event'),
+  event: z.literal('projectMcpStatusChanged'),
+  data: z.object({
+    projectName: z.string(),
+    mcpName: z.string(),
+    status: z.enum(['connecting', 'connected', 'failed']),
+    error: z.string().optional(),
+  }),
+});
+
+export const ProjectAttachedEventSchema = z.object({
+  type: z.literal('event'),
+  event: z.literal('projectAttached'),
+  data: z.object({
+    chatId: z.number(),
+    projectName: z.string(),
+  }),
+});
+
+export const ProjectDetachedEventSchema = z.object({
+  type: z.literal('event'),
+  event: z.literal('projectDetached'),
+  data: z.object({
+    chatId: z.number(),
+    projectName: z.string(),
+  }),
+});
+
+export const ToolCallStartedEventSchema = z.object({
+  type: z.literal('event'),
+  event: z.literal('toolCallStarted'),
+  data: z.object({
+    chatId: z.number(),
+    toolCallId: z.string(),
+    toolName: z.string(),
+    arguments: z.string(),
+  }),
+});
+
+export const ToolCallCompletedEventSchema = z.object({
+  type: z.literal('event'),
+  event: z.literal('toolCallCompleted'),
+  data: z.object({
+    chatId: z.number(),
+    toolCallId: z.string(),
+    result: z.string(),
+  }),
+});
+
+export const ChatPausedEventSchema = z.object({
+  type: z.literal('event'),
+  event: z.literal('chatPaused'),
+  data: z.object({
+    chatId: z.number(),
+  }),
+});
+
+export const ChatResumedEventSchema = z.object({
+  type: z.literal('event'),
+  event: z.literal('chatResumed'),
+  data: z.object({
+    chatId: z.number(),
+  }),
+});
+
 export const WsEventSchema = z.discriminatedUnion('event', [
   ScenarioStartedEventSchema,
   StepStartedEventSchema,
@@ -119,6 +185,13 @@ export const WsEventSchema = z.discriminatedUnion('event', [
   ScenarioPausedEventSchema,
   ScenarioResumedEventSchema,
   DevNotificationEventSchema,
+  ProjectMcpStatusChangedEventSchema,
+  ProjectAttachedEventSchema,
+  ProjectDetachedEventSchema,
+  ToolCallStartedEventSchema,
+  ToolCallCompletedEventSchema,
+  ChatPausedEventSchema,
+  ChatResumedEventSchema,
 ]);
 export type WsEvent = z.infer<typeof WsEventSchema>;
 

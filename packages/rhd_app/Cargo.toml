@@ -24,3 +24,6 @@ rhd_db = { path = "../rhd_db" }
 tokio-tungstenite = { workspace = true }
 futures-util = { workspace = true }
 tokio-util = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

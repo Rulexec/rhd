@@ -4,8 +4,10 @@ use std::time::Instant;
 
 use futures_util::{SinkExt, StreamExt};
 use rhd_api::{
-    ChatMessageAddedEvent, ChatMessageDto, ChatStreamChunkEvent, ChatStreamErrorEvent,
-    ChatStreamFinishedEvent, DevNotificationEvent, ErrorCode, WsEvent, WsRequest, WsResponse,
+    ChatMessageAddedEvent, ChatMessageDto, ChatPausedEvent, ChatResumedEvent,
+    ChatStreamChunkEvent, ChatStreamErrorEvent, ChatStreamFinishedEvent, DevNotificationEvent,
+    ErrorCode, ProjectAttachedEvent, ProjectDetachedEvent, ProjectMcpStatusChangedEvent,
+    ToolCallCompletedEvent, ToolCallStartedEvent, WsEvent, WsRequest, WsResponse,
 };
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
@@ -127,6 +129,48 @@ async fn handle_ws_connection(
                                 let payload = DevNotificationEvent { title, message };
                                 WsEvent::new("devNotification", serde_json::to_value(&payload)?)
                             }
+                            ChatEvent::ProjectAttached { chat_id, project_name } => {
+                                let payload = ProjectAttachedEvent { chat_id, project_name };
+                                WsEvent::new("projectAttached", serde_json::to_value(&payload)?)
+                            }
+                            ChatEvent::ProjectDetached { chat_id, project_name } => {
+                                let payload = ProjectDetachedEvent { chat_id, project_name };
+                                WsEvent::new("projectDetached", serde_json::to_value(&payload)?)
+                            }
+                            ChatEvent::ToolCallStarted {
+                                chat_id,
+                                tool_call_id,
+                                tool_name,
+                                arguments,
+                            } => {
+                                let payload = ToolCallStartedEvent {
+                                    chat_id,
+                                    tool_call_id,
+                                    tool_name,
+                                    arguments,
+                                };
+                                WsEvent::new("chatToolCallStarted", serde_json::to_value(&payload)?)
+                            }
+                            ChatEvent::ToolCallCompleted {
+                                chat_id,
+                                tool_call_id,
+                                result,
+                            } => {
+                                let payload = ToolCallCompletedEvent {
+                                    chat_id,
+                                    tool_call_id,
+                                    result,
+                                };
+                                WsEvent::new("chatToolCallCompleted", serde_json::to_value(&payload)?)
+                            }
+                            ChatEvent::ChatPaused { chat_id } => {
+                                let payload = ChatPausedEvent { chat_id };
+                                WsEvent::new("chatPaused", serde_json::to_value(&payload)?)
+                            }
+                            ChatEvent::ChatResumed { chat_id } => {
+                                let payload = ChatResumedEvent { chat_id };
+                                WsEvent::new("chatResumed", serde_json::to_value(&payload)?)
+                            }
                         };
                         let event_text = serde_json::to_string(&ws_event)?;
                         write.send(Message::Text(event_text)).await?;
@@ -210,6 +254,21 @@ async fn handle_ws_message(text: &str, state: &Arc<DaemonState>) -> WsResponse {
             handle_abort_scenario_with_error(id, execution_id, state)
         }
         WsRequest::DevNotification { id } => handle_dev_notification(id, state),
+        WsRequest::ListProjects { id } => handle_list_projects(id, state),
+        WsRequest::GetProjectMcpStatus { id, project_name } => {
+            handle_get_project_mcp_status(id, project_name, state).await
+        }
+        WsRequest::AttachProject { id, chat_id, project_name } => {
+            handle_attach_project(id, chat_id, project_name, state).await
+        }
+        WsRequest::DetachProject { id, chat_id, project_name } => {
+            handle_detach_project(id, chat_id, project_name, state).await
+        }
+        WsRequest::GetChatProjects { id, chat_id } => {
+            handle_get_chat_projects(id, chat_id, state)
+        }
+        WsRequest::PauseChat { id, chat_id } => handle_pause_chat(id, chat_id, state).await,
+        WsRequest::ResumeChat { id, chat_id } => handle_resume_chat(id, chat_id, state).await,
     }
 }
 
@@ -260,7 +319,7 @@ fn handle_run_scenario(
         &name,
         &state.models,
         &state.mcp_configs,
-        &state.mcp_cache,
+        &*state.mcp_cache,
         state.default_model.as_deref(),
         &mut sink,
         &cwd,
@@ -425,10 +484,12 @@ async fn handle_send_message(
     let chat_manager = Arc::clone(&state.chat_manager);
     let models = state.models.clone();
     let event_sender = state.chat_event_sender.clone();
+    let project_manager = Arc::clone(&state.project_manager);
+    let mcp_cache = Arc::clone(&state.mcp_cache);
     
     tokio::spawn(async move {
         let _ = chat_manager
-            .send_message(chat_id, content, &model, &models, event_sender)
+            .send_message(chat_id, content, &model, &models, &project_manager, &*mcp_cache, event_sender)
             .await;
     });
     
@@ -445,7 +506,15 @@ async fn handle_edit_message(
 ) -> WsResponse {
     match state
         .chat_manager
-        .edit_and_resend(message_id, content, &model, &state.models, state.chat_event_sender.clone())
+        .edit_and_resend(
+            message_id,
+            content,
+            &model,
+            &state.models,
+            &state.project_manager,
+            &*state.mcp_cache,
+            state.chat_event_sender.clone(),
+        )
         .await
     {
         Ok(new_message_id) => {
@@ -506,4 +575,123 @@ fn handle_dev_notification(id: String, state: &Arc<DaemonState>) -> WsResponse {
         message: "This is a test notification from rhd dev frontend-notification".to_string(),
     });
     WsResponse::success(id, serde_json::json!({ "sent": true }))
+}
+
+fn handle_list_projects(id: String, state: &Arc<DaemonState>) -> WsResponse {
+    let projects = state.project_manager.list_projects();
+    WsResponse::success(id, serde_json::to_value(&projects).unwrap())
+}
+
+async fn handle_get_project_mcp_status(
+    id: String,
+    project_name: String,
+    state: &Arc<DaemonState>,
+) -> WsResponse {
+    if state.project_manager.get_project(&project_name).is_none() {
+        return WsResponse::error(
+            id,
+            ErrorCode::InvalidRequest,
+            format!("project not found: {}", project_name),
+        );
+    }
+
+    let status_list = state.project_manager.get_mcp_status(&project_name).await;
+    let data: Vec<serde_json::Value> = status_list
+        .into_iter()
+        .map(|(mcp_name, status)| {
+            let (status_str, error) = match status {
+                crate::project_manager::McpStatus::Connecting => ("connecting", None),
+                crate::project_manager::McpStatus::Connected => ("connected", None),
+                crate::project_manager::McpStatus::Failed(ref e) => ("failed", Some(e.clone())),
+            };
+            let mut obj = serde_json::json!({
+                "projectName": project_name,
+                "mcpName": mcp_name,
+                "status": status_str,
+            });
+            if let Some(err) = error {
+                obj.as_object_mut().unwrap().insert("error".to_string(), serde_json::Value::String(err));
+            }
+            obj
+        })
+        .collect();
+
+    WsResponse::success(id, serde_json::to_value(&data).unwrap())
+}
+
+async fn handle_attach_project(
+    id: String,
+    chat_id: i64,
+    project_name: String,
+    state: &Arc<DaemonState>,
+) -> WsResponse {
+    match state
+        .chat_manager
+        .attach_project(
+            chat_id,
+            &project_name,
+            &state.project_manager,
+            &*state.mcp_cache,
+            state.chat_event_sender.clone(),
+        )
+        .await
+    {
+        Ok(()) => WsResponse::success(id, serde_json::json!({ "attached": true })),
+        Err(crate::chat::ChatError::ChatNotFound) => WsResponse::error(
+            id,
+            ErrorCode::ChatNotFound,
+            format!("chat not found: {}", chat_id),
+        ),
+        Err(crate::chat::ChatError::ProjectNotFound(name)) => WsResponse::error(
+            id,
+            ErrorCode::InvalidRequest,
+            format!("project not found: {}", name),
+        ),
+        Err(err) => WsResponse::error(
+            id,
+            ErrorCode::InternalError,
+            format!("failed to attach project: {}", err),
+        ),
+    }
+}
+
+async fn handle_detach_project(
+    id: String,
+    chat_id: i64,
+    project_name: String,
+    state: &Arc<DaemonState>,
+) -> WsResponse {
+    match state
+        .chat_manager
+        .detach_project(chat_id, &project_name, state.chat_event_sender.clone())
+        .await
+    {
+        Ok(()) => WsResponse::success(id, serde_json::json!({ "detached": true })),
+        Err(err) => WsResponse::error(
+            id,
+            ErrorCode::InternalError,
+            format!("failed to detach project: {}", err),
+        ),
+    }
+}
+
+fn handle_get_chat_projects(id: String, chat_id: i64, state: &Arc<DaemonState>) -> WsResponse {
+    match state.chat_manager.get_chat_projects(chat_id) {
+        Ok(projects) => WsResponse::success(id, serde_json::to_value(&projects).unwrap()),
+        Err(err) => WsResponse::error(
+            id,
+            ErrorCode::InternalError,
+            format!("failed to get chat projects: {}", err),
+        ),
+    }
+}
+
+async fn handle_pause_chat(id: String, chat_id: i64, state: &Arc<DaemonState>) -> WsResponse {
+    let paused = state.chat_manager.pause_chat(chat_id).await;
+    WsResponse::success(id, serde_json::json!({ "paused": paused }))
+}
+
+async fn handle_resume_chat(id: String, chat_id: i64, state: &Arc<DaemonState>) -> WsResponse {
+    let resumed = state.chat_manager.resume_chat(chat_id).await;
+    WsResponse::success(id, serde_json::json!({ "resumed": resumed }))
 }

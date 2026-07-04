@@ -75,6 +75,18 @@ impl ChatDb {
             CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id);",
         )?;
 
+        // Create chat_projects table if not exists
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS chat_projects (
+                chat_id INTEGER NOT NULL,
+                project_name TEXT NOT NULL,
+                system_prompt_added BOOLEAN NOT NULL DEFAULT 0,
+                attached_at TEXT NOT NULL,
+                PRIMARY KEY (chat_id, project_name),
+                FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE
+            );",
+        )?;
+
         // Migrate existing tables to add new columns
         self.migrate(&conn)?;
 
@@ -317,6 +329,61 @@ impl ChatDb {
         tx.commit()?;
         Ok(())
     }
+
+    pub fn attach_project(&self, chat_id: i64, project_name: &str) -> DbResult<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| DbError::InitializationError(e.to_string()))?;
+        let now = now_iso();
+        conn.execute(
+            "INSERT OR IGNORE INTO chat_projects (chat_id, project_name, system_prompt_added, attached_at) VALUES (?1, ?2, 0, ?3)",
+            params![chat_id, project_name, now],
+        )?;
+        Ok(())
+    }
+
+    pub fn detach_project(&self, chat_id: i64, project_name: &str) -> DbResult<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| DbError::InitializationError(e.to_string()))?;
+        conn.execute(
+            "DELETE FROM chat_projects WHERE chat_id = ?1 AND project_name = ?2",
+            params![chat_id, project_name],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_chat_projects(&self, chat_id: i64) -> DbResult<Vec<(String, bool)>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| DbError::InitializationError(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT project_name, system_prompt_added FROM chat_projects WHERE chat_id = ?1 ORDER BY attached_at ASC",
+        )?;
+        let rows = stmt.query_map(params![chat_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, bool>(1)?))
+        })?;
+        let mut projects = Vec::new();
+        for row in rows {
+            projects.push(row?);
+        }
+        Ok(projects)
+    }
+
+    pub fn mark_system_prompt_added(&self, chat_id: i64, project_name: &str) -> DbResult<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| DbError::InitializationError(e.to_string()))?;
+        conn.execute(
+            "UPDATE chat_projects SET system_prompt_added = 1 WHERE chat_id = ?1 AND project_name = ?2",
+            params![chat_id, project_name],
+        )?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -543,6 +610,99 @@ mod tests {
         let msg_id = db.add_message(1, "assistant", "New message", Some("gpt4")).unwrap();
         let msg = db.get_message(msg_id).unwrap().unwrap();
         assert_eq!(msg.model, Some("gpt4".to_string()));
+
+        cleanup(path);
+    }
+
+    #[test]
+    fn test_attach_and_get_projects() {
+        let path = "test_chat_projects.db";
+        cleanup(path);
+
+        let db = ChatDb::new(path).unwrap();
+        let chat_id = db.create_chat("Test Chat").unwrap();
+
+        db.attach_project(chat_id, "project-a").unwrap();
+        db.attach_project(chat_id, "project-b").unwrap();
+
+        let projects = db.get_chat_projects(chat_id).unwrap();
+        assert_eq!(projects.len(), 2);
+        assert_eq!(projects[0].0, "project-a");
+        assert_eq!(projects[0].1, false);
+        assert_eq!(projects[1].0, "project-b");
+        assert_eq!(projects[1].1, false);
+
+        cleanup(path);
+    }
+
+    #[test]
+    fn test_detach_project() {
+        let path = "test_chat_projects_detach.db";
+        cleanup(path);
+
+        let db = ChatDb::new(path).unwrap();
+        let chat_id = db.create_chat("Test Chat").unwrap();
+
+        db.attach_project(chat_id, "project-a").unwrap();
+        db.attach_project(chat_id, "project-b").unwrap();
+        db.detach_project(chat_id, "project-a").unwrap();
+
+        let projects = db.get_chat_projects(chat_id).unwrap();
+        assert_eq!(projects.len(), 1);
+        assert_eq!(projects[0].0, "project-b");
+
+        cleanup(path);
+    }
+
+    #[test]
+    fn test_mark_system_prompt_added() {
+        let path = "test_chat_projects_prompt.db";
+        cleanup(path);
+
+        let db = ChatDb::new(path).unwrap();
+        let chat_id = db.create_chat("Test Chat").unwrap();
+
+        db.attach_project(chat_id, "project-a").unwrap();
+        let projects = db.get_chat_projects(chat_id).unwrap();
+        assert_eq!(projects[0].1, false);
+
+        db.mark_system_prompt_added(chat_id, "project-a").unwrap();
+        let projects = db.get_chat_projects(chat_id).unwrap();
+        assert_eq!(projects[0].1, true);
+
+        cleanup(path);
+    }
+
+    #[test]
+    fn test_attach_project_idempotent() {
+        let path = "test_chat_projects_idempotent.db";
+        cleanup(path);
+
+        let db = ChatDb::new(path).unwrap();
+        let chat_id = db.create_chat("Test Chat").unwrap();
+
+        db.attach_project(chat_id, "project-a").unwrap();
+        db.attach_project(chat_id, "project-a").unwrap();
+
+        let projects = db.get_chat_projects(chat_id).unwrap();
+        assert_eq!(projects.len(), 1);
+
+        cleanup(path);
+    }
+
+    #[test]
+    fn test_cascade_delete_projects() {
+        let path = "test_chat_projects_cascade.db";
+        cleanup(path);
+
+        let db = ChatDb::new(path).unwrap();
+        let chat_id = db.create_chat("Test Chat").unwrap();
+
+        db.attach_project(chat_id, "project-a").unwrap();
+        db.delete_chat(chat_id).unwrap();
+
+        let projects = db.get_chat_projects(chat_id).unwrap();
+        assert_eq!(projects.len(), 0);
 
         cleanup(path);
     }

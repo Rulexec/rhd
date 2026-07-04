@@ -1,6 +1,6 @@
 import { writable, derived } from 'svelte/store';
 import type { Writable, Readable } from 'svelte/store';
-import type { Chat, ChatMessage } from './types/index';
+import type { Chat, ChatMessage, ToolCall } from './types/index';
 
 export const chats: Writable<Chat[]> = writable([]);
 export const currentChatId: Writable<number | null> = writable(null);
@@ -11,8 +11,15 @@ export const streamError: Writable<string | null> = writable(null);
 export const availableModels: Writable<string[]> = writable([]);
 export const selectedModel: Writable<string | null> = writable(null);
 export const streamingMessageId: Writable<string | null> = writable(null);
+export const isPaused: Writable<boolean> = writable(false);
+export const pendingToolCalls: Writable<ToolCall[]> = writable([]);
 
 export const currentChat: Readable<Chat | undefined> = derived(
   [chats, currentChatId],
   ([$chats, $currentChatId]) => $chats.find(c => c.id === $currentChatId)
+);
+
+export const isToolLoopRunning: Readable<boolean> = derived(
+  [isStreaming, isPaused],
+  ([$isStreaming, $isPaused]) => $isStreaming && !$isPaused
 );
