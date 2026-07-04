@@ -10,9 +10,15 @@ use super::error::{ExecuteError, ExecuteOutput};
 use super::placeholder::{resolve_placeholders, ExecutionContext};
 use super::run_command::execute_run_command;
 use super::{Action, Scenario};
-use crate::execution::ExecutionHandle;
+use crate::execution::{ExecutionHandle, ResumeAction};
 use crate::log::{LogSink, SectionTracker};
 use crate::mcp_cache::McpServerCache;
+
+#[derive(Clone)]
+pub struct ExecutionConfig {
+    pub frontend_alive: bool,
+    pub never_fail: bool,
+}
 
 pub async fn execute_scenario(
     scenario: &Scenario,
@@ -25,6 +31,7 @@ pub async fn execute_scenario(
     client_cwd: &str,
     handle: Option<Arc<ExecutionHandle>>,
     model_aliases: &[(String, String)],
+    exec_config: &ExecutionConfig,
 ) -> Result<ExecuteOutput, ExecuteError> {
     let mut context = ExecutionContext::default();
     let mut outputs = Vec::new();
@@ -71,7 +78,7 @@ pub async fn execute_scenario(
                 }
                 
                 let result =
-                    execute_ai_chat(chat, &mut context, models, mcp_configs, mcp_cache, default_model, scenario_name, &step_name, sink, handle.clone(), model_aliases)
+                    execute_ai_chat(chat, &mut context, models, mcp_configs, mcp_cache, default_model, scenario_name, &step_name, sink, handle.clone(), model_aliases, exec_config)
                         .await?;
                 context.record_step(step_name, result);
             }

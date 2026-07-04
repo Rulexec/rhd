@@ -4,18 +4,40 @@ use std::sync::{Arc, Mutex};
 use chrono::{DateTime, Utc};
 use rhd_api::{EventData, EventType, ExecutionEvent, LogSection, ScenarioMeta, ScenarioStatus, StepTiming, StepType, TokenUsage};
 use rhd_db::ScenarioDb;
-use tokio::sync::{broadcast, watch};
+use tokio::sync::{broadcast, watch, oneshot};
+
+#[derive(Clone, Debug)]
+pub struct PauseNotification {
+    pub execution_id: u64,
+    pub error: String,
+    pub step_name: String,
+}
 
 pub struct ExecutionTracker {
     db: Arc<ScenarioDb>,
     active: Mutex<HashMap<u64, ActiveExecution>>,
     events_tx: broadcast::Sender<ExecutionEvent>,
+    pause_notify_tx: broadcast::Sender<PauseNotification>,
+}
+
+#[derive(Clone, Debug)]
+pub struct PausedState {
+    pub error: String,
+    pub step_name: String,
+}
+
+#[derive(Clone, Debug)]
+pub enum ResumeAction {
+    Retry { model_override: Option<String> },
+    Abort,
 }
 
 struct ActiveExecution {
     scenario_name: String,
     started_at: DateTime<Utc>,
     abort_handle: AbortHandle,
+    pause_state: Mutex<Option<PausedState>>,
+    resume_tx: Mutex<Option<oneshot::Sender<ResumeAction>>>,
 }
 
 pub struct AbortHandle {
@@ -61,10 +83,12 @@ pub struct ExecutionHandle {
 impl ExecutionTracker {
     pub fn new(db: Arc<ScenarioDb>) -> Self {
         let (events_tx, _) = broadcast::channel(64);
+        let (pause_notify_tx, _) = broadcast::channel(64);
         Self {
             db,
             active: Mutex::new(HashMap::new()),
             events_tx,
+            pause_notify_tx,
         }
     }
 
@@ -82,6 +106,8 @@ impl ExecutionTracker {
                     scenario_name: scenario_name.clone(),
                     started_at,
                     abort_handle,
+                    pause_state: Mutex::new(None),
+                    resume_tx: Mutex::new(None),
                 },
             );
         }
@@ -139,6 +165,98 @@ impl ExecutionTracker {
             .collect()
     }
 
+    pub fn pause(&self, id: u64, error: String, step_name: String) -> Option<oneshot::Receiver<ResumeAction>> {
+        let active = self.active.lock().unwrap();
+        if let Some(exec) = active.get(&id) {
+            let (tx, rx) = oneshot::channel();
+            *exec.pause_state.lock().unwrap() = Some(PausedState { error: error.clone(), step_name: step_name.clone() });
+            *exec.resume_tx.lock().unwrap() = Some(tx);
+            
+            let _ = self.pause_notify_tx.send(PauseNotification {
+                execution_id: id,
+                error,
+                step_name,
+            });
+            
+            Some(rx)
+        } else {
+            None
+        }
+    }
+    
+    pub fn subscribe_pause(&self) -> broadcast::Receiver<PauseNotification> {
+        self.pause_notify_tx.subscribe()
+    }
+
+    pub fn resume(&self, id: u64, model_override: Option<String>) -> bool {
+        let active = self.active.lock().unwrap();
+        if let Some(exec) = active.get(&id) {
+            *exec.pause_state.lock().unwrap() = None;
+            if let Some(tx) = exec.resume_tx.lock().unwrap().take() {
+                let _ = tx.send(ResumeAction::Retry { model_override });
+                let _ = self.events_tx.send(ExecutionEvent {
+                    event: EventType::ScenarioResumed,
+                    data: EventData::ScenarioResumed { execution_id: id },
+                });
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn abort_paused(&self, id: u64) -> bool {
+        let active = self.active.lock().unwrap();
+        if let Some(exec) = active.get(&id) {
+            *exec.pause_state.lock().unwrap() = None;
+            if let Some(tx) = exec.resume_tx.lock().unwrap().take() {
+                let _ = tx.send(ResumeAction::Abort);
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn get_paused_state(&self, id: u64) -> Option<PausedState> {
+        let active = self.active.lock().unwrap();
+        if let Some(exec) = active.get(&id) {
+            exec.pause_state.lock().unwrap().clone()
+        } else {
+            None
+        }
+    }
+
+    pub fn emit_test_scenario_started(&self, id: u64, name: String) {
+        let started_at = Utc::now();
+        let _ = self.events_tx.send(ExecutionEvent {
+            event: EventType::ScenarioStarted,
+            data: EventData::ScenarioStarted {
+                id,
+                name,
+                daemon_time: started_at,
+                started_at,
+            },
+        });
+    }
+
+    pub fn emit_test_scenario_finished(&self, id: u64, name: String) {
+        let now = Utc::now();
+        let meta = ScenarioMeta {
+            id,
+            scenario: name,
+            status: rhd_api::ScenarioStatus::Success,
+            started: now,
+            finished: now,
+            duration_ms: 0,
+            tokens: None,
+            cost: None,
+            steps: Vec::new(),
+        };
+        let _ = self.events_tx.send(ExecutionEvent {
+            event: EventType::ScenarioFinished,
+            data: EventData::ScenarioFinished(meta),
+        });
+    }
+
     fn remove_active(&self, id: u64) {
         let mut active = self.active.lock().unwrap();
         active.remove(&id);
@@ -152,6 +270,10 @@ pub struct ActiveExecutionInfo {
 }
 
 impl ExecutionHandle {
+    pub fn id(&self) -> u64 {
+        self.id
+    }
+
     pub fn step_started(&self, step_name: &str, step_type: StepType) {
         let now = Utc::now();
         let mut state = self.state.lock().unwrap();
@@ -198,6 +320,18 @@ impl ExecutionHandle {
 
     pub fn abort_signal(&self) -> watch::Receiver<bool> {
         self.abort_receiver.clone()
+    }
+
+    pub async fn pause_and_wait(&self, error: String, step_name: String) -> ResumeAction {
+        let rx = self.tracker.pause(self.id, error, step_name);
+        if let Some(rx) = rx {
+            match rx.await {
+                Ok(action) => action,
+                Err(_) => ResumeAction::Abort,
+            }
+        } else {
+            ResumeAction::Abort
+        }
     }
 
     pub fn finished(self: Arc<Self>, status: ScenarioStatus) -> FinishedExecution {

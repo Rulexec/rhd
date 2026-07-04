@@ -1,6 +1,6 @@
 import { writable, derived } from 'svelte/store';
 import type { Writable, Readable } from 'svelte/store';
-import type { ActiveScenario, FinishedScenario } from './types/index';
+import type { ActiveScenario, FinishedScenario, PausedScenario } from './types/index';
 
 interface ActiveScenarioStore extends Readable<Map<string, ActiveScenario>> {
   setFromList(list: Array<{ id: string; scenarioName: string; startedAt: string }>): void;
@@ -15,8 +15,8 @@ function createActiveScenariosStore(): ActiveScenarioStore {
   return {
     subscribe,
     setFromList(list) {
-      set(new Map(list.map((item) => [item.id, {
-        id: item.id,
+      set(new Map(list.map((item) => [String(item.id), {
+        id: String(item.id),
         scenarioName: item.scenarioName,
         startedAt: item.startedAt,
         currentStep: null,
@@ -79,8 +79,47 @@ function createFinishedScenariosStore(): FinishedScenariosStore {
   };
 }
 
+interface PausedScenariosStore extends Readable<Map<string, PausedScenario>> {
+  addScenario(data: PausedScenario): void;
+  removeScenario(executionId: string): void;
+  updateSelectedModel(executionId: string, model: string | null): void;
+}
+
+function createPausedScenariosStore(): PausedScenariosStore {
+  const { subscribe, update, set } = writable(new Map<string, PausedScenario>());
+
+  return {
+    subscribe,
+    addScenario(data) {
+      update((map) => {
+        const next = new Map(map);
+        next.set(data.executionId, data);
+        return next;
+      });
+    },
+    removeScenario(executionId) {
+      update((map) => {
+        const next = new Map(map);
+        next.delete(executionId);
+        return next;
+      });
+    },
+    updateSelectedModel(executionId, model) {
+      update((map) => {
+        const next = new Map(map);
+        const scenario = next.get(executionId);
+        if (scenario) {
+          next.set(executionId, { ...scenario, selectedModel: model });
+        }
+        return next;
+      });
+    },
+  };
+}
+
 export const activeScenarios = createActiveScenariosStore();
 export const finishedScenarios = createFinishedScenariosStore();
+export const pausedScenarios = createPausedScenariosStore();
 export const lastKnownId: Writable<number> = writable(0);
 export const wsConnected: Writable<boolean> = writable(false);
 

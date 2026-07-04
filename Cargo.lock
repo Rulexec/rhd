@@ -1359,6 +1359,7 @@ dependencies = [
  "rand",
  "rhd_ai",
  "rhd_api",
+ "rhd_app",
  "serde",
  "serde_json",
  "tempfile",

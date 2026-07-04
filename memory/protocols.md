@@ -5,8 +5,10 @@
 - Unix socket at `$HOME/rhd.sock` by default (configurable via `--socket`)
 - Message format: 4-byte version + 4-byte length + rkyv payload
 - Protocol version: 1
+- **Each message** (request or response) includes version prefix
 - Request: `IpcRequest::RunScenario { name: String, cwd: String }`
-- Response: `IpcResponse::Success { output: String }`, `IpcResponse::Error { message: String }`, or `IpcResponse::Aborted`
+- Response: `IpcResponse::Success { output: String }`, `IpcResponse::Error { message: String }`, `IpcResponse::Aborted`, or `IpcResponse::Paused { error: String, step: String }`
+- Multi-response support: `handle_request` returns `Vec<IpcResponse>` for scenarios that pause then resume
 
 ## WebSocket Protocol
 
@@ -26,8 +28,11 @@
   - `abortChat`: Abort an active streaming response in a chat
   - `getAvailableModels`: Get list of available models (real models only, excludes aliases)
 - **Server → Client responses**: Request responses with success/error status
-- **Server → Client events**: Real-time execution events (scenarioStarted, stepStarted, scenarioFinished)
+- **Server → Client events**: Real-time execution events (scenarioStarted, stepStarted, scenarioFinished, scenarioPaused, scenarioResumed)
+  - All event names use **camelCase** (e.g., `scenarioStarted`, not `scenariostarted`)
   - `scenarioFinished` event data uses same `ScenarioMeta` format as `getFinishedScenarios` response items
+  - `scenarioPaused` emitted when scenario pauses on AI error (includes executionId, error, stepName, availableModels)
+  - `scenarioResumed` emitted when retry starts (includes executionId)
 - **Chat streaming events**:
   - `chatStreamChunk`: Contains `chatId` and `content` (incremental text)
   - `chatStreamFinished`: Contains `chatId`, `messageId`, and `finishReason`

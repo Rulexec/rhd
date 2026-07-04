@@ -12,6 +12,16 @@ pub enum IpcRequest {
         cwd: String,
         model_aliases: Vec<(String, String)>,
     },
+    DaemonNotification,
+    FrontendNotification,
+    TestScenarioStarted {
+        id: u64,
+        name: String,
+    },
+    TestScenarioFinished {
+        id: u64,
+        name: String,
+    },
 }
 
 #[derive(Archive, Serialize, Deserialize, Debug, Clone)]
@@ -20,6 +30,8 @@ pub enum IpcResponse {
     Success { output: String },
     Error { message: String },
     Aborted,
+    Paused { error: String, step: String },
+    Ok,
 }
 
 pub fn write_message<T: rkyv::Serialize<rkyv::ser::serializers::AllocSerializer<256>>>(

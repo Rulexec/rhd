@@ -49,13 +49,14 @@ Svelte-based web UI in `frontend/` directory for monitoring scenario execution a
 
 - WebSocket connection with auto-reconnect
 - **Zod validation** for all WebSocket messages (see `src/lib/types/ws.ts`)
+- **Event names use camelCase**: `scenarioStarted`, `stepStarted`, `scenarioFinished`, `scenarioPaused`, `scenarioResumed` (not lowercase like `scenariostarted`)
 - Svelte stores for state management:
-  - Scenario stores: `activeScenarios`, `finishedScenarios`, `lastKnownId`, `wsConnected`
+  - Scenario stores: `activeScenarios`, `finishedScenarios`, `pausedScenarios`, `lastKnownId`, `wsConnected`
   - Chat stores: `chats`, `currentChatId`, `messages`, `streamingContent`, `isStreaming`, `streamError`, `streamingMessageId`, `currentChat` (derived)
 - CSS modules + utility classes (Tailwind-like approach)
 - Components:
   - Layout: `TabNav`, `App`
-  - Scenarios: `ScenariosTab`, `ActiveScenario`, `FinishedScenario`
+  - Scenarios: `ScenariosTab`, `ActiveScenario`, `FinishedScenario`, `PausedScenario`
   - Chats: `ChatsTab`, `ChatList`, `ChatView`, `MessageList`, `Message`, `MessageInput`, `StreamingMessage`
 
 ## Type System
@@ -63,7 +64,7 @@ Svelte-based web UI in `frontend/` directory for monitoring scenario execution a
 All types defined with Zod schemas for runtime validation:
 
 - **Domain types** (`src/lib/types/index.ts`): `ActiveScenario`, `FinishedScenario`, `Chat`, `ChatMessage`
-- **WebSocket protocol** (`src/lib/types/ws.ts`): `WsMessageSchema`, `WsResponseSchema`, `WsEventSchema`
+- **WebSocket protocol** (`src/lib/types/ws.ts`): `WsMessageSchema`, `WsResponseSchema`, `WsEventSchema` (includes `ScenarioPausedEventSchema`, `ScenarioResumedEventSchema`)
 
 Invalid WebSocket messages are logged and ignored via `safeParse`.
 

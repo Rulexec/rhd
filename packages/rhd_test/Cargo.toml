@@ -20,3 +20,4 @@ async-stream = "0.3"
 tokio-stream = "0.1"
 rhd_api = { path = "../rhd_api" }
 rhd_ai = { path = "../rhd_ai" }
+rhd_app = { path = "../rhd_app" }

@@ -13,6 +13,7 @@ pub struct Cli {
 pub enum Command {
     Daemon(DaemonArgs),
     Run(RunArgs),
+    Dev(DevArgs),
 }
 
 pub fn default_socket_path() -> PathBuf {
@@ -83,6 +84,24 @@ pub struct DaemonArgs {
 }
 
 impl DaemonArgs {
+    pub fn validate(&self) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+#[derive(Parser, Debug)]
+pub struct DevArgs {
+    #[command(subcommand)]
+    pub command: DevCommand,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum DevCommand {
+    DaemonNotification,
+    FrontendNotification,
+}
+
+impl DevArgs {
     pub fn validate(&self) -> Result<(), String> {
         Ok(())
     }

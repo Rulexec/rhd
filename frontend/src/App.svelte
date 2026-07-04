@@ -7,12 +7,14 @@
   import { parseHash, updateHash, initRouter } from './lib/router';
   import { currentChatId } from './lib/chatStores';
   import { selectChat } from './lib/chatWs';
+  import { requestNotificationPermission } from './lib/notifications';
 
   let activeTab = $state<'scenarios' | 'chats'>('scenarios');
 
   initWebSocket();
 
   onMount(() => {
+    requestNotificationPermission();
     const parsed = parseHash();
     activeTab = parsed.tab;
 

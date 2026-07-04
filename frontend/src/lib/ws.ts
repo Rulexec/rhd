@@ -1,7 +1,8 @@
-import { activeScenarios, finishedScenarios, lastKnownId, wsConnected } from './stores';
+import { activeScenarios, finishedScenarios, pausedScenarios, lastKnownId, wsConnected } from './stores';
 import { WsMessageSchema } from './types/ws';
 import type { WsEvent, WsResponse } from './types/ws';
 import { handleChatEvent } from './chatWs';
+import { showNotification } from './notifications';
 
 let WS_PORT = import.meta.env.VITE_WS_PORT || 9876;
 let WS_URL = `ws://127.0.0.1:${WS_PORT}`;
@@ -96,16 +97,47 @@ function handleEvent(message: WsEvent): void {
   }
 
   switch (event) {
-    case 'scenariostarted':
-      activeScenarios.addScenario(data);
+    case 'scenarioStarted':
+      activeScenarios.addScenario({
+        id: String(data.id),
+        name: data.name,
+        startedAt: data.startedAt,
+      });
       break;
-    case 'stepstarted':
-      activeScenarios.updateStep(data.executionId, data.stepName, data.startedAt);
+    case 'stepStarted':
+      activeScenarios.updateStep(String(data.executionId), data.stepName, data.startedAt);
       break;
-    case 'scenariofinished':
+    case 'scenarioFinished':
       activeScenarios.removeScenario(String(data.id));
+      pausedScenarios.removeScenario(String(data.id));
       finishedScenarios.prepend(data);
       lastKnownId.set(data.id);
+      break;
+    case 'scenarioPaused':
+      pausedScenarios.addScenario({
+        executionId: String(data.executionId),
+        scenarioName: data.scenarioName,
+        error: data.error,
+        stepName: data.stepName,
+        availableModels: data.availableModels,
+        selectedModel: null,
+      });
+      showNotification(
+        'Scenario Paused',
+        `${data.scenarioName} paused at step ${data.stepName}: ${data.error}`,
+        () => {
+          // Focus the scenarios tab when notification is clicked
+          window.location.hash = '#/scenarios';
+        }
+      );
+      break;
+    case 'scenarioResumed':
+      pausedScenarios.removeScenario(String(data.executionId));
+      break;
+    case 'devNotification':
+      showNotification(data.title, data.message, () => {
+        window.location.hash = '#/scenarios';
+      });
       break;
   }
 }
@@ -119,6 +151,18 @@ export async function subscribe(): Promise<WsResponse> {
   const response = await sendRequest({ type: 'subscribe', id });
   if (response.success && response.data?.activeExecutions) {
     activeScenarios.setFromList(response.data.activeExecutions);
+  }
+  if (response.success && response.data?.pausedExecutions) {
+    for (const paused of response.data.pausedExecutions) {
+      pausedScenarios.addScenario({
+        executionId: String(paused.executionId),
+        scenarioName: paused.scenarioName,
+        error: paused.error,
+        stepName: paused.stepName,
+        availableModels: paused.availableModels || [],
+        selectedModel: null,
+      });
+    }
   }
   return response;
 }
@@ -135,7 +179,31 @@ export async function getFinishedScenarios(lastId?: number): Promise<WsResponse>
 
 export async function abortScenario(executionId: string): Promise<WsResponse> {
   const id = generateRequestId();
-  const request = { type: 'abortScenario', id, executionId };
+  const request = { type: 'abortScenario', id, executionId: Number(executionId) };
+  const response = await sendRequest(request);
+  return response;
+}
+
+export async function retryScenario(executionId: string, model?: string): Promise<WsResponse> {
+  const id = generateRequestId();
+  const request: Record<string, unknown> = { type: 'retryScenario', id, executionId: Number(executionId) };
+  if (model) {
+    request.model = model;
+  }
+  const response = await sendRequest(request);
+  return response;
+}
+
+export async function abortScenarioWithError(executionId: string): Promise<WsResponse> {
+  const id = generateRequestId();
+  const request = { type: 'abortScenarioWithError', id, executionId: Number(executionId) };
+  const response = await sendRequest(request);
+  return response;
+}
+
+export async function devNotification(): Promise<WsResponse> {
+  const id = generateRequestId();
+  const request = { type: 'devNotification', id };
   const response = await sendRequest(request);
   return response;
 }

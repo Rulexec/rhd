@@ -32,6 +32,7 @@ pub enum ChatEvent {
     StreamFinished { chat_id: i64, message_id: i64, finish_reason: String },
     StreamError { chat_id: i64, error: String },
     MessageAdded { chat_id: i64, message: Message },
+    DevNotification { title: String, message: String },
 }
 
 pub struct ChatManager {

@@ -15,16 +15,17 @@ pub async fn run_frontend_test(ws_port: Option<u16>, control_port: Option<u16>) 
     let (ai_port, requests, response, _flag_value, stream_sender, auto_stream) = start_mock_server().await;
     println!("Mock AI server started on port {ai_port}");
 
+    let daemon_dir = tempfile::tempdir().unwrap();
+    let logs_dir = daemon_dir.path().join("logs");
+    std::fs::create_dir_all(&logs_dir).unwrap();
+    let socket_path = daemon_dir.path().join("rhd.sock");
+
     let control_port = control_port.unwrap_or_else(|| find_available_port());
     let daemon_ready: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
-    start_control_server(control_port, response.clone(), requests.clone(), daemon_ready.clone(), stream_sender.clone(), auto_stream.clone()).await;
+    start_control_server(control_port, response.clone(), requests.clone(), daemon_ready.clone(), stream_sender.clone(), auto_stream.clone(), Some(logs_dir.clone()), Some(socket_path.clone())).await;
     println!("Control server started on port {control_port}");
 
     let ws_port = ws_port.unwrap_or_else(|| find_available_port());
-
-    let daemon_dir = tempfile::tempdir().unwrap();
-    let logs_dir = daemon_dir.path().join("logs");
-    let socket_path = daemon_dir.path().join("rhd.sock");
     let _ = std::fs::remove_file(&socket_path);
 
     let mut daemon = Command::new(&rhd_bin)

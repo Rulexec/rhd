@@ -22,6 +22,8 @@ pub struct DaemonConfig {
     pub db_dir: PathBuf,
     #[serde(default)]
     pub credentials_config: Option<PathBuf>,
+    #[serde(default)]
+    pub never_fail: bool,
 }
 
 fn default_scenarios_dir() -> PathBuf {
@@ -51,6 +53,7 @@ impl Default for DaemonConfig {
             ws_port: None,
             db_dir: default_db_dir(),
             credentials_config: None,
+            never_fail: false,
         }
     }
 }

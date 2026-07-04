@@ -1,17 +1,23 @@
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::time::Instant;
 
 use futures_util::{SinkExt, StreamExt};
 use rhd_api::{
     ChatMessageAddedEvent, ChatMessageDto, ChatStreamChunkEvent, ChatStreamErrorEvent,
-    ChatStreamFinishedEvent, ErrorCode, WsEvent, WsRequest, WsResponse,
+    ChatStreamFinishedEvent, DevNotificationEvent, ErrorCode, WsEvent, WsRequest, WsResponse,
 };
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
+use tokio::time::{interval, Duration};
 use tokio_tungstenite::tungstenite::Message;
 
 use crate::chat::ChatEvent;
 use crate::daemon::DaemonState;
 use crate::log::read_finished_scenarios;
+
+const PING_INTERVAL_SECS: u64 = 2;
+const PONG_TIMEOUT_SECS: u64 = 5;
 
 pub async fn run_ws_server(
     addr: std::net::SocketAddr,
@@ -40,15 +46,30 @@ async fn handle_ws_connection(
 
     let mut events_rx = state.execution_tracker.subscribe();
     let mut chat_events_rx = state.chat_event_sender.subscribe();
+    let mut pause_rx = state.execution_tracker.subscribe_pause();
+    let mut ping_interval = interval(Duration::from_secs(PING_INTERVAL_SECS));
+    let mut last_pong = Instant::now();
+
+    state.frontend_alive.store(true, Ordering::Relaxed);
 
     loop {
         tokio::select! {
+            _ = ping_interval.tick() => {
+                if last_pong.elapsed() > Duration::from_secs(PONG_TIMEOUT_SECS) {
+                    state.frontend_alive.store(false, Ordering::Relaxed);
+                }
+                write.send(Message::Ping(vec![])).await?;
+            }
             msg = read.next() => {
                 match msg {
                     Some(Ok(Message::Text(text))) => {
                         let response = handle_ws_message(&text, &state).await;
                         let response_text = serde_json::to_string(&response)?;
                         write.send(Message::Text(response_text)).await?;
+                    }
+                    Some(Ok(Message::Pong(_))) => {
+                        last_pong = Instant::now();
+                        state.frontend_alive.store(true, Ordering::Relaxed);
                     }
                     Some(Ok(Message::Close(_))) | None => break,
                     Some(Err(e)) => return Err(Box::new(e)),
@@ -58,8 +79,11 @@ async fn handle_ws_connection(
             event = events_rx.recv() => {
                 match event {
                     Ok(exec_event) => {
+                        let event_name = serde_json::to_string(&exec_event.event)?
+                            .trim_matches('"')
+                            .to_string();
                         let ws_event = WsEvent::new(
-                            &format!("{:?}", exec_event.event).to_lowercase(),
+                            &event_name,
                             serde_json::to_value(&exec_event.data)?,
                         );
                         let event_text = serde_json::to_string(&ws_event)?;
@@ -99,7 +123,41 @@ async fn handle_ws_connection(
                                 };
                                 WsEvent::new("chatMessageAdded", serde_json::to_value(&payload)?)
                             }
+                            ChatEvent::DevNotification { title, message } => {
+                                let payload = DevNotificationEvent { title, message };
+                                WsEvent::new("devNotification", serde_json::to_value(&payload)?)
+                            }
                         };
+                        let event_text = serde_json::to_string(&ws_event)?;
+                        write.send(Message::Text(event_text)).await?;
+                    }
+                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(broadcast::error::RecvError::Closed) => break,
+                }
+            }
+            pause_notification = pause_rx.recv() => {
+                match pause_notification {
+                    Ok(notification) => {
+                        let model_names: Vec<String> = state.models.iter()
+                            .filter(|(_, config)| !config.is_alias)
+                            .map(|(name, _)| name.clone())
+                            .collect();
+                        
+                        let scenario_name = state.execution_tracker
+                            .get_active_executions()
+                            .iter()
+                            .find(|e| e.id == notification.execution_id)
+                            .map(|e| e.scenario_name.clone())
+                            .unwrap_or_default();
+                        
+                        let payload = serde_json::json!({
+                            "executionId": notification.execution_id,
+                            "scenarioName": scenario_name,
+                            "error": notification.error,
+                            "stepName": notification.step_name,
+                            "availableModels": model_names,
+                        });
+                        let ws_event = WsEvent::new("scenarioPaused", payload);
                         let event_text = serde_json::to_string(&ws_event)?;
                         write.send(Message::Text(event_text)).await?;
                     }
@@ -110,6 +168,7 @@ async fn handle_ws_connection(
         }
     }
 
+    state.frontend_alive.store(false, Ordering::Relaxed);
     Ok(())
 }
 
@@ -144,6 +203,13 @@ async fn handle_ws_message(text: &str, state: &Arc<DaemonState>) -> WsResponse {
         }
         WsRequest::AbortChat { id, chat_id } => handle_abort_chat(id, chat_id, state).await,
         WsRequest::GetAvailableModels { id } => handle_get_available_models(id, state),
+        WsRequest::RetryScenario { id, execution_id, model } => {
+            handle_retry_scenario(id, execution_id, model, state)
+        }
+        WsRequest::AbortScenarioWithError { id, execution_id } => {
+            handle_abort_scenario_with_error(id, execution_id, state)
+        }
+        WsRequest::DevNotification { id } => handle_dev_notification(id, state),
     }
 }
 
@@ -185,6 +251,10 @@ fn handle_run_scenario(
 
     let handle = state.execution_tracker.start(name.clone());
 
+    let exec_config = crate::scenario::ExecutionConfig {
+        frontend_alive: state.is_frontend_alive(),
+        never_fail: state.never_fail,
+    };
     let result = tokio::runtime::Handle::current().block_on(crate::scenario::execute_scenario(
         scenario,
         &name,
@@ -196,6 +266,7 @@ fn handle_run_scenario(
         &cwd,
         Some(handle.clone()),
         &model_aliases,
+        &exec_config,
     ));
 
     let status = match &result {
@@ -232,12 +303,32 @@ fn handle_run_scenario(
 
 fn handle_subscribe(id: String, state: &Arc<DaemonState>) -> WsResponse {
     let active = state.execution_tracker.get_active_executions();
+    
+    // Get paused executions
+    let paused: Vec<_> = active.iter().filter_map(|e| {
+        state.execution_tracker.get_paused_state(e.id).map(|paused| {
+            let model_names: Vec<String> = state.models.iter()
+                .filter(|(_, config)| !config.is_alias)
+                .map(|(name, _)| name.clone())
+                .collect();
+            
+            serde_json::json!({
+                "executionId": e.id,
+                "scenarioName": e.scenario_name,
+                "error": paused.error,
+                "stepName": paused.step_name,
+                "availableModels": model_names,
+            })
+        })
+    }).collect();
+    
     let data = serde_json::json!({
         "activeExecutions": active.iter().map(|e| serde_json::json!({
             "id": e.id,
             "scenarioName": e.scenario_name,
             "startedAt": e.started_at,
         })).collect::<Vec<_>>(),
+        "pausedExecutions": paused,
     });
     WsResponse::success(id, data)
 }
@@ -381,4 +472,38 @@ async fn handle_edit_message(
 async fn handle_abort_chat(id: String, chat_id: i64, state: &Arc<DaemonState>) -> WsResponse {
     let aborted = state.chat_manager.abort_chat(chat_id).await;
     WsResponse::success(id, serde_json::json!({ "aborted": aborted }))
+}
+
+fn handle_retry_scenario(id: String, execution_id: u64, model: Option<String>, state: &Arc<DaemonState>) -> WsResponse {
+    let resumed = state.execution_tracker.resume(execution_id, model);
+    if resumed {
+        WsResponse::success(id, serde_json::json!({ "resumed": true }))
+    } else {
+        WsResponse::error(
+            id,
+            ErrorCode::InvalidRequest,
+            format!("execution {} is not paused", execution_id),
+        )
+    }
+}
+
+fn handle_abort_scenario_with_error(id: String, execution_id: u64, state: &Arc<DaemonState>) -> WsResponse {
+    let aborted = state.execution_tracker.abort_paused(execution_id);
+    if aborted {
+        WsResponse::success(id, serde_json::json!({ "aborted": true }))
+    } else {
+        WsResponse::error(
+            id,
+            ErrorCode::InvalidRequest,
+            format!("execution {} is not paused", execution_id),
+        )
+    }
+}
+
+fn handle_dev_notification(id: String, state: &Arc<DaemonState>) -> WsResponse {
+    let _ = state.chat_event_sender.send(crate::chat::ChatEvent::DevNotification {
+        title: "RHD Test".to_string(),
+        message: "This is a test notification from rhd dev frontend-notification".to_string(),
+    });
+    WsResponse::success(id, serde_json::json!({ "sent": true }))
 }
