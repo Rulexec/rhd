@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import { editMessage } from '../lib/chatWs';
   import { streamingMessageId } from '../lib/chatStores';
   import type { ChatMessage } from '../lib/types/index';
@@ -10,10 +11,37 @@
   let model = 'gpt4';
   let systemExpanded = false;
   let thinkingExpanded = false;
+  let thinkingEl: HTMLPreElement | null = null;
+  let thinkingAutoScroll = true;
+  const SCROLL_THRESHOLD = 30;
 
   $: isStreamingMessage = $streamingMessageId === message.id;
   $: isSystemMessage = message.role === 'system';
   $: hasThinkingContent = message.thinkingContent && message.thinkingContent.length > 0;
+
+  function toggleThinking() {
+    thinkingExpanded = !thinkingExpanded;
+    if (thinkingExpanded) {
+      thinkingAutoScroll = true;
+      tick().then(() => {
+        if (thinkingEl) thinkingEl.scrollTop = thinkingEl.scrollHeight;
+      });
+    }
+  }
+
+  function handleThinkingScroll() {
+    if (!thinkingEl) return;
+    const { scrollTop, scrollHeight, clientHeight } = thinkingEl;
+    thinkingAutoScroll = scrollHeight - scrollTop - clientHeight < SCROLL_THRESHOLD;
+  }
+
+  function autoScrollThinking() {
+    if (thinkingExpanded && thinkingEl && thinkingAutoScroll) {
+      thinkingEl.scrollTop = thinkingEl.scrollHeight;
+    }
+  }
+
+  $: message.thinkingContent, autoScrollThinking();
 
   function startEdit() {
     editing = true;
@@ -69,12 +97,16 @@
     {/if}
   {:else}
     {#if hasThinkingContent}
-      <button class="thinking-header" on:click={() => (thinkingExpanded = !thinkingExpanded)}>
+      <button class="thinking-header" on:click={toggleThinking}>
         <span class="toggle-icon">{thinkingExpanded ? '▼' : '▶'}</span>
         <span class="thinking-label">Thinking</span>
       </button>
       {#if thinkingExpanded}
-        <pre class="thinking-content">{message.thinkingContent}</pre>
+        <pre class="thinking-content" bind:this={thinkingEl} on:scroll={handleThinkingScroll}>{message.thinkingContent}</pre>
+      {:else}
+        <div class="thinking-preview">
+          <pre class="thinking-content">{message.thinkingContent}</pre>
+        </div>
       {/if}
     {/if}
     <div class="content">
@@ -283,6 +315,21 @@
     font-weight: 500;
     font-family: monospace;
     font-style: italic;
+  }
+
+  .thinking-preview {
+    max-height: calc(2 * 18px + 16px);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    margin-bottom: var(--spacing-s, 8px);
+  }
+
+  .thinking-preview .thinking-content {
+    margin-bottom: 0;
+    max-height: none;
+    overflow: visible;
   }
 
   .thinking-content {
