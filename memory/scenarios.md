@@ -66,7 +66,9 @@ cwd: null
 **MCP Server Lifecycle**:
 - Spawned on first use per (mcp_name, scenario_id, step_id)
 - Cached at daemon level, reused across scenario executions
-- Killed only on daemon shutdown
+- Keyed by (cmd, args, cwd) — same config reuses same server
+- Killed on daemon shutdown or during `rhd reload` when config changes
+- During reload: changed configs stop old servers (respawn on next use), removed configs stop servers (PID logged)
 
 ## Skip Conditions
 

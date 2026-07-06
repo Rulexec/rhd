@@ -40,14 +40,18 @@
 - `ToolDefinition`, `ToolResult`: Tool types for MCP protocol
 - `McpClientTrait`: Trait for MCP client implementations
 - Built-in tools support (e.g., `rhd_set_flag`)
+- `pid()`: Returns PID of spawned MCP server process (for logging during reload)
 
 **rhd_app**:
-- **Daemon mode**: Unix socket server on `$HOME/rhd.sock` (default), accepts `RunScenario` requests
+- **Daemon mode**: Unix socket server on `$HOME/rhd.sock` (default), accepts `RunScenario` and `Reload` requests
 - **WebSocket server**: Optional TCP listener on `127.0.0.1:{ws_port}` for Web UI integration
-- **Client mode**: Connects to daemon, sends scenario name, receives output
+- **Client mode**: Connects to daemon, sends scenario name, receives output. Also supports `rhd reload` command
 - **Scenario executor**: Runs action chains sequentially with placeholder resolution
 - **Execution tracking**: Tracks step timings, token usage, log sections
 - **Chat manager**: `ChatManager` handles chat operations with streaming AI responses
 - **IPC protocol**: rkyv serialization with version-prefixed framing (Unix socket)
 - **WebSocket protocol**: JSON over WebSocket (TCP)
 - **MCP integration**: Loads MCP configs, caches server instances, handles tool calls
+- **Daemon state structure**: `DaemonState` contains `inner: RwLock<ReloadableInner>` for reloadable config (scenarios, models, mcp_configs, default_model, project_manager, config_paths) and `reload_lock: RwLock<()>` for coordinating reload with active executions/chats
+- **Reload mechanism**: `handle_reload()` acquires write lock on `reload_lock`, waits for active executions/chats to finish, reloads configs from disk, diffs MCP configs, stops removed MCP servers (with PID logging), restarts changed MCP servers, updates state
+- **MCP cache extensions**: `stop_specific()` and `restart_specific()` methods for managing specific MCP servers by cache key

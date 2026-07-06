@@ -64,11 +64,16 @@ rhd daemon [--config rhd.yaml] [--models-dir models] [--scenarios-dir scenarios]
 
 # Run scenario
 rhd run <scenario_name> [--socket PATH] [--modelAlias ALIAS=TARGET]
+
+# Reload configuration
+rhd reload [--socket PATH]
 ```
 
 By default, the socket is located at `$HOME/rhd.sock`. The `--socket` flag allows specifying a custom socket path.
 The `--ws-port` flag enables WebSocket server on the specified port (optional).
 The `--db-dir` flag specifies the directory for the SQLite database (default: `rhd_db`).
+
+The `reload` command reloads all configuration files (scenarios, models, MCP servers, projects) without restarting the daemon. It waits for active executions to complete, then reloads configs and restarts MCP servers whose configuration has changed.
 
 ## Configuration File (`rhd.yaml`)
 

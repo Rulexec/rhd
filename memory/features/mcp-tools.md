@@ -12,9 +12,14 @@ Enable `aiChat` scenario steps to use external tools via MCP (Model Context Prot
 ### MCP Server Lifecycle
 - Spawned on first use (when step with given MCP config runs)
 - Cached at daemon level — reused across scenario executions
-- Keyed by `(mcp_name, scenario_id, step_id)`
-- Killed only on daemon shutdown
+- Keyed by `(cmd, args, cwd)` — same config reuses same server
+- Killed on daemon shutdown or during `rhd reload` when config changes
 - Uses stdio transport (JSON-RPC 2.0 over line-delimited JSON)
+
+**Reload behavior:** When `rhd reload` is executed:
+- MCP servers whose config (cmd/args/cwd) changed are stopped and will be respawned on next use
+- MCP servers removed from config are stopped (PID logged for manual kill if needed)
+- New MCP configs are loaded but servers are spawned lazily on first use
 
 ### Built-in Tools
 - `rhd_set_flag` — set a named flag with boolean value

@@ -80,6 +80,13 @@ Referenced from `rhd.yaml` via `credentialsConfig: ../credentials.yaml` (path re
 --modelAlias ALIAS=TARGET  # override model names at runtime (repeatable)
 ```
 
+### `rhd reload`
+```
+--socket PATH          # Unix socket path (default: $HOME/rhd.sock)
+```
+
+Reloads all configuration files (scenarios, models, MCP servers, projects) without restarting the daemon. Waits for active executions to complete, then reloads configs and restarts MCP servers whose configuration has changed. Returns counts of reloaded items.
+
 ## Model Alias Resolution
 Two-stage resolution:
 1. **YAML aliases:** `models/medium.yaml` with `alias: gpt4` → `medium` resolves to `gpt4`

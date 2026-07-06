@@ -6,8 +6,8 @@
 - Message format: 4-byte version + 4-byte length + rkyv payload
 - Protocol version: 1
 - **Each message** (request or response) includes version prefix
-- Request: `IpcRequest::RunScenario { name: String, cwd: String }`
-- Response: `IpcResponse::Success { output: String }`, `IpcResponse::Error { message: String }`, `IpcResponse::Aborted`, or `IpcResponse::Paused { error: String, step: String }`
+- Request: `IpcRequest::RunScenario { name: String, cwd: String }`, `IpcRequest::Reload`
+- Response: `IpcResponse::Success { output: String }`, `IpcResponse::Error { message: String }`, `IpcResponse::Aborted`, `IpcResponse::Paused { error: String, step: String }`, or `IpcResponse::Reloaded { scenarios_reloaded, models_reloaded, mcp_restarted, mcp_stopped, projects_reloaded }`
 - Multi-response support: `handle_request` returns `Vec<IpcResponse>` for scenarios that pause then resume
 
 ## WebSocket Protocol
@@ -48,3 +48,17 @@
 - If `cwd` is set in scenario YAML, it takes precedence over client's cwd
 - The resolved cwd for each `runCommand` step is stored in `StepResult.cwd` and accessible via `%stepName.cwd%` placeholder
 - E2E tests run daemon and client in separate directories to verify cwd propagation works correctly
+
+## Reload Command
+
+```bash
+rhd reload [--socket PATH]
+```
+
+Reloads YAML configs (scenarios, projects, MCP, models) without restarting the daemon. The reload:
+- Waits for running scenarios and AI chat streams to finish
+- Blocks new scenarios/chats silently until reload completes (no errors)
+- Restarts only MCP servers whose configs changed
+- Stops MCP servers removed from config (logs PID for manual kill if needed)
+
+Response includes counts: scenarios_reloaded, models_reloaded, mcp_restarted, mcp_stopped, projects_reloaded.

@@ -66,3 +66,10 @@ The `ChatManager` in `packages/rhd_app/src/chat.rs` handles all chat operations:
 - `broadcast::channel(100)` for chat events (separate from execution events)
 - `DaemonState` holds `chat_db`, `chat_manager`, `chat_event_sender`
 - WebSocket handler subscribes to both execution and chat event channels
+
+## Reload Interaction
+
+Chat operations (`send_message`, `edit_and_resend`) acquire a read lock on `reload_lock` before starting. This ensures:
+- If a reload is in progress, chat operations wait silently (no error returned)
+- Reload waits for active chat streams to finish before proceeding
+- New chat messages block until reload completes
