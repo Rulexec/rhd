@@ -6,6 +6,7 @@ import {
   currentChatId,
   messages,
   streamingContent,
+  streamingThinkingContent,
   isStreaming,
   streamError,
   availableModels,
@@ -107,6 +108,7 @@ export async function sendMessage(content: string, model: string): Promise<WsRes
 
   isStreaming.set(true);
   streamingContent.set('');
+  streamingThinkingContent.set('');
   streamError.set(null);
   streamingMessageId.set(null);
 
@@ -135,6 +137,7 @@ export async function editMessage(messageId: number, newContent: string, model: 
 
   isStreaming.set(true);
   streamingContent.set('');
+  streamingThinkingContent.set('');
   streamError.set(null);
   streamingMessageId.set(null);
 
@@ -192,6 +195,7 @@ export function handleChatEvent(event: string, data: unknown): void {
           content: chunk.content,
           createdAt: new Date().toISOString(),
           model: get(selectedModel) || '',
+          thinkingContent: get(streamingThinkingContent) || undefined,
         };
         messages.update((list) => [...list, assistantMessage as any]);
         streamingMessageId.set(newTempId);
@@ -199,6 +203,20 @@ export function handleChatEvent(event: string, data: unknown): void {
         messages.update((list) =>
           list.map((m) =>
             m.id === tempId ? { ...m, content: m.content + chunk.content } : m
+          )
+        );
+      }
+      break;
+    }
+    case 'chatThinkingChunk': {
+      const chunk = data as { content: string };
+      streamingThinkingContent.update((current) => current + chunk.content);
+      
+      const tempId = get(streamingMessageId);
+      if (tempId) {
+        messages.update((list) =>
+          list.map((m) =>
+            m.id === tempId ? { ...m, thinkingContent: (m.thinkingContent || '') + chunk.content } : m
           )
         );
       }
@@ -228,12 +246,28 @@ export function handleChatEvent(event: string, data: unknown): void {
             updated[tempIdx] = added.message as any;
             streamingMessageId.set(null);
             return updated;
+          } else {
+            // Temp message not found, clear streamingMessageId anyway
+            streamingMessageId.set(null);
           }
         }
 
         if (list.some((m) => m.id === added.message.id)) {
           return list;
         }
+        
+        // System message: insert before temp user message
+        if (added.message.role === 'system') {
+          const tempUserIdx = list.findIndex(
+            (m) => m.role === 'user' && ((m.id as number) < 0 || (m.id as number) > 1000000000000)
+          );
+          if (tempUserIdx !== -1) {
+            const updated = [...list];
+            updated.splice(tempUserIdx, 0, added.message as any);
+            return updated;
+          }
+        }
+        
         if (added.message.role === 'user') {
           const tempIdx = list.findIndex(
             (m) => m.role === 'user' && m.content === added.message.content && ((m.id as number) < 0 || (m.id as number) > 1000000000000)
@@ -268,17 +302,19 @@ export function handleChatEvent(event: string, data: unknown): void {
       break;
     }
     case 'toolCallStarted': {
-      const { toolCallId, toolName, arguments: args } = data as {
+      const { toolCallId, toolName, arguments: args, mcpName } = data as {
         chatId: number;
         toolCallId: string;
         toolName: string;
         arguments: string;
+        mcpName: string;
       };
       const newToolCall = {
         id: toolCallId,
         name: toolName,
         arguments: args,
         status: 'running' as const,
+        mcpName,
       };
       pendingToolCalls.update((list) => [...list, newToolCall]);
       

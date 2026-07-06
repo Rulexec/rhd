@@ -308,6 +308,13 @@ pub struct ChatStreamChunkEvent {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ChatThinkingChunkEvent {
+    pub chat_id: i64,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ChatStreamFinishedEvent {
     pub chat_id: i64,
     pub message_id: i64,
@@ -337,6 +344,7 @@ pub struct ChatMessageDto {
     pub content: String,
     pub created_at: String,
     pub model: Option<String>,
+    pub thinking_content: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -385,6 +393,7 @@ pub struct ToolCallStartedEvent {
     pub tool_call_id: String,
     pub tool_name: String,
     pub arguments: String,
+    pub mcp_name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -643,6 +652,7 @@ mod tests {
             content: "Hello!".to_string(),
             created_at: "2026-06-28T15:00:00Z".to_string(),
             model: Some("gpt-4".to_string()),
+            thinking_content: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains(r#""chatId":1"#));
@@ -662,6 +672,7 @@ mod tests {
                 content: "Hi".to_string(),
                 created_at: "2026-06-28T15:00:00Z".to_string(),
                 model: Some("gpt-4".to_string()),
+                thinking_content: None,
             },
         };
         let json = serde_json::to_string(&event).unwrap();

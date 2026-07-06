@@ -122,19 +122,18 @@ impl ProjectManager {
         Ok(())
     }
 
-    pub async fn get_mcp_clients(&self, project_name: &str) -> Vec<Arc<McpClient>> {
+    pub async fn get_mcp_clients(&self, project_name: &str) -> Vec<(String, Arc<McpClient>)> {
         let clients = self.mcp_clients.lock().await;
         let prefix = format!("{}:", project_name);
-        let mut result: Vec<Arc<McpClient>> = clients
+        let mut result: Vec<(String, Arc<McpClient>)> = clients
             .iter()
             .filter(|(key, _)| key.starts_with(&prefix))
-            .map(|(_, client)| client.clone())
+            .map(|(key, client)| {
+                let mcp_name = key.strip_prefix(&prefix).unwrap_or(key).to_string();
+                (mcp_name, client.clone())
+            })
             .collect();
-        result.sort_by(|a, b| {
-            let _ = a;
-            let _ = b;
-            std::cmp::Ordering::Equal
-        });
+        result.sort_by(|a, b| a.0.cmp(&b.0));
         result
     }
 }

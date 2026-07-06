@@ -50,6 +50,7 @@ export const ToolCallSchema = z.object({
   arguments: z.string(),
   result: z.string().optional(),
   status: z.enum(['pending', 'running', 'completed', 'failed']).optional(),
+  mcpName: z.string().optional(),
 });
 export type ToolCall = z.infer<typeof ToolCallSchema>;
 
@@ -62,6 +63,7 @@ export const ChatMessageSchema = z.object({
   model: z.string().nullable(),
   toolCalls: z.array(ToolCallSchema).optional(),
   toolCallId: z.string().optional(),
+  thinkingContent: z.string().optional(),
 });
 export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 

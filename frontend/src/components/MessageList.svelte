@@ -1,6 +1,6 @@
 <script lang="ts">
   import { afterUpdate } from 'svelte';
-  import { messages, isStreaming, streamingContent, streamingMessageId } from '../lib/chatStores';
+  import { messages, isStreaming, streamingContent, streamingThinkingContent, streamingMessageId } from '../lib/chatStores';
   import Message from './Message.svelte';
   import StreamingMessage from './StreamingMessage.svelte';
   import ToolCallMessage from './ToolCallMessage.svelte';
@@ -38,7 +38,7 @@
     {/if}
   {/each}
   {#if $isStreaming && !$streamingMessageId}
-    <StreamingMessage content={$streamingContent} />
+    <StreamingMessage content={$streamingContent} thinkingContent={$streamingThinkingContent} />
   {/if}
 </div>
 

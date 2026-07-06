@@ -3,6 +3,7 @@
 
   export let toolCall: ToolCall;
 
+  let expanded = false;
   let showArguments = false;
   let showResult = false;
 
@@ -49,39 +50,46 @@
 </script>
 
 <div class="tool-call">
-  <div class="tool-header">
+  <button class="tool-header" on:click={() => (expanded = !expanded)}>
+    <span class="toggle-icon">{expanded ? '▼' : '▶'}</span>
     <span class="tool-status {statusClass}">{statusIcon}</span>
+    {#if toolCall.mcpName}
+      <span class="mcp-name">MCP: {toolCall.mcpName}</span>
+      <span class="separator">-</span>
+    {/if}
     <span class="tool-name">{toolCall.name}</span>
-  </div>
+  </button>
 
-  {#if toolCall.arguments}
-    <div class="tool-section">
-      <button
-        class="section-toggle"
-        on:click={() => (showArguments = !showArguments)}
-      >
-        <span class="toggle-icon">{showArguments ? '▼' : '▶'}</span>
-        Arguments
-      </button>
-      {#if showArguments}
-        <pre class="section-content">{formatJson(toolCall.arguments)}</pre>
-      {/if}
-    </div>
-  {/if}
+  {#if expanded}
+    {#if toolCall.arguments}
+      <div class="tool-section">
+        <button
+          class="section-toggle"
+          on:click={() => (showArguments = !showArguments)}
+        >
+          <span class="toggle-icon">{showArguments ? '▼' : '▶'}</span>
+          Arguments
+        </button>
+        {#if showArguments}
+          <pre class="section-content">{formatJson(toolCall.arguments)}</pre>
+        {/if}
+      </div>
+    {/if}
 
-  {#if toolCall.result !== undefined}
-    <div class="tool-section">
-      <button
-        class="section-toggle"
-        on:click={() => (showResult = !showResult)}
-      >
-        <span class="toggle-icon">{showResult ? '▼' : '▶'}</span>
-        Result
-      </button>
-      {#if showResult}
-        <pre class="section-content">{formatJson(toolCall.result)}</pre>
-      {/if}
-    </div>
+    {#if toolCall.result !== undefined}
+      <div class="tool-section">
+        <button
+          class="section-toggle"
+          on:click={() => (showResult = !showResult)}
+        >
+          <span class="toggle-icon">{showResult ? '▼' : '▶'}</span>
+          Result
+        </button>
+        {#if showResult}
+          <pre class="section-content">{formatJson(toolCall.result)}</pre>
+        {/if}
+      </div>
+    {/if}
   {/if}
 </div>
 
@@ -100,11 +108,25 @@
     align-items: center;
     gap: var(--spacing-xs, 4px);
     font-weight: 500;
-    margin-bottom: var(--spacing-xs, 4px);
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    width: 100%;
+    text-align: left;
   }
 
   .tool-status {
     font-size: 14px;
+  }
+
+  .mcp-name {
+    color: var(--color-text-secondary, #666);
+    font-size: 12px;
+  }
+
+  .separator {
+    color: var(--color-text-secondary, #999);
   }
 
   .status-running {

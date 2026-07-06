@@ -193,6 +193,7 @@ pub struct ChatResult {
 #[derive(Debug, Clone)]
 pub struct StreamChunk {
     pub content: Option<String>,
+    pub reasoning_content: Option<String>,
     pub finish_reason: Option<String>,
 }
 
@@ -217,6 +218,7 @@ struct StreamChoice {
 #[derive(Deserialize)]
 struct StreamDelta {
     content: Option<String>,
+    reasoning_content: Option<String>,
 }
 
 pub struct OpenAiClient {
@@ -415,10 +417,12 @@ impl OpenAiClient {
 
                         if let Some(choice) = stream_response.choices.into_iter().next() {
                             let content = choice.delta.content;
+                            let reasoning_content = choice.delta.reasoning_content;
                             finish_reason = choice.finish_reason.or(finish_reason);
 
                             let stream_chunk = StreamChunk {
                                 content,
+                                reasoning_content,
                                 finish_reason: None,
                             };
 
@@ -533,10 +537,12 @@ impl OpenAiClient {
 
                         if let Some(choice) = stream_response.choices.into_iter().next() {
                             let content = choice.delta.content;
+                            let reasoning_content = choice.delta.reasoning_content;
                             finish_reason = choice.finish_reason.or(finish_reason);
 
                             let stream_chunk = StreamChunk {
                                 content,
+                                reasoning_content,
                                 finish_reason: None,
                             };
 

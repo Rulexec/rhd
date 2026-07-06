@@ -62,6 +62,7 @@ pub enum ChatError {
 #[derive(Debug, Clone)]
 pub enum ChatEvent {
     StreamChunk { chat_id: i64, content: String },
+    ThinkingChunk { chat_id: i64, content: String },
     StreamFinished { chat_id: i64, message_id: i64, finish_reason: String },
     StreamError { chat_id: i64, error: String },
     MessageAdded { chat_id: i64, message: Message },
@@ -73,6 +74,7 @@ pub enum ChatEvent {
         tool_call_id: String,
         tool_name: String,
         arguments: String,
+        mcp_name: String,
     },
     ToolCallCompleted {
         chat_id: i64,
@@ -129,7 +131,10 @@ impl ChatManager {
         project_manager: &ProjectManager,
         mcp_cache: &McpServerCache,
         event_sender: broadcast::Sender<ChatEvent>,
+        reload_lock: &tokio::sync::RwLock<()>,
     ) -> Result<i64, ChatError> {
+        // Acquire reload_lock read — blocks silently if reload holds write lock
+        let _reload_guard = reload_lock.read().await;
         if self.db.get_chat(chat_id)?.is_none() {
             return Err(ChatError::ChatNotFound);
         }
@@ -145,7 +150,7 @@ impl ChatManager {
         };
 
         if let Some(notify) = pause_notify {
-            let user_message_id = self.db.add_message(chat_id, "user", &content, Some(model))?;
+            let user_message_id = self.db.add_message(chat_id, "user", &content, Some(model), None)?;
             let user_message = Message {
                 id: user_message_id,
                 chat_id,
@@ -153,6 +158,7 @@ impl ChatManager {
                 content,
                 created_at: chrono::Utc::now().to_rfc3339(),
                 model: Some(model.to_string()),
+                thinking_content: None,
             };
             let _ = event_sender.send(ChatEvent::MessageAdded {
                 chat_id,
@@ -184,7 +190,20 @@ impl ChatManager {
             if !system_prompt_added {
                 if let Some(project) = project_manager.get_project(project_name) {
                     if let Some(ref system_prompt) = project.system_prompt {
-                        self.db.add_message(chat_id, "system", system_prompt, None)?;
+                        let system_message_id = self.db.add_message(chat_id, "system", system_prompt, None, None)?;
+                        let system_message = Message {
+                            id: system_message_id,
+                            chat_id,
+                            role: "system".to_string(),
+                            content: system_prompt.clone(),
+                            created_at: chrono::Utc::now().to_rfc3339(),
+                            model: None,
+                            thinking_content: None,
+                        };
+                        let _ = event_sender.send(ChatEvent::MessageAdded {
+                            chat_id,
+                            message: system_message,
+                        });
                         self.db.mark_system_prompt_added(chat_id, project_name)?;
                     }
                 }
@@ -212,7 +231,7 @@ impl ChatManager {
         // Update chat's active model
         self.db.update_chat_active_model(chat_id, model)?;
 
-        let user_message_id = self.db.add_message(chat_id, "user", &content, Some(model))?;
+        let user_message_id = self.db.add_message(chat_id, "user", &content, Some(model), None)?;
         let user_message = Message {
             id: user_message_id,
             chat_id,
@@ -220,6 +239,7 @@ impl ChatManager {
             content,
             created_at: chrono::Utc::now().to_rfc3339(),
             model: Some(model.to_string()),
+            thinking_content: None,
         };
         let _ = event_sender.send(ChatEvent::MessageAdded {
             chat_id,
@@ -255,7 +275,9 @@ impl ChatManager {
 
         let client = OpenAiClient::new(&model_config.base_url, &model_config.api_key);
         let accumulated_content = Arc::new(Mutex::new(String::new()));
+        let accumulated_thinking = Arc::new(Mutex::new(String::new()));
         let accumulated_clone = accumulated_content.clone();
+        let thinking_clone = accumulated_thinking.clone();
         let sender_for_closure = event_sender.clone();
 
         let api_model = &model_config.model;
@@ -263,6 +285,7 @@ impl ChatManager {
             .chat_stream_cancellable(api_model, &chat_messages, cancel_token.clone(), move |chunk| {
                 let sender = sender_for_closure.clone();
                 let acc = accumulated_clone.clone();
+                let thinking_acc = thinking_clone.clone();
                 Box::pin(async move {
                     if let Some(content) = chunk.content {
                         if !content.is_empty() {
@@ -272,6 +295,16 @@ impl ChatManager {
                             });
                             let mut acc_guard = acc.lock().await;
                             acc_guard.push_str(&content);
+                        }
+                    }
+                    if let Some(reasoning) = chunk.reasoning_content {
+                        if !reasoning.is_empty() {
+                            let _ = sender.send(ChatEvent::ThinkingChunk {
+                                chat_id,
+                                content: reasoning.clone(),
+                            });
+                            let mut thinking_guard = thinking_acc.lock().await;
+                            thinking_guard.push_str(&reasoning);
                         }
                     }
                 })
@@ -286,7 +319,9 @@ impl ChatManager {
         match result {
             Ok(stream_result) => {
                 let full_content = accumulated_content.lock().await.clone();
-                let assistant_message_id = self.db.add_message(chat_id, "assistant", &full_content, Some(model))?;
+                let full_thinking = accumulated_thinking.lock().await.clone();
+                let thinking_option = if full_thinking.is_empty() { None } else { Some(full_thinking.as_str()) };
+                let assistant_message_id = self.db.add_message(chat_id, "assistant", &full_content, Some(model), thinking_option)?;
                 let assistant_message = Message {
                     id: assistant_message_id,
                     chat_id,
@@ -294,6 +329,7 @@ impl ChatManager {
                     content: full_content,
                     created_at: chrono::Utc::now().to_rfc3339(),
                     model: Some(model.to_string()),
+                    thinking_content: if full_thinking.is_empty() { None } else { Some(full_thinking) },
                 };
                 let _ = event_sender.send(ChatEvent::MessageAdded {
                     chat_id,
@@ -330,7 +366,7 @@ impl ChatManager {
         &self,
         chat_id: i64,
         project_manager: &ProjectManager,
-    ) -> (Vec<ToolDefinition>, Vec<(String, Arc<rhd_mcp_client::client::McpClient>)>) {
+    ) -> (Vec<ToolDefinition>, Vec<(String, String, Arc<rhd_mcp_client::client::McpClient>)>) {
         let mut tools = Vec::new();
         let mut mcp_clients = Vec::new();
 
@@ -341,7 +377,7 @@ impl ChatManager {
 
         for (project_name, _) in attached_projects {
             let clients = project_manager.get_mcp_clients(&project_name).await;
-            for client in clients {
+            for (mcp_name, client) in clients {
                 if let Ok(client_tools) = client.list_tools().await {
                     for tool in client_tools {
                         tools.push(ToolDefinition {
@@ -353,7 +389,7 @@ impl ChatManager {
                             },
                         });
                     }
-                    mcp_clients.push((project_name.clone(), client));
+                    mcp_clients.push((project_name.clone(), mcp_name, client));
                 }
             }
         }
@@ -368,7 +404,7 @@ impl ChatManager {
         model: &str,
         model_config: &ModelConfig,
         tools: Vec<ToolDefinition>,
-        mcp_clients: Vec<(String, Arc<rhd_mcp_client::client::McpClient>)>,
+        mcp_clients: Vec<(String, String, Arc<rhd_mcp_client::client::McpClient>)>,
         event_sender: broadcast::Sender<ChatEvent>,
     ) -> Result<i64, ChatError> {
         const MAX_ITERATIONS: u32 = 20;
@@ -376,7 +412,7 @@ impl ChatManager {
         // Update chat's active model
         self.db.update_chat_active_model(chat_id, model)?;
 
-        let user_message_id = self.db.add_message(chat_id, "user", &content, Some(model))?;
+        let user_message_id = self.db.add_message(chat_id, "user", &content, Some(model), None)?;
         let user_message = Message {
             id: user_message_id,
             chat_id,
@@ -384,6 +420,7 @@ impl ChatManager {
             content: content.clone(),
             created_at: chrono::Utc::now().to_rfc3339(),
             model: Some(model.to_string()),
+            thinking_content: None,
         };
         let _ = event_sender.send(ChatEvent::MessageAdded {
             chat_id,
@@ -441,7 +478,7 @@ impl ChatManager {
         api_model: &str,
         client: &OpenAiClient,
         tools: &[ToolDefinition],
-        mcp_clients: &[(String, Arc<rhd_mcp_client::client::McpClient>)],
+        mcp_clients: &[(String, String, Arc<rhd_mcp_client::client::McpClient>)],
         cancel_token: &CancellationToken,
         event_sender: &broadcast::Sender<ChatEvent>,
         iterations: &mut u32,
@@ -505,7 +542,7 @@ impl ChatManager {
             if result.tool_calls.is_empty() {
                 let final_content = result.content.unwrap_or_default();
                 let assistant_message_id =
-                    self.db.add_message(chat_id, "assistant", &final_content, Some(model))?;
+                    self.db.add_message(chat_id, "assistant", &final_content, Some(model), None)?;
                 let assistant_message = Message {
                     id: assistant_message_id,
                     chat_id,
@@ -513,6 +550,7 @@ impl ChatManager {
                     content: final_content,
                     created_at: chrono::Utc::now().to_rfc3339(),
                     model: Some(model.to_string()),
+                    thinking_content: None,
                 };
                 let _ = event_sender.send(ChatEvent::MessageAdded {
                     chat_id,
@@ -536,7 +574,7 @@ impl ChatManager {
             })
             .to_string();
             self.db
-                .add_message(chat_id, "assistant", &assistant_msg_content, Some(model))?;
+                .add_message(chat_id, "assistant", &assistant_msg_content, Some(model), None)?;
 
             for tool_call in &result.tool_calls {
                 if cancel_token.is_cancelled() {
@@ -549,14 +587,18 @@ impl ChatManager {
                     }));
                 }
 
+                // Find which MCP has this tool to get mcp_name
+                let mcp_name = self.find_mcp_for_tool(&tool_call.name, mcp_clients).await;
+                
                 let _ = event_sender.send(ChatEvent::ToolCallStarted {
                     chat_id,
                     tool_call_id: tool_call.id.clone(),
                     tool_name: tool_call.name.clone(),
                     arguments: tool_call.arguments.clone(),
+                    mcp_name: mcp_name.clone(),
                 });
 
-                let tool_result = self.execute_tool_call(tool_call, mcp_clients).await;
+                let (tool_result, _) = self.execute_tool_call(tool_call, mcp_clients).await;
 
                 let _ = event_sender.send(ChatEvent::ToolCallCompleted {
                     chat_id,
@@ -571,7 +613,7 @@ impl ChatManager {
                 })
                 .to_string();
                 self.db
-                    .add_message(chat_id, "tool", &tool_result_json, None)?;
+                    .add_message(chat_id, "tool", &tool_result_json, None, None)?;
             }
 
             if let Some(content) = result.content {
@@ -604,17 +646,30 @@ impl ChatManager {
     async fn execute_tool_call(
         &self,
         tool_call: &ToolCall,
-        mcp_clients: &[(String, Arc<rhd_mcp_client::client::McpClient>)],
-    ) -> String {
-        for (_project_name, client) in mcp_clients {
+        mcp_clients: &[(String, String, Arc<rhd_mcp_client::client::McpClient>)],
+    ) -> (String, String) {
+        for (_project_name, mcp_name, client) in mcp_clients {
             if client.has_tool(&tool_call.name).await {
                 match client.call_tool(&tool_call.name, &tool_call.arguments).await {
-                    Ok(result) => return result.content,
-                    Err(e) => return format!("Error: {}", e),
+                    Ok(result) => return (result.content, mcp_name.clone()),
+                    Err(e) => return (format!("Error: {}", e), mcp_name.clone()),
                 }
             }
         }
-        format!("Error: unknown tool '{}'", tool_call.name)
+        (format!("Error: unknown tool '{}'", tool_call.name), String::new())
+    }
+
+    async fn find_mcp_for_tool(
+        &self,
+        tool_name: &str,
+        mcp_clients: &[(String, String, Arc<rhd_mcp_client::client::McpClient>)],
+    ) -> String {
+        for (_project_name, mcp_name, client) in mcp_clients {
+            if client.has_tool(tool_name).await {
+                return mcp_name.clone();
+            }
+        }
+        String::new()
     }
 
     pub async fn edit_and_resend(
@@ -626,7 +681,10 @@ impl ChatManager {
         project_manager: &ProjectManager,
         mcp_cache: &McpServerCache,
         event_sender: broadcast::Sender<ChatEvent>,
+        reload_lock: &tokio::sync::RwLock<()>,
     ) -> Result<i64, ChatError> {
+        // Acquire reload_lock read — blocks silently if reload holds write lock
+        let _reload_guard = reload_lock.read().await;
         let original_message = self.db.get_message(message_id)?.ok_or(ChatError::MessageNotFound)?;
         let chat_id = original_message.chat_id;
 
@@ -651,7 +709,20 @@ impl ChatManager {
             if !system_prompt_added {
                 if let Some(project) = project_manager.get_project(project_name) {
                     if let Some(ref system_prompt) = project.system_prompt {
-                        self.db.add_message(chat_id, "system", system_prompt, None)?;
+                        let system_message_id = self.db.add_message(chat_id, "system", system_prompt, None, None)?;
+                        let system_message = Message {
+                            id: system_message_id,
+                            chat_id,
+                            role: "system".to_string(),
+                            content: system_prompt.clone(),
+                            created_at: chrono::Utc::now().to_rfc3339(),
+                            model: None,
+                            thinking_content: None,
+                        };
+                        let _ = event_sender.send(ChatEvent::MessageAdded {
+                            chat_id,
+                            message: system_message,
+                        });
                         self.db.mark_system_prompt_added(chat_id, project_name)?;
                     }
                 }
@@ -668,6 +739,7 @@ impl ChatManager {
             content: new_content,
             created_at: chrono::Utc::now().to_rfc3339(),
             model: Some(model.to_string()),
+            thinking_content: None,
         };
         let _ = event_sender.send(ChatEvent::MessageAdded {
             chat_id,
@@ -705,7 +777,9 @@ impl ChatManager {
 
         let client = OpenAiClient::new(&model_config.base_url, &model_config.api_key);
         let accumulated_content = Arc::new(Mutex::new(String::new()));
+        let accumulated_thinking = Arc::new(Mutex::new(String::new()));
         let accumulated_clone = accumulated_content.clone();
+        let thinking_clone = accumulated_thinking.clone();
         let sender_for_closure = event_sender.clone();
 
         let api_model = &model_config.model;
@@ -713,6 +787,7 @@ impl ChatManager {
             .chat_stream_cancellable(api_model, &chat_messages, cancel_token.clone(), move |chunk| {
                 let sender = sender_for_closure.clone();
                 let acc = accumulated_clone.clone();
+                let thinking_acc = thinking_clone.clone();
                 Box::pin(async move {
                     if let Some(content) = chunk.content {
                         if !content.is_empty() {
@@ -722,6 +797,16 @@ impl ChatManager {
                             });
                             let mut acc_guard = acc.lock().await;
                             acc_guard.push_str(&content);
+                        }
+                    }
+                    if let Some(reasoning) = chunk.reasoning_content {
+                        if !reasoning.is_empty() {
+                            let _ = sender.send(ChatEvent::ThinkingChunk {
+                                chat_id,
+                                content: reasoning.clone(),
+                            });
+                            let mut thinking_guard = thinking_acc.lock().await;
+                            thinking_guard.push_str(&reasoning);
                         }
                     }
                 })
@@ -736,7 +821,9 @@ impl ChatManager {
         match result {
             Ok(stream_result) => {
                 let full_content = accumulated_content.lock().await.clone();
-                let assistant_message_id = self.db.add_message(chat_id, "assistant", &full_content, Some(model))?;
+                let full_thinking = accumulated_thinking.lock().await.clone();
+                let thinking_option = if full_thinking.is_empty() { None } else { Some(full_thinking.as_str()) };
+                let assistant_message_id = self.db.add_message(chat_id, "assistant", &full_content, Some(model), thinking_option)?;
                 let assistant_message = Message {
                     id: assistant_message_id,
                     chat_id,
@@ -744,6 +831,7 @@ impl ChatManager {
                     content: full_content,
                     created_at: chrono::Utc::now().to_rfc3339(),
                     model: Some(model.to_string()),
+                    thinking_content: if full_thinking.is_empty() { None } else { Some(full_thinking) },
                 };
                 let _ = event_sender.send(ChatEvent::MessageAdded {
                     chat_id,
@@ -881,5 +969,9 @@ impl ChatManager {
             });
         }
         Ok(infos)
+    }
+
+    pub async fn active_stream_count(&self) -> usize {
+        self.active_streams.lock().await.len()
     }
 }

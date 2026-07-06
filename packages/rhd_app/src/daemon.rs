@@ -395,6 +395,8 @@ fn handle_run_scenario(
     });
     let log_file = log_dir.as_ref().and_then(|dir| open_log_file(dir).ok());
 
+    // Acquire reload_lock read — blocks silently if reload holds write lock
+    let _reload_guard = state.reload_lock.blocking_read();
     let inner_guard = state.inner.blocking_read();
     let scenario = match inner_guard.scenarios.get(&name) {
         Some(s) => s.clone(),

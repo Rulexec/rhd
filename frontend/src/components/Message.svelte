@@ -8,8 +8,12 @@
   let editing = false;
   let editContent = message.content;
   let model = 'gpt4';
+  let systemExpanded = false;
+  let thinkingExpanded = false;
 
   $: isStreamingMessage = $streamingMessageId === message.id;
+  $: isSystemMessage = message.role === 'system';
+  $: hasThinkingContent = message.thinkingContent && message.thinkingContent.length > 0;
 
   function startEdit() {
     editing = true;
@@ -41,7 +45,7 @@
   }
 </script>
 
-<div class="message {message.role}">
+<div class="message {message.role}" class:system-collapsed={isSystemMessage && !systemExpanded}>
   {#if editing}
     <div class="edit-mode">
       <textarea
@@ -55,7 +59,24 @@
         <span class="hint">Ctrl+Enter to save, Esc to cancel</span>
       </div>
     </div>
+  {:else if isSystemMessage}
+    <button class="system-header" on:click={() => (systemExpanded = !systemExpanded)}>
+      <span class="toggle-icon">{systemExpanded ? '▼' : '▶'}</span>
+      <span class="system-label">System Prompt</span>
+    </button>
+    {#if systemExpanded}
+      <pre class="system-content">{message.content}</pre>
+    {/if}
   {:else}
+    {#if hasThinkingContent}
+      <button class="thinking-header" on:click={() => (thinkingExpanded = !thinkingExpanded)}>
+        <span class="toggle-icon">{thinkingExpanded ? '▼' : '▶'}</span>
+        <span class="thinking-label">Thinking</span>
+      </button>
+      {#if thinkingExpanded}
+        <pre class="thinking-content">{message.thinkingContent}</pre>
+      {/if}
+    {/if}
     <div class="content">
       {message.content}
       {#if isStreamingMessage}
@@ -183,5 +204,101 @@
   .edit-btn:hover {
     background: rgba(0, 0, 0, 0.05);
     color: var(--color-text);
+  }
+
+  .message.system {
+    background: var(--color-bg-secondary, #f8f9fa);
+    border: 1px solid var(--color-border, #e0e0e0);
+    padding: var(--spacing-s, 8px);
+  }
+
+  .message.system.system-collapsed {
+    padding: var(--spacing-xs, 4px) var(--spacing-s, 8px);
+  }
+
+  .system-header {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs, 4px);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    font-size: 13px;
+    color: var(--color-text-secondary, #666);
+    width: 100%;
+    text-align: left;
+  }
+
+  .system-header:hover {
+    color: var(--color-text, #212529);
+  }
+
+  .toggle-icon {
+    font-size: 10px;
+    width: 12px;
+  }
+
+  .system-label {
+    font-weight: 500;
+    font-family: monospace;
+  }
+
+  .system-content {
+    background: var(--color-bg, #fff);
+    border: 1px solid var(--color-border, #e0e0e0);
+    border-radius: 4px;
+    padding: var(--spacing-s, 8px);
+    margin-top: var(--spacing-xs, 4px);
+    font-family: monospace;
+    font-size: 12px;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    max-height: 400px;
+    overflow-y: auto;
+    color: var(--color-text, #212529);
+  }
+
+  .thinking-header {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs, 4px);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    font-size: 13px;
+    color: var(--color-text-secondary, #666);
+    width: 100%;
+    text-align: left;
+    margin-bottom: var(--spacing-xs, 4px);
+  }
+
+  .thinking-header:hover {
+    color: var(--color-text, #212529);
+  }
+
+  .thinking-label {
+    font-weight: 500;
+    font-family: monospace;
+    font-style: italic;
+  }
+
+  .thinking-content {
+    background: var(--color-bg-secondary, #f8f9fa);
+    border: 1px solid var(--color-border, #e0e0e0);
+    border-radius: 4px;
+    padding: var(--spacing-s, 8px);
+    margin-bottom: var(--spacing-s, 8px);
+    font-family: monospace;
+    font-size: 12px;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    max-height: 300px;
+    overflow-y: auto;
+    color: var(--color-text-secondary, #666);
+    font-style: italic;
   }
 </style>

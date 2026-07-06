@@ -5,9 +5,10 @@ use std::time::Instant;
 use futures_util::{SinkExt, StreamExt};
 use rhd_api::{
     ChatMessageAddedEvent, ChatMessageDto, ChatPausedEvent, ChatResumedEvent,
-    ChatStreamChunkEvent, ChatStreamErrorEvent, ChatStreamFinishedEvent, DevNotificationEvent,
-    ErrorCode, ProjectAttachedEvent, ProjectDetachedEvent, ProjectMcpStatusChangedEvent,
-    ToolCallCompletedEvent, ToolCallStartedEvent, WsEvent, WsRequest, WsResponse,
+    ChatStreamChunkEvent, ChatStreamErrorEvent, ChatStreamFinishedEvent, ChatThinkingChunkEvent,
+    DevNotificationEvent, ErrorCode, ProjectAttachedEvent, ProjectDetachedEvent,
+    ProjectMcpStatusChangedEvent, ToolCallCompletedEvent, ToolCallStartedEvent, WsEvent,
+    WsRequest, WsResponse,
 };
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
@@ -103,6 +104,10 @@ async fn handle_ws_connection(
                                 let payload = ChatStreamChunkEvent { chat_id, content };
                                 WsEvent::new("chatStreamChunk", serde_json::to_value(&payload)?)
                             }
+                            ChatEvent::ThinkingChunk { chat_id, content } => {
+                                let payload = ChatThinkingChunkEvent { chat_id, content };
+                                WsEvent::new("chatThinkingChunk", serde_json::to_value(&payload)?)
+                            }
                             ChatEvent::StreamFinished { chat_id, message_id, finish_reason } => {
                                 let payload = ChatStreamFinishedEvent { chat_id, message_id, finish_reason };
                                 WsEvent::new("chatStreamFinished", serde_json::to_value(&payload)?)
@@ -121,6 +126,7 @@ async fn handle_ws_connection(
                                         content: message.content,
                                         created_at: message.created_at,
                                         model: message.model,
+                                        thinking_content: message.thinking_content,
                                     },
                                 };
                                 WsEvent::new("chatMessageAdded", serde_json::to_value(&payload)?)
@@ -142,12 +148,14 @@ async fn handle_ws_connection(
                                 tool_call_id,
                                 tool_name,
                                 arguments,
+                                mcp_name,
                             } => {
                                 let payload = ToolCallStartedEvent {
                                     chat_id,
                                     tool_call_id,
                                     tool_name,
                                     arguments,
+                                    mcp_name,
                                 };
                                 WsEvent::new("chatToolCallStarted", serde_json::to_value(&payload)?)
                             }
@@ -291,6 +299,8 @@ async fn handle_run_scenario(
     model_aliases: Vec<(String, String)>,
     state: &Arc<DaemonState>,
 ) -> WsResponse {
+    // Acquire reload_lock read — blocks silently if reload holds write lock
+    let _reload_guard = state.reload_lock.read().await;
     let inner = state.inner.read().await;
     let scenario = match inner.scenarios.get(&name) {
         Some(s) => s.clone(),
@@ -496,9 +506,10 @@ async fn handle_send_message(
     let event_sender = state.chat_event_sender.clone();
     let mcp_cache = Arc::clone(&state.mcp_cache);
     
+    let state_clone = Arc::clone(state);
     tokio::spawn(async move {
         let _ = chat_manager
-            .send_message(chat_id, content, &model, &models, &project_manager, &*mcp_cache, event_sender)
+            .send_message(chat_id, content, &model, &models, &project_manager, &*mcp_cache, event_sender, &state_clone.reload_lock)
             .await;
     });
     
@@ -527,6 +538,7 @@ async fn handle_edit_message(
             &project_manager,
             &*state.mcp_cache,
             state.chat_event_sender.clone(),
+            &state.reload_lock,
         )
         .await
     {

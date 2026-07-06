@@ -23,6 +23,7 @@ pub struct Message {
     pub content: String,
     pub created_at: String,
     pub model: Option<String>,
+    pub thinking_content: Option<String>,
 }
 
 pub struct ChatDb {
@@ -112,6 +113,16 @@ impl ChatDb {
 
         if !has_model {
             conn.execute_batch("ALTER TABLE messages ADD COLUMN model TEXT")?;
+        }
+
+        // Check if thinking_content column exists in messages table
+        let has_thinking_content: bool = conn
+            .prepare("SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name='thinking_content'")?
+            .query_row([], |row| row.get::<_, i64>(0))?
+            > 0;
+
+        if !has_thinking_content {
+            conn.execute_batch("ALTER TABLE messages ADD COLUMN thinking_content TEXT")?;
         }
 
         Ok(())
@@ -225,7 +236,7 @@ impl ChatDb {
         Ok(())
     }
 
-    pub fn add_message(&self, chat_id: i64, role: &str, content: &str, model: Option<&str>) -> DbResult<i64> {
+    pub fn add_message(&self, chat_id: i64, role: &str, content: &str, model: Option<&str>, thinking_content: Option<&str>) -> DbResult<i64> {
         let conn = self
             .conn
             .lock()
@@ -233,8 +244,8 @@ impl ChatDb {
         let tx = conn.unchecked_transaction()?;
         let now = now_iso();
         tx.execute(
-            "INSERT INTO messages (chat_id, role, content, created_at, model) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![chat_id, role, content, now, model],
+            "INSERT INTO messages (chat_id, role, content, created_at, model, thinking_content) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![chat_id, role, content, now, model, thinking_content],
         )?;
         let message_id = tx.last_insert_rowid();
         tx.execute(
@@ -251,7 +262,7 @@ impl ChatDb {
             .lock()
             .map_err(|e| DbError::InitializationError(e.to_string()))?;
         let mut stmt = conn.prepare(
-            "SELECT id, chat_id, role, content, created_at, model FROM messages WHERE chat_id = ?1 ORDER BY id ASC",
+            "SELECT id, chat_id, role, content, created_at, model, thinking_content FROM messages WHERE chat_id = ?1 ORDER BY id ASC",
         )?;
         let rows = stmt.query_map(params![chat_id], |row| {
             Ok(Message {
@@ -261,6 +272,7 @@ impl ChatDb {
                 content: row.get(3)?,
                 created_at: row.get(4)?,
                 model: row.get(5)?,
+                thinking_content: row.get(6)?,
             })
         })?;
         let mut messages = Vec::new();
@@ -288,7 +300,7 @@ impl ChatDb {
             .lock()
             .map_err(|e| DbError::InitializationError(e.to_string()))?;
         let mut stmt = conn.prepare(
-            "SELECT id, chat_id, role, content, created_at, model FROM messages WHERE id = ?1",
+            "SELECT id, chat_id, role, content, created_at, model, thinking_content FROM messages WHERE id = ?1",
         )?;
         let mut rows = stmt.query_map(params![message_id], |row| {
             Ok(Message {
@@ -298,6 +310,7 @@ impl ChatDb {
                 content: row.get(3)?,
                 created_at: row.get(4)?,
                 model: row.get(5)?,
+                thinking_content: row.get(6)?,
             })
         })?;
         match rows.next() {
@@ -473,8 +486,8 @@ mod tests {
         let db = ChatDb::new(path).unwrap();
         let chat_id = db.create_chat("Chat").unwrap();
 
-        let msg1 = db.add_message(chat_id, "user", "Hello", Some("gpt4")).unwrap();
-        let msg2 = db.add_message(chat_id, "assistant", "Hi there", Some("gpt4")).unwrap();
+        let msg1 = db.add_message(chat_id, "user", "Hello", Some("gpt4"), None).unwrap();
+        let msg2 = db.add_message(chat_id, "assistant", "Hi there", Some("gpt4"), None).unwrap();
         assert_eq!(msg1, 1);
         assert_eq!(msg2, 2);
 
@@ -498,9 +511,9 @@ mod tests {
         let db = ChatDb::new(path).unwrap();
         let chat_id = db.create_chat("Chat").unwrap();
 
-        let msg1 = db.add_message(chat_id, "user", "First", None).unwrap();
-        let _msg2 = db.add_message(chat_id, "assistant", "Second", None).unwrap();
-        let _msg3 = db.add_message(chat_id, "user", "Third", None).unwrap();
+        let msg1 = db.add_message(chat_id, "user", "First", None, None).unwrap();
+        let _msg2 = db.add_message(chat_id, "assistant", "Second", None, None).unwrap();
+        let _msg3 = db.add_message(chat_id, "user", "Third", None, None).unwrap();
 
         db.truncate_messages(chat_id, msg1).unwrap();
 
@@ -518,7 +531,7 @@ mod tests {
 
         let db = ChatDb::new(path).unwrap();
         let chat_id = db.create_chat("Chat").unwrap();
-        let msg_id = db.add_message(chat_id, "user", "Original", None).unwrap();
+        let msg_id = db.add_message(chat_id, "user", "Original", None, None).unwrap();
 
         db.update_message(msg_id, "Updated").unwrap();
 
@@ -607,7 +620,7 @@ mod tests {
         let chat = db.get_chat(1).unwrap().unwrap();
         assert_eq!(chat.active_model, Some("gpt4".to_string()));
 
-        let msg_id = db.add_message(1, "assistant", "New message", Some("gpt4")).unwrap();
+        let msg_id = db.add_message(1, "assistant", "New message", Some("gpt4"), None).unwrap();
         let msg = db.get_message(msg_id).unwrap().unwrap();
         assert_eq!(msg.model, Some("gpt4".to_string()));
 

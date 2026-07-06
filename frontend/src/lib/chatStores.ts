@@ -6,6 +6,7 @@ export const chats: Writable<Chat[]> = writable([]);
 export const currentChatId: Writable<number | null> = writable(null);
 export const messages: Writable<ChatMessage[]> = writable([]);
 export const streamingContent: Writable<string> = writable('');
+export const streamingThinkingContent: Writable<string> = writable('');
 export const isStreaming: Writable<boolean> = writable(false);
 export const streamError: Writable<string | null> = writable(null);
 export const availableModels: Writable<string[]> = writable([]);

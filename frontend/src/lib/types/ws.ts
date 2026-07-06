@@ -44,6 +44,14 @@ export const ChatStreamChunkEventSchema = z.object({
   }),
 });
 
+export const ChatThinkingChunkEventSchema = z.object({
+  type: z.literal('event'),
+  event: z.literal('chatThinkingChunk'),
+  data: z.object({
+    content: z.string(),
+  }),
+});
+
 export const ChatStreamFinishedEventSchema = z.object({
   type: z.literal('event'),
   event: z.literal('chatStreamFinished'),
@@ -144,6 +152,7 @@ export const ToolCallStartedEventSchema = z.object({
     toolCallId: z.string(),
     toolName: z.string(),
     arguments: z.string(),
+    mcpName: z.string(),
   }),
 });
 
@@ -178,6 +187,7 @@ export const WsEventSchema = z.discriminatedUnion('event', [
   StepStartedEventSchema,
   ScenarioFinishedEventSchema,
   ChatStreamChunkEventSchema,
+  ChatThinkingChunkEventSchema,
   ChatStreamFinishedEventSchema,
   ChatStreamErrorEventSchema,
   ChatMessageAddedEventSchema,
