@@ -218,6 +218,7 @@ struct StreamChoice {
 #[derive(Deserialize)]
 struct StreamDelta {
     content: Option<String>,
+    #[serde(alias = "reasoning")]
     reasoning_content: Option<String>,
 }
 
