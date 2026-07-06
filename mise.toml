@@ -19,3 +19,26 @@ run = ["cargo run -p rhd_test{{arg(name='rhd_test_args', var=true, prefix=' -- '
 
 [tasks.test-all]
 depends = ["test-frontend-unit", "test-frontend-e2e", "test-cargo", "test-e2e"]
+
+[tasks.cloc-frontend]
+run = ["cloc --vcs=git --not-match-f='package.*\\.json' frontend/"]
+
+[tasks.cloc-backend]
+run = ["cloc --vcs=git packages/"]
+
+[tasks.cloc-memory]
+run = ["cloc --vcs=git memory/"]
+
+[tasks.cloc-plans]
+run = ["cloc --vcs=git plans/"]
+
+[tasks.cloc]
+run = [
+  "mise run cloc-frontend",
+  "mise run cloc-backend",
+  "mise run cloc-memory",
+  "mise run cloc-plans",
+]
+
+[tasks.cloc-all]
+run = ["cloc --vcs=git --not-match-f='package.*\\.json' frontend/ packages/ memory/ plans/"]
