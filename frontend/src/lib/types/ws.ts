@@ -146,7 +146,7 @@ export const ProjectDetachedEventSchema = z.object({
 
 export const ToolCallStartedEventSchema = z.object({
   type: z.literal('event'),
-  event: z.literal('toolCallStarted'),
+  event: z.literal('chatToolCallStarted'),
   data: z.object({
     chatId: z.number(),
     toolCallId: z.string(),
@@ -158,7 +158,7 @@ export const ToolCallStartedEventSchema = z.object({
 
 export const ToolCallCompletedEventSchema = z.object({
   type: z.literal('event'),
-  event: z.literal('toolCallCompleted'),
+  event: z.literal('chatToolCallCompleted'),
   data: z.object({
     chatId: z.number(),
     toolCallId: z.string(),

@@ -63,7 +63,7 @@ export const ChatMessageSchema = z.object({
   model: z.string().nullable(),
   toolCalls: z.array(ToolCallSchema).optional(),
   toolCallId: z.string().optional(),
-  thinkingContent: z.string().optional(),
+  thinkingContent: z.string().nullish(),
 });
 export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 

@@ -301,7 +301,7 @@ export function handleChatEvent(event: string, data: unknown): void {
       handleProjectDetachedEvent(data);
       break;
     }
-    case 'toolCallStarted': {
+    case 'chatToolCallStarted': {
       const { toolCallId, toolName, arguments: args, mcpName } = data as {
         chatId: number;
         toolCallId: string;
@@ -332,7 +332,7 @@ export function handleChatEvent(event: string, data: unknown): void {
       }
       break;
     }
-    case 'toolCallCompleted': {
+    case 'chatToolCallCompleted': {
       const { toolCallId, result } = data as {
         chatId: number;
         toolCallId: string;
@@ -374,3 +374,18 @@ export function handleChatEvent(event: string, data: unknown): void {
     }
   }
 }
+
+// Test-only exports for state-based testing
+export {
+  loadChats as _test_loadChats,
+  loadAvailableModels as _test_loadAvailableModels,
+  createChat as _test_createChat,
+  selectChat as _test_selectChat,
+  deleteChat as _test_deleteChat,
+  sendMessage as _test_sendMessage,
+  editMessage as _test_editMessage,
+  abortChat as _test_abortChat,
+  pauseChat as _test_pauseChat,
+  resumeChat as _test_resumeChat,
+  handleChatEvent as _test_handleChatEvent,
+};

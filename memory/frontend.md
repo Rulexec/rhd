@@ -74,12 +74,17 @@ Invalid WebSocket messages are logged and ignored via `safeParse`.
 - `currentChatId`: writable ID of selected chat
 - `messages`: writable array of messages for current chat (supports both numeric IDs from backend and string temp IDs for optimistic messages)
 - `streamingContent`: writable string accumulating streamed text (legacy, kept for compatibility)
+- `streamingThinkingContent`: writable string accumulating thinking/reasoning content
 - `isStreaming`: writable boolean indicating active stream
 - `streamError`: writable error message (null when no error)
 - `streamingMessageId`: writable string|null, tracks the temp ID of the optimistic assistant message during streaming
 - `currentChat`: derived store returning current chat object
 - `availableModels`: writable array of available model names (fetched from backend)
 - `selectedModel`: writable string|null, currently selected model for the active chat
+- `isPaused`: writable boolean indicating chat paused during tool loop
+- `pendingToolCalls`: writable array of active tool calls
+- `isToolLoopRunning`: derived store (isStreaming && !isPaused)
+- `resetAllStores()`: resets all stores to initial state (for testing)
 
 ## Chat WebSocket Functions (`frontend/src/lib/chatWs.ts`)
 

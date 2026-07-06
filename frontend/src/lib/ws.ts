@@ -51,7 +51,8 @@ function connect(): void {
     const result = WsMessageSchema.safeParse(raw);
 
     if (!result.success) {
-      console.error('Invalid WebSocket message:', result.error);
+      console.error('Invalid WebSocket message:', JSON.stringify(raw, null, 2));
+      console.error('Validation errors:', JSON.stringify(result.error.issues, null, 2));
       return;
     }
 

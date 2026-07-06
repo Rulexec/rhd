@@ -35,10 +35,15 @@
   - `scenarioResumed` emitted when retry starts (includes executionId)
 - **Chat streaming events**:
   - `chatStreamChunk`: Contains `chatId` and `content` (incremental text)
+  - `chatThinkingChunk`: Contains `chatId` and `content` (incremental thinking/reasoning content)
   - `chatStreamFinished`: Contains `chatId`, `messageId`, and `finishReason`
   - `chatStreamError`: Contains `chatId` and `error` message
-  - `chatMessageAdded`: Contains `chatId` and `message` object (user or assistant message persisted)
+  - `chatMessageAdded`: Contains `chatId` and `message` object (user, assistant, or system message persisted)
   - `chatUpdated`: Contains `chatId` and `title` (when chat title changes)
+  - `chatToolCallStarted`: Contains `chatId`, `toolCallId`, `toolName`, `arguments`, `mcpName`
+  - `chatToolCallCompleted`: Contains `chatId`, `toolCallId`, `result`
+  - `chatPaused`: Contains `chatId` (chat paused during tool loop)
+  - `chatResumed`: Contains `chatId` (chat resumed from pause)
 - Multiple subscribers supported via broadcast channels (separate for execution events and chat events)
 
 ## CWD Propagation

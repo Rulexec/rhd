@@ -24,3 +24,18 @@ export const isToolLoopRunning: Readable<boolean> = derived(
   [isStreaming, isPaused],
   ([$isStreaming, $isPaused]) => $isStreaming && !$isPaused
 );
+
+export function resetAllStores(): void {
+  chats.set([]);
+  currentChatId.set(null);
+  messages.set([]);
+  streamingContent.set('');
+  streamingThinkingContent.set('');
+  isStreaming.set(false);
+  streamError.set(null);
+  availableModels.set([]);
+  selectedModel.set(null);
+  streamingMessageId.set(null);
+  isPaused.set(false);
+  pendingToolCalls.set([]);
+}

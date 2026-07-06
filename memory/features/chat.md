@@ -29,6 +29,25 @@ Persistent conversational interface for direct AI interaction. Users create chat
 - Stream finish removes animated dots, shows final message
 - Empty chunks filtered on backend (not sent to frontend)
 
+### Thinking/Reasoning Content
+- AI models with reasoning support (e.g., Qwen) emit `chatThinkingChunk` events
+- Thinking content accumulated separately in `streamingThinkingContent` store
+- Displayed in collapsible "Thinking" section (collapsed by default)
+- Persisted in `thinking_content` column of messages table
+- Visible in message history for assistant messages
+
+### System Prompts
+- System prompts emitted as `chatMessageAdded` events with `role="system"`
+- Displayed in collapsible "System Prompt" section (collapsed by default)
+- Sent before user message in `send_message` and `edit_and_resend`
+
+### MCP Tool Calls
+- Tool calls emit `chatToolCallStarted` and `chatToolCallCompleted` events
+- Displayed in `ToolCallMessage` component with MCP server name
+- Collapsed by default, showing header with status icon, MCP name, tool name
+- Expanded view shows arguments and result sections
+- Tool calls attached to streaming assistant message via `toolCalls` array
+
 ### Message Editing
 - User can edit their own messages
 - Editing truncates all messages after the edited message
