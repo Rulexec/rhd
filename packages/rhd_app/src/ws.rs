@@ -182,7 +182,7 @@ async fn handle_ws_connection(
             pause_notification = pause_rx.recv() => {
                 match pause_notification {
                     Ok(notification) => {
-                        let model_names: Vec<String> = state.models.iter()
+                        let model_names: Vec<String> = state.inner.read().await.models.iter()
                             .filter(|(_, config)| !config.is_alias)
                             .map(|(name, _)| name.clone())
                             .collect();
@@ -230,9 +230,9 @@ async fn handle_ws_message(text: &str, state: &Arc<DaemonState>) -> WsResponse {
 
     match request {
         WsRequest::RunScenario { id, name, cwd, model_aliases } => {
-            handle_run_scenario(id, name, cwd, model_aliases, state)
+            handle_run_scenario(id, name, cwd, model_aliases, state).await
         }
-        WsRequest::Subscribe { id } => handle_subscribe(id, state),
+        WsRequest::Subscribe { id } => handle_subscribe(id, state).await,
         WsRequest::GetFinishedScenarios { id, last_id } => handle_get_finished(id, last_id, state),
         WsRequest::AbortScenario { id, execution_id } => handle_abort_scenario(id, execution_id, state),
         WsRequest::CreateChat { id, title } => handle_create_chat(id, title, state),
@@ -246,7 +246,7 @@ async fn handle_ws_message(text: &str, state: &Arc<DaemonState>) -> WsResponse {
             handle_edit_message(id, message_id, content, model, state).await
         }
         WsRequest::AbortChat { id, chat_id } => handle_abort_chat(id, chat_id, state).await,
-        WsRequest::GetAvailableModels { id } => handle_get_available_models(id, state),
+        WsRequest::GetAvailableModels { id } => handle_get_available_models(id, state).await,
         WsRequest::RetryScenario { id, execution_id, model } => {
             handle_retry_scenario(id, execution_id, model, state)
         }
@@ -254,7 +254,7 @@ async fn handle_ws_message(text: &str, state: &Arc<DaemonState>) -> WsResponse {
             handle_abort_scenario_with_error(id, execution_id, state)
         }
         WsRequest::DevNotification { id } => handle_dev_notification(id, state),
-        WsRequest::ListProjects { id } => handle_list_projects(id, state),
+        WsRequest::ListProjects { id } => handle_list_projects(id, state).await,
         WsRequest::GetProjectMcpStatus { id, project_name } => {
             handle_get_project_mcp_status(id, project_name, state).await
         }
@@ -272,8 +272,9 @@ async fn handle_ws_message(text: &str, state: &Arc<DaemonState>) -> WsResponse {
     }
 }
 
-fn handle_get_available_models(id: String, state: &Arc<DaemonState>) -> WsResponse {
-    let mut model_names: Vec<String> = state
+async fn handle_get_available_models(id: String, state: &Arc<DaemonState>) -> WsResponse {
+    let inner = state.inner.read().await;
+    let mut model_names: Vec<String> = inner
         .models
         .iter()
         .filter(|(_, config)| !config.is_alias)
@@ -283,15 +284,16 @@ fn handle_get_available_models(id: String, state: &Arc<DaemonState>) -> WsRespon
     WsResponse::success(id, serde_json::to_value(&model_names).unwrap())
 }
 
-fn handle_run_scenario(
+async fn handle_run_scenario(
     id: String,
     name: String,
     cwd: String,
     model_aliases: Vec<(String, String)>,
     state: &Arc<DaemonState>,
 ) -> WsResponse {
-    let scenario = match state.scenarios.get(&name) {
-        Some(s) => s,
+    let inner = state.inner.read().await;
+    let scenario = match inner.scenarios.get(&name) {
+        Some(s) => s.clone(),
         None => {
             return WsResponse::error(
                 id,
@@ -300,6 +302,10 @@ fn handle_run_scenario(
             );
         }
     };
+    let models = inner.models.clone();
+    let mcp_configs = inner.mcp_configs.clone();
+    let default_model = inner.default_model.clone();
+    drop(inner);
 
     let log_file = state.logs.as_ref().and_then(|logs_dir| {
         crate::log::create_log_dir(logs_dir, &name)
@@ -314,19 +320,19 @@ fn handle_run_scenario(
         frontend_alive: state.is_frontend_alive(),
         never_fail: state.never_fail,
     };
-    let result = tokio::runtime::Handle::current().block_on(crate::scenario::execute_scenario(
-        scenario,
+    let result = crate::scenario::execute_scenario(
+        &scenario,
         &name,
-        &state.models,
-        &state.mcp_configs,
+        &models,
+        &mcp_configs,
         &*state.mcp_cache,
-        state.default_model.as_deref(),
+        default_model.as_deref(),
         &mut sink,
         &cwd,
         Some(handle.clone()),
         &model_aliases,
         &exec_config,
-    ));
+    ).await;
 
     let status = match &result {
         Ok(_) => rhd_api::ScenarioStatus::Success,
@@ -360,13 +366,14 @@ fn handle_run_scenario(
     }
 }
 
-fn handle_subscribe(id: String, state: &Arc<DaemonState>) -> WsResponse {
+async fn handle_subscribe(id: String, state: &Arc<DaemonState>) -> WsResponse {
     let active = state.execution_tracker.get_active_executions();
+    let inner = state.inner.read().await;
     
     // Get paused executions
     let paused: Vec<_> = active.iter().filter_map(|e| {
         state.execution_tracker.get_paused_state(e.id).map(|paused| {
-            let model_names: Vec<String> = state.models.iter()
+            let model_names: Vec<String> = inner.models.iter()
                 .filter(|(_, config)| !config.is_alias)
                 .map(|(name, _)| name.clone())
                 .collect();
@@ -482,9 +489,11 @@ async fn handle_send_message(
 ) -> WsResponse {
     // Spawn the send_message operation in a separate task to avoid blocking the WebSocket select loop
     let chat_manager = Arc::clone(&state.chat_manager);
-    let models = state.models.clone();
+    let inner = state.inner.read().await;
+    let models = inner.models.clone();
+    let project_manager = Arc::clone(&inner.project_manager);
+    drop(inner);
     let event_sender = state.chat_event_sender.clone();
-    let project_manager = Arc::clone(&state.project_manager);
     let mcp_cache = Arc::clone(&state.mcp_cache);
     
     tokio::spawn(async move {
@@ -504,14 +513,18 @@ async fn handle_edit_message(
     model: String,
     state: &Arc<DaemonState>,
 ) -> WsResponse {
+    let inner = state.inner.read().await;
+    let models = inner.models.clone();
+    let project_manager = Arc::clone(&inner.project_manager);
+    drop(inner);
     match state
         .chat_manager
         .edit_and_resend(
             message_id,
             content,
             &model,
-            &state.models,
-            &state.project_manager,
+            &models,
+            &project_manager,
             &*state.mcp_cache,
             state.chat_event_sender.clone(),
         )
@@ -577,8 +590,9 @@ fn handle_dev_notification(id: String, state: &Arc<DaemonState>) -> WsResponse {
     WsResponse::success(id, serde_json::json!({ "sent": true }))
 }
 
-fn handle_list_projects(id: String, state: &Arc<DaemonState>) -> WsResponse {
-    let projects = state.project_manager.list_projects();
+async fn handle_list_projects(id: String, state: &Arc<DaemonState>) -> WsResponse {
+    let inner = state.inner.read().await;
+    let projects = inner.project_manager.list_projects();
     WsResponse::success(id, serde_json::to_value(&projects).unwrap())
 }
 
@@ -587,7 +601,8 @@ async fn handle_get_project_mcp_status(
     project_name: String,
     state: &Arc<DaemonState>,
 ) -> WsResponse {
-    if state.project_manager.get_project(&project_name).is_none() {
+    let inner = state.inner.read().await;
+    if inner.project_manager.get_project(&project_name).is_none() {
         return WsResponse::error(
             id,
             ErrorCode::InvalidRequest,
@@ -595,7 +610,7 @@ async fn handle_get_project_mcp_status(
         );
     }
 
-    let status_list = state.project_manager.get_mcp_status(&project_name).await;
+    let status_list = inner.project_manager.get_mcp_status(&project_name).await;
     let data: Vec<serde_json::Value> = status_list
         .into_iter()
         .map(|(mcp_name, status)| {
@@ -625,12 +640,15 @@ async fn handle_attach_project(
     project_name: String,
     state: &Arc<DaemonState>,
 ) -> WsResponse {
+    let inner = state.inner.read().await;
+    let project_manager = Arc::clone(&inner.project_manager);
+    drop(inner);
     match state
         .chat_manager
         .attach_project(
             chat_id,
             &project_name,
-            &state.project_manager,
+            &project_manager,
             &*state.mcp_cache,
             state.chat_event_sender.clone(),
         )

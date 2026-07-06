@@ -88,6 +88,11 @@ impl StdioTransport {
         })?;
         Ok(())
     }
+
+    pub async fn pid(&self) -> Option<u32> {
+        let child = self.child.lock().await;
+        child.id()
+    }
 }
 
 impl Drop for StdioTransport {

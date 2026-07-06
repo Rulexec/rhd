@@ -75,6 +75,13 @@ async fn main() {
                 }
             }
         }
+        Command::Reload(args) => {
+            let socket_path = args.socket.unwrap_or_else(cli::default_socket_path);
+            if let Err(err) = client::send_reload(&socket_path).await {
+                eprintln!("error: {err}");
+                std::process::exit(1);
+            }
+        }
     }
 }
 
@@ -101,7 +108,15 @@ async fn run_daemon_command(
     let project_manager = std::sync::Arc::new(project_manager::ProjectManager::new(projects));
     let socket_path = args.socket.unwrap_or_else(cli::default_socket_path);
     let db_file = merged.db_dir.join("meta.db");
-    daemon::run_daemon(scenarios, models, mcp_configs, merged.default_model, merged.logs, &socket_path, merged.ws_port, db_file.to_str().unwrap_or("db/meta.db"), merged.never_fail, project_manager).await?;
+    let config_paths = daemon::ResolvedConfigPaths {
+        config_file: args.config.clone(),
+        models_dir: merged.models_dir.clone(),
+        scenarios_dir: merged.scenarios_dir.clone(),
+        mcp_dir: merged.mcp_dir.clone(),
+        projects_dir: merged.projects_dir.clone(),
+        credentials_config: merged.credentials_config.clone(),
+    };
+    daemon::run_daemon(scenarios, models, mcp_configs, merged.default_model, merged.logs, &socket_path, merged.ws_port, db_file.to_str().unwrap_or("db/meta.db"), merged.never_fail, project_manager, config_paths).await?;
     Ok(())
 }
 

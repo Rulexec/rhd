@@ -14,6 +14,7 @@ pub enum Command {
     Daemon(DaemonArgs),
     Run(RunArgs),
     Dev(DevArgs),
+    Reload(ReloadArgs),
 }
 
 pub fn default_socket_path() -> PathBuf {
@@ -107,4 +108,10 @@ impl DevArgs {
     pub fn validate(&self) -> Result<(), String> {
         Ok(())
     }
+}
+
+#[derive(Parser, Debug)]
+pub struct ReloadArgs {
+    #[arg(long)]
+    pub socket: Option<PathBuf>,
 }

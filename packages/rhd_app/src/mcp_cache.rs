@@ -56,4 +56,27 @@ impl McpServerCache {
             }
         }
     }
+
+    pub async fn stop_specific(&self, keys_to_stop: &[String]) -> usize {
+        let mut cache = self.cache.lock().await;
+        let mut stopped = 0;
+        for key in keys_to_stop {
+            if let Some(client) = cache.remove(key) {
+                if let Some(pid) = client.pid().await {
+                    eprintln!("stopping MCP server '{}' (PID: {})", key, pid);
+                } else {
+                    eprintln!("stopping MCP server '{}'", key);
+                }
+                if let Err(e) = client.kill().await {
+                    eprintln!("failed to kill MCP server '{}': {}", key, e);
+                }
+                stopped += 1;
+            }
+        }
+        stopped
+    }
+
+    pub async fn restart_specific(&self, keys_to_restart: &[String]) -> usize {
+        self.stop_specific(keys_to_restart).await
+    }
 }

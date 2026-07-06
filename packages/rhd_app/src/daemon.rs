@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -8,7 +8,7 @@ use rhd_db::{ChatDb, ScenarioDb};
 use rhd_mcp_client::McpConfig;
 use tokio::net::UnixListener;
 use tokio::signal::unix::{signal, SignalKind};
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, RwLock};
 
 use crate::chat::{ChatEvent, ChatManager};
 use crate::execution::ExecutionTracker;
@@ -18,12 +18,28 @@ use crate::mcp_cache::McpServerCache;
 use crate::project_manager::ProjectManager;
 use crate::scenario::{execute_scenario, Scenario};
 
-pub struct DaemonState {
+#[derive(Clone)]
+pub struct ResolvedConfigPaths {
+    pub config_file: PathBuf,
+    pub models_dir: PathBuf,
+    pub scenarios_dir: PathBuf,
+    pub mcp_dir: PathBuf,
+    pub projects_dir: PathBuf,
+    pub credentials_config: Option<PathBuf>,
+}
+
+pub struct ReloadableInner {
     pub scenarios: HashMap<String, Scenario>,
     pub models: HashMap<String, ModelConfig>,
     pub mcp_configs: HashMap<String, McpConfig>,
-    pub mcp_cache: Arc<McpServerCache>,
     pub default_model: Option<String>,
+    pub project_manager: Arc<ProjectManager>,
+    pub config_paths: ResolvedConfigPaths,
+}
+
+pub struct DaemonState {
+    pub inner: RwLock<ReloadableInner>,
+    pub mcp_cache: Arc<McpServerCache>,
     pub logs: Option<std::path::PathBuf>,
     pub execution_tracker: Arc<ExecutionTracker>,
     pub chat_db: Arc<ChatDb>,
@@ -32,7 +48,7 @@ pub struct DaemonState {
     pub frontend_alive: Arc<AtomicBool>,
     pub never_fail: bool,
     pub ws_port: Option<u16>,
-    pub project_manager: Arc<ProjectManager>,
+    pub reload_lock: RwLock<()>,
 }
 
 impl DaemonState {
@@ -52,6 +68,7 @@ pub async fn run_daemon(
     db_path: &str,
     never_fail: bool,
     project_manager: Arc<ProjectManager>,
+    config_paths: ResolvedConfigPaths,
 ) -> std::io::Result<()> {
     let sock_path = socket_path;
     if let Err(err) = std::fs::remove_file(sock_path) {
@@ -77,12 +94,17 @@ pub async fn run_daemon(
     let (chat_event_sender, _) = broadcast::channel(100);
 
     let frontend_alive = Arc::new(AtomicBool::new(false));
-    let state = Arc::new(DaemonState {
+    let inner = ReloadableInner {
         scenarios,
         models,
         mcp_configs,
-        mcp_cache: Arc::new(McpServerCache::new()),
         default_model,
+        project_manager,
+        config_paths,
+    };
+    let state = Arc::new(DaemonState {
+        inner: RwLock::new(inner),
+        mcp_cache: Arc::new(McpServerCache::new()),
         logs,
         execution_tracker: execution_tracker.clone(),
         chat_db,
@@ -91,10 +113,11 @@ pub async fn run_daemon(
         frontend_alive,
         never_fail,
         ws_port,
-        project_manager,
+        reload_lock: RwLock::new(()),
     });
 
-    let scenario_names: Vec<&String> = state.scenarios.keys().collect();
+    let inner_guard = state.inner.read().await;
+    let scenario_names: Vec<&String> = inner_guard.scenarios.keys().collect();
     if scenario_names.is_empty() {
         eprintln!("no scenarios loaded");
     } else {
@@ -105,6 +128,7 @@ pub async fn run_daemon(
             scenario_names.into_iter().cloned().collect::<Vec<_>>().join(", ")
         );
     }
+    drop(inner_guard);
 
     let mut sigterm = signal(SignalKind::terminate())?;
     let mut sigint = signal(SignalKind::interrupt())?;
@@ -234,7 +258,129 @@ fn handle_request(
             state.execution_tracker.emit_test_scenario_finished(id, name);
             vec![IpcResponse::Ok]
         }
+        IpcRequest::Reload => {
+            tokio::runtime::Handle::current().block_on(handle_reload(state))
+        }
     }
+}
+
+async fn handle_reload(state: &DaemonState) -> Vec<IpcResponse> {
+    // Acquire write lock on reload_lock (blocks until all executions/chats release read locks)
+    let _reload_guard = state.reload_lock.write().await;
+    
+    // Get config paths
+    let config_paths = {
+        let inner = state.inner.read().await;
+        inner.config_paths.clone()
+    };
+    
+    // Load credentials
+    let credentials = if let Some(cred_path) = &config_paths.credentials_config {
+        if cred_path.exists() {
+            match crate::credentials::load_credentials(cred_path) {
+                Ok(c) => c,
+                Err(e) => return vec![IpcResponse::Error { message: e.to_string() }],
+            }
+        } else {
+            return vec![IpcResponse::Error {
+                message: format!("credentials file not found: {}", cred_path.display())
+            }];
+        }
+    } else {
+        HashMap::new()
+    };
+    
+    // Load new configs
+    let new_scenarios = match crate::scenario::load_scenarios_dir(&config_paths.scenarios_dir) {
+        Ok(s) => s,
+        Err(e) => return vec![IpcResponse::Error { message: e.to_string() }],
+    };
+    let new_models = match rhd_ai::config::load_models(&config_paths.models_dir, &credentials) {
+        Ok(m) => m,
+        Err(e) => return vec![IpcResponse::Error { message: e.to_string() }],
+    };
+    let new_mcp_configs = match crate::mcp_loader::load_mcp_dir(&config_paths.mcp_dir) {
+        Ok(m) => m,
+        Err(e) => return vec![IpcResponse::Error { message: e.to_string() }],
+    };
+    let new_projects = match crate::project_loader::load_projects(&config_paths.projects_dir) {
+        Ok(p) => p,
+        Err(e) => return vec![IpcResponse::Error { message: e.to_string() }],
+    };
+    
+    // Diff MCP configs
+    let (mcp_to_restart, mcp_to_stop) = {
+        let inner = state.inner.read().await;
+        diff_mcp_configs(&inner.mcp_configs, &new_mcp_configs)
+    };
+    
+    // Stop removed MCPs
+    let stopped_count = state.mcp_cache.stop_specific(&mcp_to_stop).await;
+    
+    // Restart changed MCPs
+    let restarted_count = state.mcp_cache.restart_specific(&mcp_to_restart).await;
+    
+    // Update state
+    {
+        let mut inner = state.inner.write().await;
+        inner.scenarios = new_scenarios;
+        inner.models = new_models;
+        inner.mcp_configs = new_mcp_configs;
+        inner.project_manager = Arc::new(ProjectManager::new(new_projects));
+    }
+    
+    // Return stats
+    let inner = state.inner.read().await;
+    vec![IpcResponse::Reloaded {
+        scenarios_reloaded: inner.scenarios.len(),
+        models_reloaded: inner.models.len(),
+        mcp_restarted: restarted_count,
+        mcp_stopped: stopped_count,
+        projects_reloaded: inner.project_manager.list_projects().len(),
+    }]
+}
+
+fn diff_mcp_configs(
+    old: &HashMap<String, McpConfig>,
+    new: &HashMap<String, McpConfig>,
+) -> (Vec<String>, Vec<String>) {
+    let mut to_restart = Vec::new();
+    let mut to_stop = Vec::new();
+    
+    // Find changed or new configs
+    for (name, new_config) in new {
+        let new_key = mcp_cache_key(new_config);
+        
+        match old.get(name) {
+            Some(old_config) => {
+                let old_key = mcp_cache_key(old_config);
+                if old_key != new_key {
+                    to_restart.push(old_key);
+                }
+            }
+            None => {
+                // New config, will be spawned on first use
+            }
+        }
+    }
+    
+    // Find removed configs
+    for (name, old_config) in old {
+        if !new.contains_key(name) {
+            to_stop.push(mcp_cache_key(old_config));
+        }
+    }
+    
+    (to_restart, to_stop)
+}
+
+fn mcp_cache_key(config: &McpConfig) -> String {
+    format!(
+        "{}:{}:{}",
+        config.cmd.as_deref().unwrap_or(""),
+        config.args.join(","),
+        config.cwd.as_deref().unwrap_or("")
+    )
 }
 
 fn handle_run_scenario(
@@ -249,7 +395,8 @@ fn handle_run_scenario(
     });
     let log_file = log_dir.as_ref().and_then(|dir| open_log_file(dir).ok());
 
-    let scenario = match state.scenarios.get(&name) {
+    let inner_guard = state.inner.blocking_read();
+    let scenario = match inner_guard.scenarios.get(&name) {
         Some(s) => s.clone(),
         None => {
             let mut sink = LogSink::new(log_file);
@@ -259,6 +406,10 @@ fn handle_run_scenario(
             }];
         }
     };
+    let models = inner_guard.models.clone();
+    let mcp_configs = inner_guard.mcp_configs.clone();
+    let default_model = inner_guard.default_model.clone();
+    drop(inner_guard);
 
     let handle = state.execution_tracker.start(name.clone());
     let execution_id = handle.id();
@@ -271,10 +422,7 @@ fn handle_run_scenario(
         never_fail: state.never_fail,
     };
     
-    let models = state.models.clone();
-    let mcp_configs = state.mcp_configs.clone();
     let mcp_cache = state.mcp_cache.clone();
-    let default_model = state.default_model.clone();
     
     let mut pause_rx = state.execution_tracker.subscribe_pause();
     
@@ -364,7 +512,8 @@ fn handle_run_scenario(
     let finished = handle.finished(status);
 
     if let Some(dir) = log_dir {
-        let model_config = state.models.values().next();
+        let inner_guard = state.inner.blocking_read();
+        let model_config = inner_guard.models.values().next();
         let meta = build_scenario_meta(&name, &finished, model_config, status);
         if let Err(err) = crate::log::write_meta_json(&dir, &meta) {
             eprintln!("failed to write meta.json: {}", err);

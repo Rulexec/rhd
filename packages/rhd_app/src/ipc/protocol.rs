@@ -22,6 +22,7 @@ pub enum IpcRequest {
         id: u64,
         name: String,
     },
+    Reload,
 }
 
 #[derive(Archive, Serialize, Deserialize, Debug, Clone)]
@@ -32,6 +33,13 @@ pub enum IpcResponse {
     Aborted,
     Paused { error: String, step: String },
     Ok,
+    Reloaded {
+        scenarios_reloaded: usize,
+        models_reloaded: usize,
+        mcp_restarted: usize,
+        mcp_stopped: usize,
+        projects_reloaded: usize,
+    },
 }
 
 pub fn write_message<T: rkyv::Serialize<rkyv::ser::serializers::AllocSerializer<256>>>(

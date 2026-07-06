@@ -14,6 +14,10 @@ impl McpClient {
     pub async fn kill(&self) -> McpResult<()> {
         self.transport.kill().await
     }
+
+    pub async fn pid(&self) -> Option<u32> {
+        self.transport.pid().await
+    }
 }
 
 impl McpClient {
