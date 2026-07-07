@@ -120,7 +120,7 @@ export const ProjectMcpStatusChangedEventSchema = z.object({
   event: z.literal('projectMcpStatusChanged'),
   data: z.object({
     projectName: z.string(),
-    mcpName: z.string(),
+    mcpId: z.string(),
     status: z.enum(['connecting', 'connected', 'failed']),
     error: z.string().optional(),
   }),
@@ -152,7 +152,7 @@ export const ToolCallStartedEventSchema = z.object({
     toolCallId: z.string(),
     toolName: z.string(),
     arguments: z.string(),
-    mcpName: z.string(),
+    mcpId: z.string(),
   }),
 });
 

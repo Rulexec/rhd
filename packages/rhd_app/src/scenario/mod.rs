@@ -67,9 +67,17 @@ pub struct AiChatAction {
 pub struct McpRef {
     pub name: String,
     #[serde(default)]
+    pub id: Option<String>,
+    #[serde(default)]
     pub args: Option<Vec<String>>,
     #[serde(default)]
     pub env: Option<HashMap<String, String>>,
+}
+
+impl McpRef {
+    pub fn effective_id(&self) -> &str {
+        self.id.as_deref().unwrap_or(&self.name)
+    }
 }
 
 #[derive(Debug, Clone)]

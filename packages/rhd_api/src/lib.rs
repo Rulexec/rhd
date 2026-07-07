@@ -362,7 +362,7 @@ pub struct ChatUpdatedEvent {
 #[serde(rename_all = "camelCase")]
 pub struct ProjectMcpStatusChangedEvent {
     pub project_name: String,
-    pub mcp_name: String,
+    pub mcp_id: String,
     pub status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
@@ -393,7 +393,7 @@ pub struct ToolCallStartedEvent {
     pub tool_call_id: String,
     pub tool_name: String,
     pub arguments: String,
-    pub mcp_name: String,
+    pub mcp_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

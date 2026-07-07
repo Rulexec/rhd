@@ -302,19 +302,19 @@ export function handleChatEvent(event: string, data: unknown): void {
       break;
     }
     case 'chatToolCallStarted': {
-      const { toolCallId, toolName, arguments: args, mcpName } = data as {
+      const { toolCallId, toolName, arguments: args, mcpId } = data as {
         chatId: number;
         toolCallId: string;
         toolName: string;
         arguments: string;
-        mcpName: string;
+        mcpId: string;
       };
       const newToolCall = {
         id: toolCallId,
         name: toolName,
         arguments: args,
         status: 'running' as const,
-        mcpName,
+        mcpId,
       };
       pendingToolCalls.update((list) => [...list, newToolCall]);
       

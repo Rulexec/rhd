@@ -36,10 +36,10 @@
                 <p class="no-mcp">No MCP servers</p>
               {:else}
                 <div class="mcp-list">
-                  {#each statuses as status (status.mcpName)}
+                  {#each statuses as status (status.mcpId)}
                     <div class="mcp-item">
                       <span class="status-dot" style="background: {getStatusColor(status.status)}"></span>
-                      <span class="mcp-name">{status.mcpName}</span>
+                      <span class="mcp-name">{status.mcpId}</span>
                       <span class="status-label">{status.status}</span>
                     </div>
                     {#if status.error}

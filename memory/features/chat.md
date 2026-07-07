@@ -43,10 +43,12 @@ Persistent conversational interface for direct AI interaction. Users create chat
 
 ### MCP Tool Calls
 - Tool calls emit `chatToolCallStarted` and `chatToolCallCompleted` events
-- Displayed in `ToolCallMessage` component with MCP server name
-- Collapsed by default, showing header with status icon, MCP name, tool name
+- Displayed in `ToolCallMessage` component with MCP ID
+- Collapsed by default, showing header with status icon, MCP ID, tool name
 - Expanded view shows arguments and result sections
 - Tool calls attached to streaming assistant message via `toolCalls` array
+- Tool names are namespaced: `{mcp_id}/{tool_name}` format (e.g., `fs1/read_file`)
+- Built-in tools (e.g., `rhd_set_flag`) are not namespaced
 
 ### Message Editing
 - User can edit their own messages

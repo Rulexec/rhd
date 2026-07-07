@@ -91,7 +91,7 @@ impl ProjectManager {
             .ok_or_else(|| format!("project not found: {}", project_name))?;
 
         for mcp_ref in &project.mcp_configs {
-            let status_key = format!("{}:{}", project_name, mcp_ref.name);
+            let status_key = format!("{}:{}", project_name, mcp_ref.effective_id());
 
             {
                 let mut status_map = self.mcp_status.lock().await;
@@ -150,6 +150,7 @@ mod tests {
         let mcp_configs: Vec<McpRef> = (0..mcp_count)
             .map(|i| McpRef {
                 name: format!("mcp-{}", i),
+                id: None,
                 args: None,
                 env: None,
             })

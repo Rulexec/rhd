@@ -40,7 +40,7 @@
   - `chatStreamError`: Contains `chatId` and `error` message
   - `chatMessageAdded`: Contains `chatId` and `message` object (user, assistant, or system message persisted)
   - `chatUpdated`: Contains `chatId` and `title` (when chat title changes)
-  - `chatToolCallStarted`: Contains `chatId`, `toolCallId`, `toolName`, `arguments`, `mcpName`
+  - `chatToolCallStarted`: Contains `chatId`, `toolCallId`, `toolName`, `arguments`, `mcpId`
   - `chatToolCallCompleted`: Contains `chatId`, `toolCallId`, `result`
   - `chatPaused`: Contains `chatId` (chat paused during tool loop)
   - `chatResumed`: Contains `chatId` (chat resumed from pause)

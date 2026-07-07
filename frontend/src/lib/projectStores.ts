@@ -53,9 +53,9 @@ export async function detachProject(chatId: number, projectName: string): Promis
 }
 
 export function handleMcpStatusEvent(data: unknown): void {
-  const event = data as { projectName: string; mcpName: string; status: 'connecting' | 'connected' | 'failed'; error?: string };
+  const event = data as { projectName: string; mcpId: string; status: 'connecting' | 'connected' | 'failed'; error?: string };
   mcpStatuses.update((list) => {
-    const idx = list.findIndex((s) => s.projectName === event.projectName && s.mcpName === event.mcpName);
+    const idx = list.findIndex((s) => s.projectName === event.projectName && s.mcpId === event.mcpId);
     if (idx !== -1) {
       const updated = [...list];
       updated[idx] = { ...updated[idx], status: event.status, error: event.error };

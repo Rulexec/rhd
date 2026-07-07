@@ -57,6 +57,9 @@ pub enum ChatError {
 
     #[error("MCP server not connected for project: {0}")]
     McpNotConnected(String),
+
+    #[error("MCP id conflict: {0}")]
+    McpIdConflict(String),
 }
 
 #[derive(Debug, Clone)]
@@ -74,7 +77,7 @@ pub enum ChatEvent {
         tool_call_id: String,
         tool_name: String,
         arguments: String,
-        mcp_name: String,
+        mcp_id: String,
     },
     ToolCallCompleted {
         chat_id: i64,
@@ -177,11 +180,11 @@ impl ChatManager {
         for (project_name, system_prompt_added) in &attached_projects {
             // Check MCP status
             let mcp_status = project_manager.get_mcp_status(project_name).await;
-            for (mcp_name, status) in &mcp_status {
+            for (mcp_id, status) in &mcp_status {
                 if !matches!(status, crate::project_manager::McpStatus::Connected) {
                     return Err(ChatError::McpNotConnected(format!(
                         "{}:{}",
-                        project_name, mcp_name
+                        project_name, mcp_id
                     )));
                 }
             }
@@ -377,19 +380,20 @@ impl ChatManager {
 
         for (project_name, _) in attached_projects {
             let clients = project_manager.get_mcp_clients(&project_name).await;
-            for (mcp_name, client) in clients {
+            for (mcp_id, client) in clients {
                 if let Ok(client_tools) = client.list_tools().await {
                     for tool in client_tools {
+                        let prefixed_name = format!("{}/{}", mcp_id, tool.name);
                         tools.push(ToolDefinition {
                             tool_type: "function".to_string(),
                             function: FunctionDefinition {
-                                name: tool.name.clone(),
+                                name: prefixed_name,
                                 description: tool.description,
                                 parameters: tool.input_schema,
                             },
                         });
                     }
-                    mcp_clients.push((project_name.clone(), mcp_name, client));
+                    mcp_clients.push((project_name.clone(), mcp_id, client));
                 }
             }
         }
@@ -567,15 +571,15 @@ impl ChatManager {
                     }));
                 }
 
-                // Find which MCP has this tool to get mcp_name
-                let mcp_name = self.find_mcp_for_tool(&tool_call.name, mcp_clients).await;
+                // Parse mcp_id from tool name prefix (format: "mcp_id/tool_name")
+                let mcp_id = self.extract_mcp_id_from_tool_name(&tool_call.name);
                 
                 let _ = event_sender.send(ChatEvent::ToolCallStarted {
                     chat_id,
                     tool_call_id: tool_call.id.clone(),
                     tool_name: tool_call.name.clone(),
                     arguments: tool_call.arguments.clone(),
-                    mcp_name: mcp_name.clone(),
+                    mcp_id: mcp_id.clone(),
                 });
 
                 let (tool_result, _) = self.execute_tool_call(tool_call, mcp_clients).await;
@@ -628,28 +632,20 @@ impl ChatManager {
         tool_call: &ToolCall,
         mcp_clients: &[(String, String, Arc<rhd_mcp_client::client::McpClient>)],
     ) -> (String, String) {
-        for (_project_name, mcp_name, client) in mcp_clients {
-            if client.has_tool(&tool_call.name).await {
-                match client.call_tool(&tool_call.name, &tool_call.arguments).await {
-                    Ok(result) => return (result.content, mcp_name.clone()),
-                    Err(e) => return (format!("Error: {}", e), mcp_name.clone()),
+        let (mcp_id, bare_tool_name) = split_tool_name(&tool_call.name);
+        for (_project_name, client_mcp_id, client) in mcp_clients {
+            if *client_mcp_id == mcp_id {
+                match client.call_tool(&bare_tool_name, &tool_call.arguments).await {
+                    Ok(result) => return (result.content, client_mcp_id.clone()),
+                    Err(e) => return (format!("Error: {}", e), client_mcp_id.clone()),
                 }
             }
         }
         (format!("Error: unknown tool '{}'", tool_call.name), String::new())
     }
 
-    async fn find_mcp_for_tool(
-        &self,
-        tool_name: &str,
-        mcp_clients: &[(String, String, Arc<rhd_mcp_client::client::McpClient>)],
-    ) -> String {
-        for (_project_name, mcp_name, client) in mcp_clients {
-            if client.has_tool(tool_name).await {
-                return mcp_name.clone();
-            }
-        }
-        String::new()
+    fn extract_mcp_id_from_tool_name(&self, tool_name: &str) -> String {
+        tool_name.split('/').next().unwrap_or("").to_string()
     }
 
     pub async fn edit_and_resend(
@@ -676,11 +672,11 @@ impl ChatManager {
         for (project_name, system_prompt_added) in &attached_projects {
             // Check MCP status
             let mcp_status = project_manager.get_mcp_status(project_name).await;
-            for (mcp_name, status) in &mcp_status {
+            for (mcp_id, status) in &mcp_status {
                 if !matches!(status, crate::project_manager::McpStatus::Connected) {
                     return Err(ChatError::McpNotConnected(format!(
                         "{}:{}",
-                        project_name, mcp_name
+                        project_name, mcp_id
                     )));
                 }
             }
@@ -903,8 +899,34 @@ impl ChatManager {
             return Err(ChatError::ChatNotFound);
         }
 
-        if project_manager.get_project(project_name).is_none() {
-            return Err(ChatError::ProjectNotFound(project_name.to_string()));
+        let project = project_manager
+            .get_project(project_name)
+            .ok_or_else(|| ChatError::ProjectNotFound(project_name.to_string()))?;
+
+        // Validate no duplicate MCP ids with already-attached projects
+        let attached_projects = self.db.get_chat_projects(chat_id)?;
+        let mut existing_mcp_ids = std::collections::HashSet::new();
+        for (attached_name, _) in &attached_projects {
+            if let Some(attached_project) = project_manager.get_project(attached_name) {
+                for mcp_ref in &attached_project.mcp_configs {
+                    existing_mcp_ids.insert(mcp_ref.effective_id().to_string());
+                }
+            }
+        }
+
+        let mut conflicting_ids = Vec::new();
+        for mcp_ref in &project.mcp_configs {
+            let eid = mcp_ref.effective_id();
+            if existing_mcp_ids.contains(eid) {
+                conflicting_ids.push(eid.to_string());
+            }
+        }
+
+        if !conflicting_ids.is_empty() {
+            return Err(ChatError::McpIdConflict(format!(
+                "MCP ids already in use: {}",
+                conflicting_ids.join(", ")
+            )));
         }
 
         project_manager
@@ -951,4 +973,12 @@ impl ChatManager {
         Ok(infos)
     }
 
+}
+
+fn split_tool_name(tool_name: &str) -> (String, String) {
+    if let Some((mcp_id, bare_name)) = tool_name.split_once('/') {
+        (mcp_id.to_string(), bare_name.to_string())
+    } else {
+        (String::new(), tool_name.to_string())
+    }
 }

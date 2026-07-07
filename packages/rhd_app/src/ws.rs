@@ -148,14 +148,14 @@ async fn handle_ws_connection(
                                 tool_call_id,
                                 tool_name,
                                 arguments,
-                                mcp_name,
+                                mcp_id,
                             } => {
                                 let payload = ToolCallStartedEvent {
                                     chat_id,
                                     tool_call_id,
                                     tool_name,
                                     arguments,
-                                    mcp_name,
+                                    mcp_id,
                                 };
                                 WsEvent::new("chatToolCallStarted", serde_json::to_value(&payload)?)
                             }
@@ -625,7 +625,7 @@ async fn handle_get_project_mcp_status(
     let status_list = inner.project_manager.get_mcp_status(&project_name).await;
     let data: Vec<serde_json::Value> = status_list
         .into_iter()
-        .map(|(mcp_name, status)| {
+        .map(|(mcp_id, status)| {
             let (status_str, error) = match status {
                 crate::project_manager::McpStatus::Connecting => ("connecting", None),
                 crate::project_manager::McpStatus::Connected => ("connected", None),
@@ -633,7 +633,7 @@ async fn handle_get_project_mcp_status(
             };
             let mut obj = serde_json::json!({
                 "projectName": project_name,
-                "mcpName": mcp_name,
+                "mcpId": mcp_id,
                 "status": status_str,
             });
             if let Some(err) = error {

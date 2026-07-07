@@ -3,6 +3,11 @@
 ## Purpose
 System configuration via YAML files and CLI arguments. Supports model definitions, scenario directories, credentials separation, and runtime overrides.
 
+## MCP ID Field
+Project MCP configurations support an optional `id` field. If not specified, the `name` field is used as the ID. The ID is used for:
+- Tool namespacing: tools are exposed to AI as `{id}/{tool_name}`
+- Conflict detection: attaching projects with duplicate MCP IDs is rejected
+
 ## Configuration Files
 
 ### `rhd.yaml` — Main Config

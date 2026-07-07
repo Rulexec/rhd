@@ -53,8 +53,8 @@
   <button class="tool-header" on:click={() => (expanded = !expanded)}>
     <span class="toggle-icon">{expanded ? '▼' : '▶'}</span>
     <span class="tool-status {statusClass}">{statusIcon}</span>
-    {#if toolCall.mcpName}
-      <span class="mcp-name">MCP: {toolCall.mcpName}</span>
+    {#if toolCall.mcpId}
+      <span class="mcp-name">MCP: {toolCall.mcpId}</span>
       <span class="separator">-</span>
     {/if}
     <span class="tool-name">{toolCall.name}</span>

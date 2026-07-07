@@ -101,6 +101,19 @@ pub fn load_project(project_dir: &Path) -> Result<Project, ProjectLoadError> {
             }
         }
 
+        let mut seen_ids = std::collections::HashSet::new();
+        for mcp_ref in &mcp_yaml.mcp {
+            let eid = mcp_ref.effective_id().to_string();
+            if !seen_ids.insert(eid.clone()) {
+                return Err(ProjectLoadError::Parse {
+                    path: mcp_file.display().to_string(),
+                    line: 0,
+                    column: 0,
+                    message: format!("duplicate MCP id: '{}'", eid),
+                });
+            }
+        }
+
         mcp_yaml.mcp
     } else {
         Vec::new()

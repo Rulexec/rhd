@@ -262,17 +262,19 @@ async fn execute_ai_chat_with_tools(
                     Ok(mcp_client) => {
                         match mcp_client.list_tools().await {
                             Ok(mcp_tools) => {
+                                let mcp_id = mcp_ref.effective_id();
                                 for tool in mcp_tools {
+                                    let prefixed_name = format!("{}/{}", mcp_id, tool.name);
                                     tools.push(ToolDefinition {
                                         tool_type: "function".to_string(),
                                         function: FunctionDefinition {
-                                            name: tool.name,
+                                            name: prefixed_name,
                                             description: tool.description,
                                             parameters: tool.input_schema,
                                         },
                                     });
                                 }
-                                mcp_clients.push((mcp_ref.name.clone(), mcp_client));
+                                mcp_clients.push((mcp_id.to_string(), mcp_client));
                             }
                             Err(e) => {
                                 sink.log_step(step_name, "MCP list_tools failed", &e.to_string());
@@ -415,11 +417,18 @@ async fn execute_ai_chat_with_tools(
                 context.set_flag(full_flag_name.clone(), flag_value);
                 format!("Flag '{}' set to {}", full_flag_name, flag_value)
             } else {
+                // Parse mcp_id from tool name prefix (format: "mcp_id/tool_name")
+                let (mcp_id, bare_tool_name) = if let Some((id, name)) = tool_call.name.split_once('/') {
+                    (id.to_string(), name.to_string())
+                } else {
+                    (String::new(), tool_call.name.clone())
+                };
+
                 let mut found = false;
                 let mut result_str = String::new();
-                for (_mcp_name, mcp_client) in &mcp_clients {
-                    if mcp_client.has_tool(&tool_call.name).await {
-                        match mcp_client.call_tool(&tool_call.name, &tool_call.arguments).await {
+                for (client_mcp_id, mcp_client) in &mcp_clients {
+                    if *client_mcp_id == mcp_id {
+                        match mcp_client.call_tool(&bare_tool_name, &tool_call.arguments).await {
                             Ok(r) => {
                                 result_str = r.content;
                                 found = true;

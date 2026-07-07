@@ -3,6 +3,15 @@
 ## Purpose
 Enable `aiChat` scenario steps to use external tools via MCP (Model Context Protocol) servers and built-in tool implementations. Tools allow AI to interact with external systems (filesystem, flags, etc.) during scenario execution.
 
+## MCP ID Namespacing
+All MCP tools are namespaced by their MCP ID when sent to the AI. Tool names use the format `{mcp_id}/{tool_name}`.
+
+- **MCP ID**: Each MCP configuration has an `id` field. If not specified, defaults to the `name` field.
+- **Tool prefixing**: All MCP tools are prefixed with `{mcp_id}/` before being sent to the AI.
+- **Built-in tools**: Internal tools like `rhd_set_flag` are NOT prefixed.
+- **Routing**: When the AI calls a tool, the system parses the prefix to route the call to the correct MCP server.
+- **Validation**: Within a single project or scenario step, duplicate MCP IDs are not allowed.
+
 ## How It Works
 
 ### Behavior Modes
@@ -53,6 +62,8 @@ Enable `aiChat` scenario steps to use external tools via MCP (Model Context Prot
 ### MCP Server Config
 MCP servers defined in `mcp/<name>/mcp.yaml`:
 ```yaml
+id: fs1  # optional, defaults to name if not specified
+name: "filesystem"
 cmd: "npx"
 args: ["-y", "@modelcontextprotocol/server-filesystem", "$AVAILABLE_ROOT"]
 cwd: null  # optional working directory
@@ -67,10 +78,11 @@ actions:
     maxToolIterations: 20  # optional, default 20, "inf" for unlimited
     mcp:
       - name: fs  # reference to mcp/fs/mcp.yaml
+        id: fs1  # optional, defaults to name
         env:
           AVAILABLE_ROOT: /home/user/project
         args: ["--extra-arg"]  # optional override
-      - name: flags  # built-in tools
+      - name: flags  # built-in tools (not prefixed)
     systemPrompt: "..."
     message: "..."
 

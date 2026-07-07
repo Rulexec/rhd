@@ -50,7 +50,7 @@ export const ToolCallSchema = z.object({
   arguments: z.string(),
   result: z.string().optional(),
   status: z.enum(['pending', 'running', 'completed', 'failed']).optional(),
-  mcpName: z.string().optional(),
+  mcpId: z.string().optional(),
 });
 export type ToolCall = z.infer<typeof ToolCallSchema>;
 
@@ -76,7 +76,7 @@ export type Project = z.infer<typeof ProjectSchema>;
 
 export const McpStatusSchema = z.object({
   projectName: z.string(),
-  mcpName: z.string(),
+  mcpId: z.string(),
   status: z.enum(['connecting', 'connected', 'failed']),
   error: z.string().optional(),
 });
