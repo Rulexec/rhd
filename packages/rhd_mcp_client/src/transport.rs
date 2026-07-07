@@ -34,7 +34,10 @@ impl StdioTransport {
         command.stderr(std::process::Stdio::inherit());
 
         let mut child = command.spawn().map_err(|e| {
-            McpError::Transport(format!("Failed to spawn MCP server '{}': {}", cmd, e))
+            McpError::Transport(format!(
+                "Failed to spawn MCP server '{}' (cmd: '{}', cwd: {:?}): {}",
+                cmd, cmd, cwd, e
+            ))
         })?;
 
         let stdin = child.stdin.take().ok_or_else(|| {

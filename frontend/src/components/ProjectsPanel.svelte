@@ -4,6 +4,9 @@
   import { currentChatId } from '../lib/chatStores';
   import { loadProjects, attachProject, detachProject, loadMcpStatus } from '../lib/projectStores';
 
+  let attachError = '';
+  let errorTimeout: ReturnType<typeof setTimeout> | null = null;
+
   function isAttached(projectName: string): boolean {
     return $chatProjects.some((p) => p.name === projectName);
   }
@@ -27,8 +30,16 @@
     if (isAttached(projectName)) {
       await detachProject(chatId, projectName);
     } else {
-      await attachProject(chatId, projectName);
-      await loadMcpStatus(projectName);
+      const result = await attachProject(chatId, projectName);
+      if (!result.success) {
+        attachError = result.error || 'Failed to attach project';
+        if (errorTimeout) clearTimeout(errorTimeout);
+        errorTimeout = setTimeout(() => {
+          attachError = '';
+        }, 5000);
+      } else {
+        await loadMcpStatus(projectName);
+      }
     }
   }
 
@@ -39,6 +50,9 @@
 
 <div class="projects-panel">
   <h3 class="panel-title">Projects</h3>
+  {#if attachError}
+    <div class="error-toast">{attachError}</div>
+  {/if}
   {#if $projects.length === 0}
     <p class="empty-text">No projects available</p>
   {:else}
@@ -161,5 +175,15 @@
   .toggle-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .error-toast {
+    background: #fee2e2;
+    color: #991b1b;
+    padding: var(--spacing-s);
+    border-radius: 4px;
+    margin-bottom: var(--spacing-s);
+    font-size: 13px;
+    border: 1px solid #fecaca;
   }
 </style>

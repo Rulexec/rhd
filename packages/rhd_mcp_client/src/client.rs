@@ -46,7 +46,15 @@ impl McpClient {
 
     async fn initialize(&self) -> McpResult<()> {
         let id = self.request_id.fetch_add(1, Ordering::SeqCst);
-        let request = JsonRpcRequest::new(id, "initialize", None);
+        let params = serde_json::json!({
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {
+                "name": "rhd",
+                "version": "0.1.0"
+            }
+        });
+        let request = JsonRpcRequest::new(id, "initialize", Some(params));
         let response = self.transport.send_request(&request).await?;
 
         if response.is_error() {

@@ -62,19 +62,33 @@ pub fn load_mcp_dir(dir: &Path) -> Result<HashMap<String, McpConfig>, McpLoadErr
             source,
         })?;
         let path = entry.path();
-        if !path.is_dir() {
-            continue;
+        
+        // Support both mcp/<name>/mcp.yaml and mcp/<name>.yaml
+        if path.is_dir() {
+            let config_file = path.join("mcp.yaml");
+            if !config_file.exists() {
+                continue;
+            }
+            let mut config = load_mcp_config(&config_file)?;
+            let dir_name = path.file_name()
+                .expect("directory must have a name")
+                .to_string_lossy()
+                .into_owned();
+            if config.name.is_none() {
+                config.name = Some(dir_name.clone());
+            }
+            configs.insert(dir_name, config);
+        } else if path.extension().and_then(|s| s.to_str()) == Some("yaml") {
+            let mut config = load_mcp_config(&path)?;
+            let file_name = path.file_stem()
+                .expect("file must have a name")
+                .to_string_lossy()
+                .into_owned();
+            if config.name.is_none() {
+                config.name = Some(file_name.clone());
+            }
+            configs.insert(file_name, config);
         }
-        let config_file = path.join("mcp.yaml");
-        if !config_file.exists() {
-            continue;
-        }
-        let config = load_mcp_config(&config_file)?;
-        let dir_name = path.file_name()
-            .expect("directory must have a name")
-            .to_string_lossy()
-            .into_owned();
-        configs.insert(dir_name, config);
     }
     Ok(configs)
 }

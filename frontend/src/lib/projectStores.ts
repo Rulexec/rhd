@@ -35,12 +35,14 @@ export async function loadChatProjects(chatId: number): Promise<void> {
   }
 }
 
-export async function attachProject(chatId: number, projectName: string): Promise<void> {
+export async function attachProject(chatId: number, projectName: string): Promise<{ success: boolean; error?: string }> {
   const id = generateRequestId();
   const response = await sendRequest({ type: 'attachProject', id, chatId, projectName });
   if (response.success) {
     chatProjects.update((list) => [...list, { name: projectName, systemPromptAdded: false }]);
+    return { success: true };
   }
+  return { success: false, error: response.error || 'Failed to attach project' };
 }
 
 export async function detachProject(chatId: number, projectName: string): Promise<void> {

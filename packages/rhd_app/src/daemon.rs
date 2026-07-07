@@ -131,6 +131,17 @@ pub async fn run_daemon(
             scenario_names.into_iter().cloned().collect::<Vec<_>>().join(", ")
         );
     }
+    let mcp_names: Vec<&String> = inner_guard.mcp_configs.keys().collect();
+    if mcp_names.is_empty() {
+        eprintln!("no MCP configs loaded");
+    } else {
+        eprintln!(
+            "loaded {} MCP config{}: {}",
+            mcp_names.len(),
+            if mcp_names.len() == 1 { "" } else { "s" },
+            mcp_names.into_iter().cloned().collect::<Vec<_>>().join(", ")
+        );
+    }
     drop(inner_guard);
 
     let mut sigterm = signal(SignalKind::terminate())?;
@@ -328,8 +339,8 @@ async fn handle_reload(state: &DaemonState) -> Vec<IpcResponse> {
         let mut inner = state.inner.write().await;
         inner.scenarios = new_scenarios;
         inner.models = new_models;
-        inner.mcp_configs = new_mcp_configs;
-        inner.project_manager = Arc::new(ProjectManager::new(new_projects, state.mcp_cache.clone()));
+        inner.mcp_configs = new_mcp_configs.clone();
+        inner.project_manager = Arc::new(ProjectManager::new(new_projects, new_mcp_configs, state.mcp_cache.clone()));
     }
     
     // Return stats

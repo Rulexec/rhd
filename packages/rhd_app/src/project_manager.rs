@@ -22,19 +22,21 @@ pub enum McpStatusDto {
 
 pub struct ProjectManager {
     projects: HashMap<String, Project>,
+    mcp_configs: HashMap<String, McpConfig>,
     mcp_clients: Arc<Mutex<HashMap<String, Arc<McpClient>>>>,
     mcp_status: Arc<Mutex<HashMap<String, McpStatus>>>,
     mcp_cache: Arc<McpServerCache>,
 }
 
 impl ProjectManager {
-    pub fn new(projects: Vec<Project>, mcp_cache: Arc<McpServerCache>) -> Self {
+    pub fn new(projects: Vec<Project>, mcp_configs: HashMap<String, McpConfig>, mcp_cache: Arc<McpServerCache>) -> Self {
         let mut project_map = HashMap::new();
         for project in projects {
             project_map.insert(project.name.clone(), project);
         }
         Self {
             projects: project_map,
+            mcp_configs,
             mcp_clients: Arc::new(Mutex::new(HashMap::new())),
             mcp_status: Arc::new(Mutex::new(HashMap::new())),
             mcp_cache,
@@ -83,16 +85,33 @@ impl ProjectManager {
                 status_map.insert(status_key.clone(), McpStatus::Connecting);
             }
 
+            let base_config = self.mcp_configs.get(&mcp_ref.name)
+                .ok_or_else(|| format!("MCP config '{}' not found in mcp/ directory", mcp_ref.name))?;
+
             let mcp_config = McpConfig {
-                name: mcp_ref.name.clone(),
-                cmd: Some(mcp_ref.name.clone()),
-                args: mcp_ref.args.clone().unwrap_or_default(),
-                cwd: None,
-                env: mcp_ref.env.clone().unwrap_or_default(),
+                name: base_config.name.clone(),
+                cmd: base_config.cmd.clone(),
+                args: mcp_ref.args.clone().unwrap_or_else(|| base_config.args.clone()),
+                cwd: base_config.cwd.clone(),
+                env: {
+                    let mut env = base_config.env.clone();
+                    if let Some(ref override_env) = mcp_ref.env {
+                        env.extend(override_env.clone());
+                    }
+                    env
+                },
             };
+
+            let cmd_for_log = mcp_config.cmd.as_deref().unwrap_or("").to_string();
+            let cwd_for_log = mcp_config.cwd.clone();
+            let mcp_id = mcp_ref.effective_id().to_string();
+            let mcp_name = mcp_ref.name.clone();
 
             match self.mcp_cache.get_or_spawn(&mcp_config).await {
                 Ok(client) => {
+                    let pid = client.pid().await;
+                    eprintln!("MCP '{}' spawned (id: '{}', name: '{}', cmd: '{}', cwd: {:?}, PID: {:?})", 
+                        mcp_ref.name, mcp_id, mcp_name, cmd_for_log, cwd_for_log, pid);
                     let mut clients = self.mcp_clients.lock().await;
                     clients.insert(status_key.clone(), client);
                     let mut status_map = self.mcp_status.lock().await;
@@ -100,6 +119,8 @@ impl ProjectManager {
                 }
                 Err(err) => {
                     let error_msg = err.to_string();
+                    eprintln!("MCP '{}' spawn failed (id: '{}', name: '{}', cmd: '{}', cwd: {:?}): {}", 
+                        mcp_ref.name, mcp_id, mcp_name, cmd_for_log, cwd_for_log, error_msg);
                     let mut status_map = self.mcp_status.lock().await;
                     status_map.insert(status_key, McpStatus::Failed(error_msg));
                 }
@@ -177,7 +198,7 @@ mod tests {
     }
 
     fn make_manager(projects: Vec<Project>) -> ProjectManager {
-        ProjectManager::new(projects, Arc::new(McpServerCache::new()))
+        ProjectManager::new(projects, HashMap::new(), Arc::new(McpServerCache::new()))
     }
 
     #[test]

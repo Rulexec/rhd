@@ -23,7 +23,8 @@ pub struct ToolResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct McpConfig {
-    pub name: String,
+    #[serde(default)]
+    pub name: Option<String>,
     pub cmd: Option<String>,
     #[serde(default)]
     pub args: Vec<String>,
