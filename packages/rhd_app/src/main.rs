@@ -30,6 +30,7 @@ async fn main() {
                 eprintln!("error: {err}");
                 std::process::exit(1);
             }
+            rhd_mcp_client::set_debug(args.debug);
             if let Err(err) = run_daemon_command(args).await {
                 eprintln!("error: {err}");
                 std::process::exit(1);

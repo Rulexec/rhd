@@ -84,6 +84,8 @@ pub struct DaemonArgs {
     pub db_dir: Option<PathBuf>,
     #[arg(long)]
     pub projects_dir: Option<PathBuf>,
+    #[arg(long)]
+    pub debug: bool,
 }
 
 impl DaemonArgs {

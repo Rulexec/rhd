@@ -647,34 +647,14 @@ async fn handle_attach_project(
     project_name: String,
     state: &Arc<DaemonState>,
 ) -> WsResponse {
-    let inner = state.inner.read().await;
-    drop(inner);
-    match state
-        .chat_manager
-        .attach_project(
-            chat_id,
-            &project_name,
-            state.chat_event_sender.clone(),
-        )
-        .await
-    {
-        Ok(()) => WsResponse::success(id, serde_json::json!({ "attached": true })),
-        Err(rhd_chat::ChatError::ChatNotFound) => WsResponse::error(
-            id,
-            ErrorCode::ChatNotFound,
-            format!("chat not found: {}", chat_id),
-        ),
-        Err(rhd_chat::ChatError::ProjectNotFound(name)) => WsResponse::error(
-            id,
-            ErrorCode::InvalidRequest,
-            format!("project not found: {}", name),
-        ),
-        Err(err) => WsResponse::error(
-            id,
-            ErrorCode::InternalError,
-            format!("failed to attach project: {}", err),
-        ),
-    }
+    let chat_manager = Arc::clone(&state.chat_manager);
+    let event_sender = state.chat_event_sender.clone();
+    tokio::spawn(async move {
+        let _ = chat_manager
+            .attach_project(chat_id, &project_name, event_sender)
+            .await;
+    });
+    WsResponse::success(id, serde_json::json!({ "status": "attaching" }))
 }
 
 async fn handle_detach_project(

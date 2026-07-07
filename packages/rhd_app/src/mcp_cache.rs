@@ -28,10 +28,11 @@ impl McpServerCache {
             config.cwd.as_deref().unwrap_or("")
         );
 
-        let mut cache = self.cache.lock().await;
-        
-        if let Some(client) = cache.get(&cache_key) {
-            return Ok(client.clone());
+        {
+            let cache = self.cache.lock().await;
+            if let Some(client) = cache.get(&cache_key) {
+                return Ok(client.clone());
+            }
         }
 
         let client = McpClient::connect(
@@ -43,7 +44,8 @@ impl McpServerCache {
         .await?;
 
         let client = Arc::new(client);
-        cache.insert(cache_key, client.clone());
+        let mut cache = self.cache.lock().await;
+        let client = cache.entry(cache_key).or_insert(client).clone();
         Ok(client)
     }
 

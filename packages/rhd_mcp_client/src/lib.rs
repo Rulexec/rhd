@@ -5,6 +5,13 @@ pub mod builtin;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+pub static DEBUG: AtomicBool = AtomicBool::new(false);
+
+pub fn set_debug(enabled: bool) {
+    DEBUG.store(enabled, Ordering::Relaxed);
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolDefinition {

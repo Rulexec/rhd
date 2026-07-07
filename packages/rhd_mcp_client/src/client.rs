@@ -35,6 +35,7 @@ impl McpClient {
         };
 
         client.initialize().await?;
+        client.send_initialized_notification().await?;
         let tools = client.list_tools().await?;
 
         Ok(Self {
@@ -66,6 +67,10 @@ impl McpClient {
 
         Ok(())
     }
+
+    async fn send_initialized_notification(&self) -> McpResult<()> {
+        self.transport.send_notification("notifications/initialized", None).await
+    }
 }
 
 impl McpClientTrait for McpClient {
@@ -85,7 +90,11 @@ impl McpClientTrait for McpClient {
             McpError::Protocol("tools/list returned no result".to_string())
         })?;
 
-        let tools: Vec<ToolDefinition> = serde_json::from_value(result)?;
+        let tools_value = result.get("tools").ok_or_else(|| {
+            McpError::Protocol("tools/list result missing 'tools' field".to_string())
+        })?;
+
+        let tools: Vec<ToolDefinition> = serde_json::from_value(tools_value.clone())?;
         Ok(tools)
     }
 

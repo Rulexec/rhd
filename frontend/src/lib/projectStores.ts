@@ -39,7 +39,6 @@ export async function attachProject(chatId: number, projectName: string): Promis
   const id = generateRequestId();
   const response = await sendRequest({ type: 'attachProject', id, chatId, projectName });
   if (response.success) {
-    chatProjects.update((list) => [...list, { name: projectName, systemPromptAdded: false }]);
     return { success: true };
   }
   return { success: false, error: response.error || 'Failed to attach project' };
@@ -77,6 +76,8 @@ export function handleProjectAttachedEvent(data: unknown): void {
       }
       return [...list, { name: event.projectName, systemPromptAdded: false }];
     });
+    // Refresh MCP status after project is attached
+    loadMcpStatus(event.projectName);
   }
 }
 
