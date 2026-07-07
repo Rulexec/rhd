@@ -18,8 +18,8 @@
 </script>
 
 {#if visible}
-  <div class="drawer-overlay" on:click on:keydown={(e) => e.key === 'Escape'}>
-    <div class="drawer" on:click|stopPropagation on:keydown|stopPropagation>
+  <div class="drawer-overlay" role="button" tabindex="0" on:click on:keydown={(e) => e.key === 'Escape'}>
+    <div class="drawer" role="dialog" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
       <div class="drawer-header">
         <h3>MCP Status</h3>
         <button class="close-btn" on:click>×</button>

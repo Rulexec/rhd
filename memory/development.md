@@ -29,6 +29,14 @@
 
 Pass arguments to rhd_test: `mise run test-e2e -- --seed 100 --repetitions 5`
 
+### Mise Check Commands
+
+| Command | Description |
+|---------|-------------|
+| `mise run check-svelte` | Svelte type/lint checks (`svelte-check` in frontend dir) |
+| `mise run check-cargo` | Rust compilation check (`cargo check`) |
+| `mise run check` | Both checks above, run sequentially |
+
 ### Frontend Tests
 
 - Unit tests: pure component/utils tests, no daemon spawn. Config: `frontend/vitest.config.unit.ts`

@@ -20,6 +20,7 @@ use crate::scenario::{execute_scenario, Scenario};
 
 #[derive(Clone)]
 pub struct ResolvedConfigPaths {
+    #[allow(dead_code)]
     pub config_file: PathBuf,
     pub models_dir: PathBuf,
     pub scenarios_dir: PathBuf,
@@ -42,11 +43,13 @@ pub struct DaemonState {
     pub mcp_cache: Arc<McpServerCache>,
     pub logs: Option<std::path::PathBuf>,
     pub execution_tracker: Arc<ExecutionTracker>,
+    #[allow(dead_code)]
     pub chat_db: Arc<ChatDb>,
     pub chat_manager: Arc<ChatManager>,
     pub chat_event_sender: broadcast::Sender<ChatEvent>,
     pub frontend_alive: Arc<AtomicBool>,
     pub never_fail: bool,
+    #[allow(dead_code)]
     pub ws_port: Option<u16>,
     pub reload_lock: RwLock<()>,
 }

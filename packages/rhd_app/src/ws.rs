@@ -7,7 +7,7 @@ use rhd_api::{
     ChatMessageAddedEvent, ChatMessageDto, ChatPausedEvent, ChatResumedEvent,
     ChatStreamChunkEvent, ChatStreamErrorEvent, ChatStreamFinishedEvent, ChatThinkingChunkEvent,
     DevNotificationEvent, ErrorCode, ProjectAttachedEvent, ProjectDetachedEvent,
-    ProjectMcpStatusChangedEvent, ToolCallCompletedEvent, ToolCallStartedEvent, WsEvent,
+    ToolCallCompletedEvent, ToolCallStartedEvent, WsEvent,
     WsRequest, WsResponse,
 };
 use tokio::net::TcpListener;

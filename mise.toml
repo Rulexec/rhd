@@ -42,3 +42,13 @@ run = [
 
 [tasks.cloc-all]
 run = ["cloc --vcs=git --not-match-f='package.*\\.json' frontend/ packages/ memory/ plans/"]
+
+[tasks.check-svelte]
+dir = "frontend"
+run = ["./node_modules/.bin/svelte-check"]
+
+[tasks.check-cargo]
+run = ["cargo check"]
+
+[tasks.check]
+depends = ["check-svelte", "check-cargo"]

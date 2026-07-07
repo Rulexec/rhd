@@ -10,7 +10,7 @@ use super::error::{ExecuteError, ExecuteOutput};
 use super::placeholder::{resolve_placeholders, ExecutionContext};
 use super::run_command::execute_run_command;
 use super::{Action, Scenario};
-use crate::execution::{ExecutionHandle, ResumeAction};
+use crate::execution::ExecutionHandle;
 use crate::log::{LogSink, SectionTracker};
 use crate::mcp_cache::McpServerCache;
 

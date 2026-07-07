@@ -35,7 +35,7 @@
         <button
           class="header-btn"
           class:active={showProjectsPanel}
-          on:click={() => showProjectsPanel = !showProjectsPanel}
+          onclick={() => showProjectsPanel = !showProjectsPanel}
         >
           Projects
         </button>
@@ -43,7 +43,7 @@
           <button
             class="header-btn"
             class:active={showMcpDrawer}
-            on:click={() => showMcpDrawer = !showMcpDrawer}
+            onclick={() => showMcpDrawer = !showMcpDrawer}
           >
             MCP Status
           </button>

@@ -129,7 +129,7 @@ impl ChatManager {
         model: &str,
         models: &HashMap<String, ModelConfig>,
         project_manager: &ProjectManager,
-        mcp_cache: &McpServerCache,
+        _mcp_cache: &McpServerCache,
         event_sender: broadcast::Sender<ChatEvent>,
         reload_lock: &tokio::sync::RwLock<()>,
     ) -> Result<i64, ChatError> {
@@ -508,26 +508,6 @@ impl ChatManager {
             self.check_pause_state(chat_id, event_sender).await;
 
             let messages = self.db.get_messages(chat_id)?;
-            let chat_messages: Vec<ChatMessage> = messages
-                .iter()
-                .map(|m| match m.role.as_str() {
-                    "user" => ChatMessage::user(&m.content),
-                    "assistant" => ChatMessage::assistant(&m.content),
-                    "system" => ChatMessage::system(&m.content),
-                    "tool" => {
-                        if let Ok(tool_data) = serde_json::from_str::<serde_json::Value>(&m.content) {
-                            if let Some(tool_call_id) = tool_data.get("toolCallId").and_then(|v| v.as_str()) {
-                                ChatMessage::tool(tool_call_id, tool_data.get("result").and_then(|v| v.as_str()).unwrap_or(""))
-                            } else {
-                                ChatMessage::user(&m.content)
-                            }
-                        } else {
-                            ChatMessage::user(&m.content)
-                        }
-                    }
-                    _ => ChatMessage::user(&m.content),
-                })
-                .collect();
 
             let system_prompts: Vec<&str> = messages
                 .iter()
@@ -679,7 +659,7 @@ impl ChatManager {
         model: &str,
         models: &HashMap<String, ModelConfig>,
         project_manager: &ProjectManager,
-        mcp_cache: &McpServerCache,
+        _mcp_cache: &McpServerCache,
         event_sender: broadcast::Sender<ChatEvent>,
         reload_lock: &tokio::sync::RwLock<()>,
     ) -> Result<i64, ChatError> {
@@ -971,7 +951,4 @@ impl ChatManager {
         Ok(infos)
     }
 
-    pub async fn active_stream_count(&self) -> usize {
-        self.active_streams.lock().await.len()
-    }
 }

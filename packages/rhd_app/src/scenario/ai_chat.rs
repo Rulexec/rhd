@@ -82,7 +82,6 @@ pub async fn execute_ai_chat(
 
     if !has_mcp {
         let mut current_model_config = model_config;
-        let mut current_model_name = model_name;
         
         loop {
             let request_tracker = SectionTracker::start(sink, LogSectionKind::AiRequest);
@@ -155,7 +154,6 @@ pub async fn execute_ai_chat(
                                         let new_model_name = apply_model_aliases(&new_model_name, model_aliases);
                                         if let Some(new_config) = models.get(&new_model_name) {
                                             current_model_config = new_config.clone();
-                                            current_model_name = new_model_name;
                                             if let Some(h) = &handle {
                                                 h.set_step_model(current_model_config.model_id.clone());
                                             }

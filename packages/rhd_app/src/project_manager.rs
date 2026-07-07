@@ -11,6 +11,7 @@ use crate::mcp_cache::McpServerCache;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub enum McpStatusDto {
     Connecting,
     Connected,
@@ -25,6 +26,7 @@ pub enum McpStatus {
 }
 
 impl McpStatus {
+    #[allow(dead_code)]
     pub fn to_dto(&self) -> McpStatusDto {
         match self {
             McpStatus::Connecting => McpStatusDto::Connecting,
