@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use rhd_api::project::{Project, ProjectInfo};
+use async_trait::async_trait;
+use rhd_api::project::{McpRef, Project, ProjectInfo};
+use rhd_chat::{McpStatus, ProjectProvider};
 use rhd_mcp_client::client::McpClient;
 use rhd_mcp_client::McpConfig;
 use serde::{Deserialize, Serialize};
@@ -18,32 +20,15 @@ pub enum McpStatusDto {
     Failed { error: String },
 }
 
-#[derive(Debug, Clone)]
-pub enum McpStatus {
-    Connecting,
-    Connected,
-    Failed(String),
-}
-
-impl McpStatus {
-    #[allow(dead_code)]
-    pub fn to_dto(&self) -> McpStatusDto {
-        match self {
-            McpStatus::Connecting => McpStatusDto::Connecting,
-            McpStatus::Connected => McpStatusDto::Connected,
-            McpStatus::Failed(error) => McpStatusDto::Failed { error: error.clone() },
-        }
-    }
-}
-
 pub struct ProjectManager {
     projects: HashMap<String, Project>,
     mcp_clients: Arc<Mutex<HashMap<String, Arc<McpClient>>>>,
     mcp_status: Arc<Mutex<HashMap<String, McpStatus>>>,
+    mcp_cache: Arc<McpServerCache>,
 }
 
 impl ProjectManager {
-    pub fn new(projects: Vec<Project>) -> Self {
+    pub fn new(projects: Vec<Project>, mcp_cache: Arc<McpServerCache>) -> Self {
         let mut project_map = HashMap::new();
         for project in projects {
             project_map.insert(project.name.clone(), project);
@@ -52,6 +37,7 @@ impl ProjectManager {
             projects: project_map,
             mcp_clients: Arc::new(Mutex::new(HashMap::new())),
             mcp_status: Arc::new(Mutex::new(HashMap::new())),
+            mcp_cache,
         }
     }
 
@@ -83,7 +69,6 @@ impl ProjectManager {
     pub async fn spawn_project_mcp(
         &self,
         project_name: &str,
-        mcp_cache: &McpServerCache,
     ) -> Result<(), String> {
         let project = self
             .projects
@@ -106,7 +91,7 @@ impl ProjectManager {
                 env: mcp_ref.env.clone().unwrap_or_default(),
             };
 
-            match mcp_cache.get_or_spawn(&mcp_config).await {
+            match self.mcp_cache.get_or_spawn(&mcp_config).await {
                 Ok(client) => {
                     let mut clients = self.mcp_clients.lock().await;
                     clients.insert(status_key.clone(), client);
@@ -140,6 +125,34 @@ impl ProjectManager {
     }
 }
 
+#[async_trait]
+impl ProjectProvider for ProjectManager {
+    async fn get_mcp_status(&self, project_name: &str) -> Vec<(String, McpStatus)> {
+        ProjectManager::get_mcp_status(self, project_name).await
+    }
+
+    fn get_project_system_prompt(&self, project_name: &str) -> Option<String> {
+        self.projects
+            .get(project_name)
+            .and_then(|p| p.system_prompt.clone())
+    }
+
+    fn get_project_mcp_refs(&self, project_name: &str) -> Vec<McpRef> {
+        self.projects
+            .get(project_name)
+            .map(|p| p.mcp_configs.clone())
+            .unwrap_or_default()
+    }
+
+    async fn get_mcp_clients(&self, project_name: &str) -> Vec<(String, Arc<McpClient>)> {
+        ProjectManager::get_mcp_clients(self, project_name).await
+    }
+
+    async fn spawn_project_mcp(&self, project_name: &str) -> Result<(), String> {
+        ProjectManager::spawn_project_mcp(self, project_name).await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -163,15 +176,19 @@ mod tests {
         }
     }
 
+    fn make_manager(projects: Vec<Project>) -> ProjectManager {
+        ProjectManager::new(projects, Arc::new(McpServerCache::new()))
+    }
+
     #[test]
     fn test_list_projects_empty() {
-        let manager = ProjectManager::new(vec![]);
+        let manager = make_manager(vec![]);
         assert!(manager.list_projects().is_empty());
     }
 
     #[test]
     fn test_list_projects_sorted() {
-        let manager = ProjectManager::new(vec![
+        let manager = make_manager(vec![
             make_project("charlie", 0),
             make_project("alpha", 0),
             make_project("bravo", 0),
@@ -185,7 +202,7 @@ mod tests {
 
     #[test]
     fn test_get_project_found() {
-        let manager = ProjectManager::new(vec![make_project("test", 1)]);
+        let manager = make_manager(vec![make_project("test", 1)]);
         let project = manager.get_project("test");
         assert!(project.is_some());
         assert_eq!(project.unwrap().name, "test");
@@ -193,27 +210,27 @@ mod tests {
 
     #[test]
     fn test_get_project_not_found() {
-        let manager = ProjectManager::new(vec![make_project("test", 1)]);
+        let manager = make_manager(vec![make_project("test", 1)]);
         assert!(manager.get_project("nonexistent").is_none());
     }
 
     #[tokio::test]
     async fn test_get_mcp_status_empty() {
-        let manager = ProjectManager::new(vec![make_project("test", 0)]);
+        let manager = make_manager(vec![make_project("test", 0)]);
         let status = manager.get_mcp_status("test").await;
         assert!(status.is_empty());
     }
 
     #[tokio::test]
     async fn test_get_mcp_clients_empty() {
-        let manager = ProjectManager::new(vec![make_project("test", 0)]);
+        let manager = make_manager(vec![make_project("test", 0)]);
         let clients = manager.get_mcp_clients("test").await;
         assert!(clients.is_empty());
     }
 
     #[test]
     fn test_project_info_has_mcp() {
-        let manager = ProjectManager::new(vec![
+        let manager = make_manager(vec![
             make_project("with-mcp", 2),
             make_project("without-mcp", 0),
         ]);
@@ -228,35 +245,15 @@ mod tests {
     fn test_project_info_has_system_prompt() {
         let mut project = make_project("test", 0);
         project.system_prompt = Some("prompt".to_string());
-        let manager = ProjectManager::new(vec![project]);
+        let manager = make_manager(vec![project]);
         let info = &manager.list_projects()[0];
         assert!(info.has_system_prompt);
     }
 
     #[test]
-    fn test_mcp_status_to_dto_connecting() {
-        let status = McpStatus::Connecting;
-        match status.to_dto() {
-            McpStatusDto::Connecting => {}
-            _ => panic!("expected Connecting"),
-        }
-    }
-
-    #[test]
-    fn test_mcp_status_to_dto_connected() {
-        let status = McpStatus::Connected;
-        match status.to_dto() {
-            McpStatusDto::Connected => {}
-            _ => panic!("expected Connected"),
-        }
-    }
-
-    #[test]
-    fn test_mcp_status_to_dto_failed() {
-        let status = McpStatus::Failed("error msg".to_string());
-        match status.to_dto() {
-            McpStatusDto::Failed { error } => assert_eq!(error, "error msg"),
-            _ => panic!("expected Failed"),
-        }
+    fn test_mcp_status_is_connected() {
+        assert!(McpStatus::Connected.is_connected());
+        assert!(!McpStatus::Connecting.is_connected());
+        assert!(!McpStatus::Failed("err".to_string()).is_connected());
     }
 }

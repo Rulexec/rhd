@@ -1,4 +1,3 @@
-mod chat;
 mod cli;
 mod client;
 mod config;
@@ -105,7 +104,8 @@ async fn run_daemon_command(
     let mcp_configs = mcp_loader::load_mcp_dir(&merged.mcp_dir)?;
     let projects = project_loader::load_projects(&merged.projects_dir)
         .map_err(|e| format!("failed to load projects: {}", e))?;
-    let project_manager = std::sync::Arc::new(project_manager::ProjectManager::new(projects));
+    let mcp_cache = std::sync::Arc::new(mcp_cache::McpServerCache::new());
+    let project_manager = std::sync::Arc::new(project_manager::ProjectManager::new(projects, mcp_cache.clone()));
     let socket_path = args.socket.unwrap_or_else(cli::default_socket_path);
     let db_file = merged.db_dir.join("meta.db");
     let config_paths = daemon::ResolvedConfigPaths {

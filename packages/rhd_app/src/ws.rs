@@ -15,7 +15,7 @@ use tokio::sync::broadcast;
 use tokio::time::{interval, Duration};
 use tokio_tungstenite::tungstenite::Message;
 
-use crate::chat::ChatEvent;
+use rhd_chat::ChatEvent;
 use crate::daemon::DaemonState;
 use crate::log::read_finished_scenarios;
 
@@ -501,15 +501,13 @@ async fn handle_send_message(
     let chat_manager = Arc::clone(&state.chat_manager);
     let inner = state.inner.read().await;
     let models = inner.models.clone();
-    let project_manager = Arc::clone(&inner.project_manager);
     drop(inner);
     let event_sender = state.chat_event_sender.clone();
-    let mcp_cache = Arc::clone(&state.mcp_cache);
     
     let state_clone = Arc::clone(state);
     tokio::spawn(async move {
         let _ = chat_manager
-            .send_message(chat_id, content, &model, &models, &project_manager, &*mcp_cache, event_sender, &state_clone.reload_lock)
+            .send_message(chat_id, content, &model, &models, event_sender, &state_clone.reload_lock)
             .await;
     });
     
@@ -526,7 +524,6 @@ async fn handle_edit_message(
 ) -> WsResponse {
     let inner = state.inner.read().await;
     let models = inner.models.clone();
-    let project_manager = Arc::clone(&inner.project_manager);
     drop(inner);
     match state
         .chat_manager
@@ -535,8 +532,6 @@ async fn handle_edit_message(
             content,
             &model,
             &models,
-            &project_manager,
-            &*state.mcp_cache,
             state.chat_event_sender.clone(),
             &state.reload_lock,
         )
@@ -545,12 +540,12 @@ async fn handle_edit_message(
         Ok(new_message_id) => {
             WsResponse::success(id, serde_json::json!({ "messageId": new_message_id }))
         }
-        Err(crate::chat::ChatError::MessageNotFound) => WsResponse::error(
+        Err(rhd_chat::ChatError::MessageNotFound) => WsResponse::error(
             id,
             ErrorCode::MessageNotFound,
             format!("message not found: {}", message_id),
         ),
-        Err(crate::chat::ChatError::ModelNotFound(model_name)) => WsResponse::error(
+        Err(rhd_chat::ChatError::ModelNotFound(model_name)) => WsResponse::error(
             id,
             ErrorCode::InvalidRequest,
             format!("model not found: {}", model_name),
@@ -595,7 +590,7 @@ fn handle_abort_scenario_with_error(id: String, execution_id: u64, state: &Arc<D
 }
 
 fn handle_dev_notification(id: String, state: &Arc<DaemonState>) -> WsResponse {
-    let _ = state.chat_event_sender.send(crate::chat::ChatEvent::DevNotification {
+    let _ = state.chat_event_sender.send(rhd_chat::ChatEvent::DevNotification {
         title: "RHD Test".to_string(),
         message: "This is a test notification from rhd dev frontend-notification".to_string(),
     });
@@ -627,9 +622,9 @@ async fn handle_get_project_mcp_status(
         .into_iter()
         .map(|(mcp_id, status)| {
             let (status_str, error) = match status {
-                crate::project_manager::McpStatus::Connecting => ("connecting", None),
-                crate::project_manager::McpStatus::Connected => ("connected", None),
-                crate::project_manager::McpStatus::Failed(ref e) => ("failed", Some(e.clone())),
+                rhd_chat::McpStatus::Connecting => ("connecting", None),
+                rhd_chat::McpStatus::Connected => ("connected", None),
+                rhd_chat::McpStatus::Failed(ref e) => ("failed", Some(e.clone())),
             };
             let mut obj = serde_json::json!({
                 "projectName": project_name,
@@ -653,26 +648,23 @@ async fn handle_attach_project(
     state: &Arc<DaemonState>,
 ) -> WsResponse {
     let inner = state.inner.read().await;
-    let project_manager = Arc::clone(&inner.project_manager);
     drop(inner);
     match state
         .chat_manager
         .attach_project(
             chat_id,
             &project_name,
-            &project_manager,
-            &*state.mcp_cache,
             state.chat_event_sender.clone(),
         )
         .await
     {
         Ok(()) => WsResponse::success(id, serde_json::json!({ "attached": true })),
-        Err(crate::chat::ChatError::ChatNotFound) => WsResponse::error(
+        Err(rhd_chat::ChatError::ChatNotFound) => WsResponse::error(
             id,
             ErrorCode::ChatNotFound,
             format!("chat not found: {}", chat_id),
         ),
-        Err(crate::chat::ChatError::ProjectNotFound(name)) => WsResponse::error(
+        Err(rhd_chat::ChatError::ProjectNotFound(name)) => WsResponse::error(
             id,
             ErrorCode::InvalidRequest,
             format!("project not found: {}", name),

@@ -10,7 +10,7 @@ use tokio::net::UnixListener;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::{broadcast, RwLock};
 
-use crate::chat::{ChatEvent, ChatManager};
+use rhd_chat::{ChatEvent, ChatManager};
 use crate::execution::ExecutionTracker;
 use crate::ipc::protocol::{read_message, write_message, IpcRequest, IpcResponse};
 use crate::log::{create_log_dir, open_log_file, LogSink};
@@ -45,7 +45,7 @@ pub struct DaemonState {
     pub execution_tracker: Arc<ExecutionTracker>,
     #[allow(dead_code)]
     pub chat_db: Arc<ChatDb>,
-    pub chat_manager: Arc<ChatManager>,
+    pub chat_manager: Arc<ChatManager<ProjectManager>>,
     pub chat_event_sender: broadcast::Sender<ChatEvent>,
     pub frontend_alive: Arc<AtomicBool>,
     pub never_fail: bool,
@@ -93,7 +93,7 @@ pub async fn run_daemon(
     let db_path_obj = std::path::Path::new(db_path);
     let chat_db_path = format!("{}/chats.db", db_path_obj.parent().unwrap_or(Path::new(".")).display());
     let chat_db = Arc::new(ChatDb::new(&chat_db_path).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?);
-    let chat_manager = Arc::new(ChatManager::new(chat_db.clone()));
+    let chat_manager = Arc::new(ChatManager::new(chat_db.clone(), project_manager.clone()));
     let (chat_event_sender, _) = broadcast::channel(100);
 
     let frontend_alive = Arc::new(AtomicBool::new(false));
@@ -247,7 +247,7 @@ fn handle_request(
             vec![IpcResponse::Ok]
         }
         IpcRequest::FrontendNotification => {
-            let _ = state.chat_event_sender.send(crate::chat::ChatEvent::DevNotification {
+            let _ = state.chat_event_sender.send(rhd_chat::ChatEvent::DevNotification {
                 title: "RHD Test".to_string(),
                 message: "This is a test notification from rhd dev frontend-notification".to_string(),
             });
@@ -329,7 +329,7 @@ async fn handle_reload(state: &DaemonState) -> Vec<IpcResponse> {
         inner.scenarios = new_scenarios;
         inner.models = new_models;
         inner.mcp_configs = new_mcp_configs;
-        inner.project_manager = Arc::new(ProjectManager::new(new_projects));
+        inner.project_manager = Arc::new(ProjectManager::new(new_projects, state.mcp_cache.clone()));
     }
     
     // Return stats
