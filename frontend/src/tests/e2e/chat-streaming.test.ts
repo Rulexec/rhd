@@ -65,11 +65,6 @@ afterAll(() => {
 
 describe('Chat streaming', () => {
   it('renders streaming chunks in real-time with animated indicator', async () => {
-    if (!window.prompt) {
-      (window as any).prompt = () => null;
-    }
-    vi.spyOn(window, 'prompt').mockReturnValue('Streaming Test Chat');
-
     await waitFor(
       () => {
         const wsState = get(wsConnected);
@@ -82,9 +77,14 @@ describe('Chat streaming', () => {
 
     render(ChatsTab);
 
-    // Create new chat
     const newChatButton = screen.getByText('+ New Chat');
     await fireEvent.click(newChatButton);
+
+    const titleInput = screen.getByPlaceholderText('Enter chat title') as HTMLInputElement;
+    await fireEvent.input(titleInput, { target: { value: 'Streaming Test Chat' } });
+
+    const createButton = screen.getByText('Create');
+    await fireEvent.click(createButton);
 
     // Wait for model select to be available and auto-selected
     await waitFor(

@@ -65,11 +65,6 @@ afterAll(() => {
 
 describe('Chat message flow', () => {
   it('sends message and receives response without duplication', async () => {
-    if (!window.prompt) {
-      (window as any).prompt = () => null;
-    }
-    vi.spyOn(window, 'prompt').mockReturnValue('Test Chat');
-
     await waitFor(
       () => {
         const wsState = get(wsConnected);
@@ -84,6 +79,12 @@ describe('Chat message flow', () => {
 
     const newChatButton = screen.getByText('+ New Chat');
     await fireEvent.click(newChatButton);
+
+    const titleInput = screen.getByPlaceholderText('Enter chat title') as HTMLInputElement;
+    await fireEvent.input(titleInput, { target: { value: 'Test Chat' } });
+
+    const createButton = screen.getByText('Create');
+    await fireEvent.click(createButton);
 
     await waitFor(
       () => {

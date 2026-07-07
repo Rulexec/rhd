@@ -64,11 +64,6 @@ afterAll(() => {
 
 describe('Chat UI', () => {
   it('creates new chat with model pre-selected', async () => {
-    if (!window.prompt) {
-      (window as any).prompt = () => null;
-    }
-    vi.spyOn(window, 'prompt').mockReturnValue('Test Chat');
-
     await waitFor(
       () => {
         const wsState = get(wsConnected);
@@ -83,6 +78,12 @@ describe('Chat UI', () => {
 
     const newChatButton = screen.getByText('+ New Chat');
     await fireEvent.click(newChatButton);
+
+    const titleInput = screen.getByPlaceholderText('Enter chat title') as HTMLInputElement;
+    await fireEvent.input(titleInput, { target: { value: 'Test Chat' } });
+
+    const createButton = screen.getByText('Create');
+    await fireEvent.click(createButton);
 
     await waitFor(
       () => {
