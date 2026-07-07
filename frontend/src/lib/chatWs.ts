@@ -16,6 +16,8 @@ import {
   pendingToolCalls,
 } from './chatStores';
 import {
+  chatProjects,
+  mcpStatuses,
   handleMcpStatusEvent,
   handleProjectAttachedEvent,
   handleProjectDetachedEvent,
@@ -57,6 +59,8 @@ export async function createChat(title: string): Promise<WsResponse> {
     currentChatId.set(chatId);
     messages.set([]);
     selectedModel.set(null);
+    chatProjects.set([]);
+    mcpStatuses.set([]);
   }
   return response;
 }
@@ -72,6 +76,8 @@ export async function selectChat(chatId: number): Promise<WsResponse> {
     streamError.set(null);
     streamingMessageId.set(null);
     selectedModel.set(response.data.chat.activeModel || null);
+    chatProjects.set([]);
+    mcpStatuses.set([]);
     loadChatProjects(chatId);
   }
   return response;

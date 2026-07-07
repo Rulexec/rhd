@@ -1,7 +1,26 @@
 <script lang="ts">
   import { chatProjects, mcpStatuses } from '../lib/projectStores';
+  import { onMount, onDestroy } from 'svelte';
 
   export let visible: boolean = false;
+
+  function close() {
+    visible = false;
+  }
+
+  function handleKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      close();
+    }
+  }
+
+  onMount(() => {
+    document.addEventListener('keydown', handleKeydown);
+  });
+
+  onDestroy(() => {
+    document.removeEventListener('keydown', handleKeydown);
+  });
 
   function getStatusColor(status: string): string {
     switch (status) {
@@ -18,11 +37,11 @@
 </script>
 
 {#if visible}
-  <div class="drawer-overlay" role="button" tabindex="0" on:click on:keydown={(e) => e.key === 'Escape'}>
+  <div class="drawer-overlay" role="button" tabindex="0" on:click={close} on:keydown={handleKeydown}>
     <div class="drawer" role="dialog" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
       <div class="drawer-header">
         <h3>MCP Status</h3>
-        <button class="close-btn" on:click>×</button>
+        <button class="close-btn" on:click={close}>×</button>
       </div>
       <div class="drawer-content">
         {#if $chatProjects.length === 0}
