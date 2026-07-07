@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use rhd_ai::config::ModelConfig;
-use rhd_ai::OpenAiClient;
+use rhd_ai::{ChatMessage, OpenAiClient};
 use rhd_api::LogSectionKind;
 use rhd_mcp_client::McpConfig;
 
@@ -91,8 +91,8 @@ pub async fn execute_ai_chat(
             }
             
             let client = OpenAiClient::new(&current_model_config.base_url, &current_model_config.api_key);
-            let system_prompts = [system_prompt.as_str()];
-            let chat_future = client.chat_with_tools(&current_model_config.model, &system_prompts, &message, &[], &[]);
+            let messages = vec![ChatMessage::system(&system_prompt), ChatMessage::user(&message)];
+            let chat_future = client.chat_with_tools(&current_model_config.model, messages, &[]);
             
             let result = if let Some(h) = &handle {
                 let mut abort_signal = h.abort_signal();
@@ -310,8 +310,11 @@ async fn execute_ai_chat_with_tools(
             h.add_section(request_tracker.end(sink));
         }
 
-        let system_prompts = [system_prompt];
-        let chat_future = current_client.chat_with_tools(&current_api_model, &system_prompts, &current_message, &tools, &tool_results);
+        let mut messages = vec![ChatMessage::system(system_prompt), ChatMessage::user(&current_message)];
+        for (tool_call_id, content) in &tool_results {
+            messages.push(ChatMessage::tool(tool_call_id, content));
+        }
+        let chat_future = current_client.chat_with_tools(&current_api_model, messages, &tools);
         
         let result = if let Some(h) = &handle {
             let mut abort_signal = h.abort_signal();

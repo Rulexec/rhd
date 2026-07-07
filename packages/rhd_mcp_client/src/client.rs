@@ -100,9 +100,11 @@ impl McpClientTrait for McpClient {
 
     async fn call_tool(&self, name: &str, arguments: &str) -> McpResult<ToolResult> {
         let id = self.request_id.fetch_add(1, Ordering::SeqCst);
+        let parsed_arguments: serde_json::Value = serde_json::from_str(arguments)
+            .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
         let params = serde_json::json!({
             "name": name,
-            "arguments": arguments
+            "arguments": parsed_arguments
         });
         let request = JsonRpcRequest::new(id, "tools/call", Some(params));
         let response = self.transport.send_request(&request).await?;
@@ -118,8 +120,26 @@ impl McpClientTrait for McpClient {
             McpError::Protocol("tools/call returned no result".to_string())
         })?;
 
-        let tool_result: ToolResult = serde_json::from_value(result)?;
-        Ok(tool_result)
+        let content_value = result.get("content").ok_or_else(|| {
+            McpError::Protocol("tools/call result missing 'content' field".to_string())
+        })?;
+
+        let content_string = match content_value {
+            serde_json::Value::String(s) => s.clone(),
+            serde_json::Value::Array(arr) => arr
+                .iter()
+                .filter_map(|item| item.get("text").and_then(|t| t.as_str()).map(|s| s.to_string()))
+                .collect::<Vec<_>>()
+                .join("\n"),
+            _ => content_value.to_string(),
+        };
+
+        let is_error = result.get("isError").and_then(|v| v.as_bool());
+
+        Ok(ToolResult {
+            content: content_string,
+            is_error,
+        })
     }
 
     async fn has_tool(&self, name: &str) -> bool {

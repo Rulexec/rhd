@@ -243,30 +243,18 @@ impl OpenAiClient {
         system: &str,
         message: &str,
     ) -> Result<String, AiError> {
-        let result = self.chat_with_tools(model, &[system], message, &[], &[]).await?;
+        let messages = vec![ChatMessage::system(system), ChatMessage::user(message)];
+        let result = self.chat_with_tools(model, messages, &[]).await?;
         Ok(result.content.unwrap_or_default())
     }
 
     pub async fn chat_with_tools(
         &self,
         model: &str,
-        system_prompts: &[&str],
-        message: &str,
+        messages: Vec<ChatMessage>,
         tools: &[ToolDefinition],
-        tool_results: &[(String, String)], // (tool_call_id, content)
     ) -> Result<ChatResult, AiError> {
         let url = format!("{}/chat/completions", self.base_url);
-
-        let mut messages: Vec<ChatMessage> = system_prompts
-            .iter()
-            .map(|s| ChatMessage::system(*s))
-            .collect();
-        messages.push(ChatMessage::user(message));
-
-        // Add tool results if any
-        for (tool_call_id, content) in tool_results {
-            messages.push(ChatMessage::tool(tool_call_id, content));
-        }
 
         let request = ChatRequest {
             model,

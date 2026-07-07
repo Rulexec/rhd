@@ -84,16 +84,11 @@ pub async fn tool_loop<P: ProjectProvider>(
 
         manager.check_pause_state(chat_id, event_sender).await;
 
-        let messages = manager.db().get_messages(chat_id)?;
-
-        let system_prompts: Vec<&str> = messages
-            .iter()
-            .filter(|m| m.role == "system")
-            .map(|m| m.content.as_str())
-            .collect();
+        let db_messages = manager.db().get_messages(chat_id)?;
+        let chat_messages = build_chat_messages_for_tools(&db_messages);
 
         let result = client
-            .chat_with_tools(api_model, &system_prompts, current_content, tools, &[])
+            .chat_with_tools(api_model, chat_messages, tools)
             .await?;
 
         if result.tool_calls.is_empty() {
@@ -220,4 +215,45 @@ pub fn build_chat_messages(messages: &[Message]) -> Vec<ChatMessage> {
             _ => ChatMessage::user(&m.content),
         })
         .collect()
+}
+
+pub fn build_chat_messages_for_tools(messages: &[Message]) -> Vec<ChatMessage> {
+    let mut chat_messages = Vec::new();
+    
+    for m in messages {
+        match m.role.as_str() {
+            "user" => chat_messages.push(ChatMessage::user(&m.content)),
+            "system" => chat_messages.push(ChatMessage::system(&m.content)),
+            "assistant" => {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&m.content) {
+                    let content = json.get("content").and_then(|c| c.as_str()).map(|s| s.to_string());
+                    let tool_calls: Vec<ToolCall> = json.get("toolCalls")
+                        .and_then(|tc| serde_json::from_value(tc.clone()).ok())
+                        .unwrap_or_default();
+                    
+                    if tool_calls.is_empty() {
+                        chat_messages.push(ChatMessage::assistant(content.unwrap_or_default()));
+                    } else {
+                        chat_messages.push(ChatMessage::assistant_with_tool_calls(content, tool_calls));
+                    }
+                } else {
+                    chat_messages.push(ChatMessage::assistant(&m.content));
+                }
+            }
+            "tool" => {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&m.content) {
+                    let tool_call_id = json.get("toolCallId")
+                        .and_then(|id| id.as_str())
+                        .unwrap_or("");
+                    let result = json.get("result")
+                        .and_then(|r| r.as_str())
+                        .unwrap_or("");
+                    chat_messages.push(ChatMessage::tool(tool_call_id, result));
+                }
+            }
+            _ => chat_messages.push(ChatMessage::user(&m.content)),
+        }
+    }
+    
+    chat_messages
 }
