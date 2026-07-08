@@ -1,6 +1,6 @@
 <script lang="ts">
   import { chats, currentChatId } from '../lib/chatStores';
-  import { createChat, selectChat, deleteChat } from '../lib/chatWs';
+  import { dispatch } from '../lib/actions';
 
   let showDialog = false;
   let chatTitle = '';
@@ -17,7 +17,7 @@
   async function handleSubmit() {
     const trimmed = chatTitle.trim();
     if (trimmed) {
-      await createChat(trimmed);
+      await dispatch({ type: 'createChat', payload: { title: trimmed } });
       dialogEl.close();
     }
   }
@@ -34,7 +34,7 @@
   async function handleDeleteChat(event: Event, chatId: number) {
     event.stopPropagation();
     if (confirm('Delete this chat?')) {
-      await deleteChat(chatId);
+      await dispatch({ type: 'deleteChat', payload: { chatId } });
     }
   }
 </script>
@@ -46,8 +46,8 @@
       <div
         class="chat-item"
         class:selected={chat.id === $currentChatId}
-        on:click={() => selectChat(chat.id)}
-        on:keydown={(e) => e.key === 'Enter' && selectChat(chat.id)}
+        on:click={() => dispatch({ type: 'selectChat', payload: { chatId: chat.id } })}
+        on:keydown={(e) => e.key === 'Enter' && dispatch({ type: 'selectChat', payload: { chatId: chat.id } })}
         role="button"
         tabindex="0"
       >

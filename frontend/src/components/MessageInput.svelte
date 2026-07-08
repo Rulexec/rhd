@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { isStreaming, streamError, currentChatId, availableModels, selectedModel, isPaused } from '../lib/chatStores';
   import { chatProjects, mcpStatuses } from '../lib/projectStores';
-  import { sendMessage, abortChat, pauseChat, resumeChat, loadAvailableModels } from '../lib/chatWs';
+  import { dispatch } from '../lib/actions';
 
   let input = '';
   let textareaElement: HTMLTextAreaElement;
@@ -16,7 +16,7 @@
   );
 
   onMount(() => {
-    loadAvailableModels();
+    dispatch({ type: 'loadAvailableModels' });
   });
 
   function handleKeydown(event: KeyboardEvent) {
@@ -28,7 +28,7 @@
 
   function send() {
     if (!input.trim() || (!$isPaused && $isStreaming) || !$currentChatId || !$selectedModel || hasMcpError) return;
-    sendMessage(input.trim(), $selectedModel);
+    dispatch({ type: 'sendMessage', payload: { content: input.trim(), model: $selectedModel } });
     input = '';
     if (textareaElement) {
       textareaElement.style.height = 'auto';
@@ -36,15 +36,15 @@
   }
 
   function abort() {
-    abortChat();
+    dispatch({ type: 'abortChat' });
   }
 
   function pause() {
-    pauseChat();
+    dispatch({ type: 'pauseChat' });
   }
 
   function resume() {
-    resumeChat();
+    dispatch({ type: 'resumeChat' });
   }
 
   function handleInput(event: Event) {

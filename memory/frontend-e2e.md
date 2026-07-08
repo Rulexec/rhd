@@ -6,9 +6,9 @@ Frontend E2E tests spawn daemon via `rhd_test frontend`. Located in `frontend/sr
 
 ## Testing Paradigm
 
-**State-based testing** (preferred): Tests call state manipulation functions directly without rendering UI components. Verifies state changes and actual WebSocket communication with daemon.
+**Actions-based testing**: Tests use `dispatch()` to trigger actions. ActionDispatcher routes to processors or test overrides. Tests intercept actions at dispatcher level using `_testOverrideAction()`.
 
-**UI-based testing** (legacy): Tests render components and interact with DOM. Being phased out in favor of state-based approach.
+**UI tests**: Separate unit tests in `frontend/src/tests/ui/` verify component rendering with mocked stores.
 
 ## Test Infrastructure
 
@@ -17,47 +17,72 @@ Tests spawn `rhd_test frontend` which starts:
 - Control HTTP server on random port (for test coordination)
 - rhd daemon with WebSocket server on random port
 
-## State-Based Testing
+## Actions Layer
 
-### Test Exports
+### Architecture
 
-State manipulation functions are exported with `_test_` prefix from `src/lib/chatWs.ts`:
+```
+Component → dispatch(action) → ActionDispatcher
+                                    ↓
+                          Check override → If exists, call handler
+                                    ↓
+                          Call processor → Updates stores / calls external
+```
 
-- `_test_createChat(title)` — Creates chat via daemon
-- `_test_sendMessage(content, model)` — Sends message via daemon
-- `_test_loadAvailableModels()` — Loads models from daemon
-- `_test_selectChat(chatId)` — Selects chat
-- `_test_deleteChat(chatId)` — Deletes chat
-- `_test_editMessage(messageId, content, model)` — Edits message
-- `_test_abortChat()` — Aborts streaming
-- `_test_handleChatEvent(event, data)` — Handles chat events
+### Key Files
 
-### State Reset
+- `frontend/src/lib/actions/types.ts` — Action type definitions
+- `frontend/src/lib/actions/dispatcher.ts` — ActionDispatcher with `_testOverrideAction`
+- `frontend/src/lib/actions/processors.ts` — Action processors (wrap chatWs)
+- `frontend/src/lib/actions/index.ts` — Public exports
 
-`resetAllStores()` from `src/lib/chatStores.ts` resets all Svelte stores to initial state. Call in `beforeEach()` to ensure test isolation.
-
-### Example State-Based Test
+### Test Override Mechanism
 
 ```typescript
-import { _test_createChat, _test_sendMessage } from '../../lib/chatWs';
-import { chats, messages, isStreaming, resetAllStores } from '../../lib/chatStores';
+import { dispatch, _testOverrideAction, _testClearOverrides } from '../../lib/actions';
 
 beforeEach(() => {
-  resetAllStores();
+  _testClearOverrides();
 });
 
-it('creates chat and sends message', async () => {
-  await _test_createChat('Test');
-  await configureMock('AI response');
-  await _test_sendMessage('Hello', 'test_model');
-  
-  await waitFor(() => {
-    expect(get(isStreaming)).toBe(false);
+it('intercepts action', async () => {
+  _testOverrideAction('sendMessage', async (action) => {
+    // Read payload
+    console.log(action.payload.content);
+    // Dispatch response actions
+    await dispatch({ type: 'chatStreamChunk', payload: { content: 'AI response' } });
+    await dispatch({ type: 'chatStreamFinished' });
   });
-  
-  expect(get(messages).length).toBe(2);
+
+  await dispatch({ type: 'sendMessage', payload: { content: 'Hello', model: 'test_model' } });
 });
 ```
+
+### Action Types
+
+User actions (from UI):
+- `createChat` — Create new chat
+- `selectChat` — Select chat
+- `deleteChat` — Delete chat
+- `sendMessage` — Send message
+- `editMessage` — Edit message
+- `abortChat` — Abort streaming
+- `pauseChat` — Pause during tool loop
+- `resumeChat` — Resume after pause
+- `selectModel` — Select model
+
+System actions (from WebSocket or tests):
+- `chatStreamChunk` — Streaming content chunk
+- `chatThinkingChunk` — Thinking content chunk
+- `chatStreamFinished` — Streaming complete
+- `chatStreamError` — Streaming error
+- `chatMessageAdded` — Message added to chat
+- `chatPaused` — Chat paused
+- `chatResumed` — Chat resumed
+
+## State Reset
+
+`resetAllStores()` from `src/lib/chatStores.ts` resets all Svelte stores to initial state. Call in `beforeEach()` to ensure test isolation.
 
 ## Test Utilities
 
@@ -68,11 +93,9 @@ Located in `frontend/src/tests/testUtils.ts`:
 | `waitForWebSocket()` | Waits for daemon to be ready |
 | `configureMock(content)` | Sets mock AI response |
 | `getRecordedRequests()` | Fetches recorded AI requests |
-| `emitStreamChunk(content)` | Emits a streaming chunk via control server (returns JSON with status) |
-| `finishStream()` | Finishes the stream via control server (returns JSON with status) |
+| `emitStreamChunk(content)` | Emits a streaming chunk via control server |
+| `finishStream()` | Finishes the stream via control server |
 | `waitForStreamReady()` | Polls control server until stream is ready |
-
-All control server methods check response status and throw errors if not OK.
 
 ## Test Execution
 
@@ -81,14 +104,24 @@ All control server methods check response status and throw errors if not OK.
 
 ## Test Files
 
-### State-Based Tests
-- `frontend/src/tests/e2e/chat-state.test.ts` — State logic testing (chat creation, message flow, streaming)
+### E2E Tests (State-Based)
+- `frontend/src/tests/e2e/chat-state.test.ts` — State logic testing using `dispatch()`
 
-### UI-Based Tests (Legacy)
-- `frontend/src/tests/e2e/chat.test.ts` — Basic chat functionality with UI rendering
-- `frontend/src/tests/e2e/chat-messageflow.test.ts` — Message flow with UI rendering
-- `frontend/src/tests/e2e/chat-streaming.test.ts` — Streaming with UI rendering
+### UI Tests (Unit)
+- `frontend/src/tests/ui/MessageInput.test.ts` — MessageInput component rendering
+- `frontend/src/tests/ui/ChatList.test.ts` — ChatList component rendering
+- `frontend/src/tests/ui/Message.test.ts` — Message component rendering
 
-## Known Issues
+## Human-Readable Test Cases
 
-- Chat UI does not auto-select first model when creating new chat (test works around this)
+Test cases documented in `tests/cases/*.md`:
+- `chat-create.md` — Create new chat
+- `chat-send-message.md` — Send message and receive response
+- `chat-streaming.md` — Streaming chunks display
+- `chat-edit-message.md` — Edit message
+- `chat-abort.md` — Abort streaming
+- `chat-pause-resume.md` — Pause/resume during tool loop
+- `chat-delete.md` — Delete chat
+- `chat-select-model.md` — Select model
+
+Tests reference covered test cases in file header comments.

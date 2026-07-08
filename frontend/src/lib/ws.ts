@@ -1,7 +1,8 @@
 import { activeScenarios, finishedScenarios, pausedScenarios, lastKnownId, wsConnected } from './stores';
 import { WsMessageSchema } from './types/ws';
 import type { WsEvent, WsResponse } from './types/ws';
-import { handleChatEvent } from './chatWs';
+import { dispatch } from './actions';
+import type { ChatAction } from './actions';
 import { showNotification } from './notifications';
 
 let WS_PORT = import.meta.env.VITE_WS_PORT || 9876;
@@ -93,7 +94,7 @@ function handleEvent(message: WsEvent): void {
   const { event, data } = message;
 
   if (event.startsWith('chat') || event.startsWith('project')) {
-    handleChatEvent(event, data);
+    dispatch({ type: event, payload: data } as ChatAction);
     return;
   }
 

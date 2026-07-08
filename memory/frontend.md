@@ -59,6 +59,73 @@ Svelte-based web UI in `frontend/` directory for monitoring scenario execution a
   - Scenarios: `ScenariosTab`, `ActiveScenario`, `FinishedScenario`, `PausedScenario`
   - Chats: `ChatsTab`, `ChatList`, `ChatView`, `MessageList`, `Message`, `MessageInput`, `StreamingMessage`
 
+## Actions Layer (`frontend/src/lib/actions/`)
+
+Components emit actions instead of calling `chatWs.ts` functions directly. ActionDispatcher routes actions to processors or test overrides.
+
+### Architecture
+
+```
+Component → dispatch(action) → ActionDispatcher
+                                    ↓
+                          Check override → If exists, call handler
+                                    ↓
+                          Call processor → Updates stores / calls external
+```
+
+### Key Files
+
+- `actions/types.ts` — Action type definitions (ChatAction union)
+- `actions/dispatcher.ts` — `dispatch()`, `_testOverrideAction()`, `_testClearOverrides()`
+- `actions/processors.ts` — `processAction()` wraps chatWs functions
+- `actions/index.ts` — Public exports
+
+### Usage
+
+Components import `dispatch` from `../lib/actions` and call it with action objects:
+
+```typescript
+import { dispatch } from '../lib/actions';
+
+// In component
+dispatch({ type: 'sendMessage', payload: { content: 'Hello', model: 'gpt4' } });
+```
+
+### Test Overrides
+
+Tests can intercept actions using `_testOverrideAction()`:
+
+```typescript
+import { _testOverrideAction, _testClearOverrides } from '../../lib/actions';
+
+beforeEach(() => {
+  _testClearOverrides();
+});
+
+it('intercepts sendMessage', async () => {
+  _testOverrideAction('sendMessage', async (action) => {
+    // Mock response instead of calling daemon
+    await dispatch({ type: 'chatStreamChunk', payload: { content: 'Mock response' } });
+    await dispatch({ type: 'chatStreamFinished' });
+  });
+});
+```
+
+### Action Types
+
+**User actions** (from UI):
+- `createChat`, `selectChat`, `deleteChat`
+- `sendMessage`, `editMessage`
+- `abortChat`, `pauseChat`, `resumeChat`
+- `selectModel`, `loadChats`, `loadAvailableModels`
+
+**System actions** (from WebSocket or tests):
+- `chatStreamChunk`, `chatThinkingChunk`, `chatStreamFinished`, `chatStreamError`
+- `chatMessageAdded`, `chatUpdated`
+- `chatToolCallStarted`, `chatToolCallCompleted`
+- `chatPaused`, `chatResumed`
+- `projectMcpStatusChanged`, `projectAttached`, `projectDetached`
+
 ## Type System
 
 All types defined with Zod schemas for runtime validation:

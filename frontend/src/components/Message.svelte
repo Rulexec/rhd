@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import { editMessage } from '../lib/chatWs';
-  import { streamingMessageId } from '../lib/chatStores';
+  import { dispatch } from '../lib/actions';
+  import { streamingMessageId, selectedModel } from '../lib/chatStores';
   import type { ChatMessage } from '../lib/types/index';
 
   export let message: ChatMessage;
@@ -56,7 +56,7 @@
   async function saveEdit() {
     if (editContent.trim() && editContent !== message.content) {
       if (typeof message.id === 'number') {
-        await editMessage(message.id, editContent.trim(), model);
+        await dispatch({ type: 'editMessage', payload: { messageId: message.id, content: editContent.trim(), model: $selectedModel || model } });
       }
     }
     editing = false;

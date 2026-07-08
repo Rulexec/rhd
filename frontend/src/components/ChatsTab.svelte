@@ -1,7 +1,7 @@
 <script lang="ts">
   import { currentChatId } from '../lib/chatStores';
   import { wsConnected } from '../lib/stores';
-  import { loadChats, selectChat } from '../lib/chatWs';
+  import { dispatch } from '../lib/actions';
   import { parseHash } from '../lib/router';
   import ChatList from './ChatList.svelte';
   import ChatView from './ChatView.svelte';
@@ -11,10 +11,10 @@
   $effect(() => {
     if ($wsConnected && !chatsLoaded) {
       chatsLoaded = true;
-      loadChats().then(() => {
+      dispatch({ type: 'loadChats' }).then(() => {
         const parsed = parseHash();
         if (parsed.chatId && parsed.tab === 'chats') {
-          selectChat(parsed.chatId);
+          dispatch({ type: 'selectChat', payload: { chatId: parsed.chatId } });
         }
       });
     }
