@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use rhd_ai::client::{ChatMessage, FunctionCall, OpenAiClient, RawLogger, ToolCall};
+use rhd_ai::client::{ChatMessage, OpenAiClient, RawLogger, ToolCall};
 use rhd_ai::{FunctionDefinition, ToolDefinition};
 use rhd_db::{ChatDb, Message};
 use rhd_mcp_client::client::McpClient;
 use rhd_mcp_client::McpClientTrait;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, Mutex};
 use tokio_util::sync::CancellationToken;
 
 use crate::chat_log::ChatLoggers;
@@ -93,28 +93,73 @@ pub async fn tool_loop<P: ProjectProvider>(
         let chat_messages = build_chat_messages_for_tools(&db_messages);
 
         let raw_log_ref = loggers.as_mut().and_then(|l| l.raw_log.as_mut().map(|r| r as &mut dyn RawLogger));
+        
+        let accumulated_content = Arc::new(Mutex::new(String::new()));
+        let accumulated_thinking = Arc::new(Mutex::new(String::new()));
+        let accumulated_clone = accumulated_content.clone();
+        let thinking_clone = accumulated_thinking.clone();
+        let sender_for_closure = event_sender.clone();
+        
         let result = client
-            .chat_with_tools(api_model, chat_messages, tools, raw_log_ref)
+            .chat_stream_with_tools(
+                api_model,
+                &chat_messages,
+                tools,
+                cancel_token.clone(),
+                move |chunk| {
+                    let sender = sender_for_closure.clone();
+                    let acc = accumulated_clone.clone();
+                    let thinking_acc = thinking_clone.clone();
+                    Box::pin(async move {
+                        if let Some(content) = chunk.content {
+                            if !content.is_empty() {
+                                let _ = sender.send(ChatEvent::StreamChunk {
+                                    chat_id,
+                                    content: content.clone(),
+                                });
+                                let mut acc_guard = acc.lock().await;
+                                acc_guard.push_str(&content);
+                            }
+                        }
+                        if let Some(reasoning) = chunk.reasoning_content {
+                            if !reasoning.is_empty() {
+                                let _ = sender.send(ChatEvent::ThinkingChunk {
+                                    chat_id,
+                                    content: reasoning.clone(),
+                                });
+                                let mut thinking_guard = thinking_acc.lock().await;
+                                thinking_guard.push_str(&reasoning);
+                            }
+                        }
+                    })
+                },
+                raw_log_ref,
+            )
             .await?;
 
         if result.tool_calls.is_empty() {
-            let final_content = result.content.unwrap_or_default();
+            let final_content: String = accumulated_content.lock().await.clone();
+            let full_thinking: String = accumulated_thinking.lock().await.clone();
             let finish_reason = result.finish_reason.unwrap_or_else(|| "stop".to_string());
             
             if let Some(ref mut l) = loggers {
-                l.chat_log.log_assistant_response(None, &final_content, &finish_reason, result.usage.as_ref());
+                let reasoning = if full_thinking.is_empty() {
+                    None
+                } else {
+                    Some(full_thinking.as_str())
+                };
+                l.chat_log.log_assistant_response(reasoning, &final_content, &finish_reason, result.usage.as_ref());
                 l.chat_log.log_stream_finished(&finish_reason, 0);
             }
             
-            if !final_content.is_empty() {
-                let _ = event_sender.send(ChatEvent::StreamChunk {
-                    chat_id,
-                    content: final_content.clone(),
-                });
-            }
+            let thinking_option = if full_thinking.is_empty() {
+                None
+            } else {
+                Some(full_thinking.clone())
+            };
             
             let assistant_message_id =
-                manager.db().add_message(chat_id, "assistant", &final_content, Some(model), None)?;
+                manager.db().add_message(chat_id, "assistant", &final_content, Some(model), thinking_option.as_deref())?;
             let assistant_message = Message {
                 id: assistant_message_id,
                 chat_id,
@@ -122,7 +167,7 @@ pub async fn tool_loop<P: ProjectProvider>(
                 content: final_content,
                 created_at: chrono::Utc::now().to_rfc3339(),
                 model: Some(model.to_string()),
-                thinking_content: None,
+                thinking_content: thinking_option,
             };
             let _ = event_sender.send(ChatEvent::MessageAdded {
                 chat_id,
@@ -138,7 +183,7 @@ pub async fn tool_loop<P: ProjectProvider>(
 
         *iterations += 1;
 
-        let assistant_content = result.content.clone().unwrap_or_default();
+        let assistant_content: String = accumulated_content.lock().await.clone();
         let assistant_msg_content = serde_json::json!({
             "content": assistant_content,
             "toolCalls": result.tool_calls,
@@ -291,6 +336,7 @@ pub fn build_chat_messages_for_tools(messages: &[Message]) -> Vec<ChatMessage> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rhd_ai::client::FunctionCall;
 
     // Test helper functions
     
