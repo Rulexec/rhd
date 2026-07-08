@@ -90,7 +90,7 @@ pub async fn run_sse_test() {
                 chunks.push(content);
             }
             true
-        })
+        }, None)
         .await;
     
     match result {

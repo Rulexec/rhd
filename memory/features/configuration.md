@@ -19,6 +19,8 @@ modelsDir: models            # directory containing model YAML files
 mcpDir: mcp                  # directory containing MCP server configs
 defaultModel: null           # fallback model for aiChat steps without model field
 logs: null                   # directory for execution logs (null = no log files)
+logChats: null               # directory for chat interaction logs (null = no logging)
+logChatsRaw: false           # enable raw API request/response logging (requires logChats)
 dbDir: rhd_db                # directory for SQLite databases
 wsPort: null                 # WebSocket server port (null = disabled)
 credentialsConfig: null      # path to credentials file (relative to rhd.yaml)

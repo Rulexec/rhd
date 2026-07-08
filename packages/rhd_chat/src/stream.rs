@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use rhd_ai::client::OpenAiClient;
+use rhd_ai::client::{OpenAiClient, RawLogger};
 use rhd_ai::config::ModelConfig;
 use rhd_db::Message;
 use tokio::sync::{broadcast, Mutex};
@@ -71,21 +71,18 @@ pub async fn send_message<P: ProjectProvider>(
     if !tool_defs.is_empty() {
         let tool_names: Vec<String> = tool_defs.iter().map(|t| t.function.name.clone()).collect();
         
-        let mut chat_log = if let Some(log_chats_dir) = manager.log_chats() {
-            match chat_log::create_chat_log_dir(log_chats_dir, &chat_title) {
-                Ok(log_dir) => match chat_log::open_chat_log_file(&log_dir) {
-                    Ok(log_file) => Some(ChatLogSink::new(log_file)),
-                    Err(_) => None,
-                },
+        let mut loggers = if let Some(log_chats_dir) = manager.log_chats() {
+            match chat_log::create_chat_loggers(log_chats_dir, &chat_title, manager.log_chats_raw()) {
+                Ok(l) => Some(l),
                 Err(_) => None,
             }
         } else {
             None
         };
 
-        if let Some(ref mut sink) = chat_log {
+        if let Some(ref mut l) = loggers {
             let messages_str = format_messages_for_log(&messages);
-            sink.log_stream_start(chat_id, &chat_title, model, &tool_names, &messages_str);
+            l.chat_log.log_stream_start(chat_id, &chat_title, model, &tool_names, &messages_str);
         }
 
         return send_message_with_tools(
@@ -97,7 +94,7 @@ pub async fn send_message<P: ProjectProvider>(
             tool_defs,
             mcp_clients,
             event_sender,
-            chat_log,
+            loggers,
         )
         .await;
     }
@@ -122,21 +119,18 @@ pub async fn send_message<P: ProjectProvider>(
 
     let chat_messages = tools::build_chat_messages(&messages);
 
-    let mut chat_log = if let Some(log_chats_dir) = manager.log_chats() {
-        match chat_log::create_chat_log_dir(log_chats_dir, &chat_title) {
-            Ok(log_dir) => match chat_log::open_chat_log_file(&log_dir) {
-                Ok(log_file) => Some(ChatLogSink::new(log_file)),
-                Err(_) => None,
-            },
+    let mut loggers = if let Some(log_chats_dir) = manager.log_chats() {
+        match chat_log::create_chat_loggers(log_chats_dir, &chat_title, manager.log_chats_raw()) {
+            Ok(l) => Some(l),
             Err(_) => None,
         }
     } else {
         None
     };
 
-    if let Some(ref mut sink) = chat_log {
+    if let Some(ref mut l) = loggers {
         let messages_str = format_messages_for_log(&messages);
-        sink.log_stream_start(chat_id, &chat_title, model, &[], &messages_str);
+        l.chat_log.log_stream_start(chat_id, &chat_title, model, &[], &messages_str);
     }
 
     let (cancel_token, _pause_notify) = manager.register_stream(chat_id).await;
@@ -149,6 +143,7 @@ pub async fn send_message<P: ProjectProvider>(
     let sender_for_closure = event_sender.clone();
 
     let api_model = &model_config.model;
+    let raw_log_ref = loggers.as_mut().and_then(|l| l.raw_log.as_mut().map(|r| r as &mut dyn RawLogger));
     let result = client
         .chat_stream_cancellable(
             api_model,
@@ -181,6 +176,7 @@ pub async fn send_message<P: ProjectProvider>(
                     }
                 })
             },
+            raw_log_ref,
         )
         .await;
 
@@ -194,7 +190,7 @@ pub async fn send_message<P: ProjectProvider>(
         accumulated_content,
         accumulated_thinking,
         &event_sender,
-        chat_log.as_mut(),
+        loggers.as_mut().map(|l| &mut l.chat_log),
     )
     .await
 }
@@ -212,7 +208,7 @@ async fn send_message_with_tools<P: ProjectProvider>(
         Arc<rhd_mcp_client::client::McpClient>,
     )>,
     event_sender: broadcast::Sender<ChatEvent>,
-    chat_log: Option<ChatLogSink>,
+    loggers: Option<chat_log::ChatLoggers>,
 ) -> Result<i64, ChatError> {
     const MAX_ITERATIONS: u32 = 20;
 
@@ -253,7 +249,7 @@ async fn send_message_with_tools<P: ProjectProvider>(
         &mut iterations,
         &mut current_content,
         MAX_ITERATIONS,
-        chat_log,
+        loggers,
     )
     .await;
 
@@ -315,21 +311,18 @@ pub async fn edit_and_resend<P: ProjectProvider>(
         .get(model)
         .ok_or_else(|| ChatError::ModelNotFound(model.to_string()))?;
 
-    let mut chat_log = if let Some(log_chats_dir) = manager.log_chats() {
-        match chat_log::create_chat_log_dir(log_chats_dir, &chat_title) {
-            Ok(log_dir) => match chat_log::open_chat_log_file(&log_dir) {
-                Ok(log_file) => Some(ChatLogSink::new(log_file)),
-                Err(_) => None,
-            },
+    let mut loggers = if let Some(log_chats_dir) = manager.log_chats() {
+        match chat_log::create_chat_loggers(log_chats_dir, &chat_title, manager.log_chats_raw()) {
+            Ok(l) => Some(l),
             Err(_) => None,
         }
     } else {
         None
     };
 
-    if let Some(ref mut sink) = chat_log {
+    if let Some(ref mut l) = loggers {
         let messages_str = format_messages_for_log(&messages);
-        sink.log_stream_start(chat_id, &chat_title, model, &[], &messages_str);
+        l.chat_log.log_stream_start(chat_id, &chat_title, model, &[], &messages_str);
     }
 
     let (cancel_token, _pause_notify) = manager.register_stream(chat_id).await;
@@ -342,6 +335,7 @@ pub async fn edit_and_resend<P: ProjectProvider>(
     let sender_for_closure = event_sender.clone();
 
     let api_model = &model_config.model;
+    let raw_log_ref = loggers.as_mut().and_then(|l| l.raw_log.as_mut().map(|r| r as &mut dyn RawLogger));
     let result = client
         .chat_stream_cancellable(
             api_model,
@@ -374,6 +368,7 @@ pub async fn edit_and_resend<P: ProjectProvider>(
                     }
                 })
             },
+            raw_log_ref,
         )
         .await;
 
@@ -387,7 +382,7 @@ pub async fn edit_and_resend<P: ProjectProvider>(
         accumulated_content,
         accumulated_thinking,
         &event_sender,
-        chat_log.as_mut(),
+        loggers.as_mut().map(|l| &mut l.chat_log),
     )
     .await
 }

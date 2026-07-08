@@ -4,6 +4,30 @@ use std::path::{Path, PathBuf};
 
 use chrono::Local;
 
+pub struct ChatLoggers {
+    pub chat_log: ChatLogSink,
+    pub raw_log: Option<RawChatLogSink>,
+}
+
+pub fn create_chat_loggers(
+    logs_root: &Path,
+    chat_title: &str,
+    raw_enabled: bool,
+) -> std::io::Result<ChatLoggers> {
+    let dir = create_chat_log_dir(logs_root, chat_title)?;
+    let chat_file = open_chat_log_file(&dir)?;
+    let chat_log = ChatLogSink::new(chat_file);
+    let raw_log = if raw_enabled {
+        match open_raw_log_file(&dir) {
+            Ok(f) => Some(RawChatLogSink::new(f)),
+            Err(_) => None,
+        }
+    } else {
+        None
+    };
+    Ok(ChatLoggers { chat_log, raw_log })
+}
+
 pub struct ChatLogSink {
     file: BufWriter<File>,
 }
@@ -137,4 +161,51 @@ pub fn open_chat_log_file(dir: &Path) -> std::io::Result<File> {
         .create_new(true)
         .write(true)
         .open(dir.join("log.txt"))
+}
+
+pub fn open_raw_log_file(dir: &Path) -> std::io::Result<File> {
+    OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(dir.join("raw.txt"))
+}
+
+pub struct RawChatLogSink {
+    file: BufWriter<File>,
+}
+
+impl RawChatLogSink {
+    pub fn new(file: File) -> Self {
+        Self {
+            file: BufWriter::new(file),
+        }
+    }
+
+    fn write_block(&mut self, block: &str) {
+        let _ = self.file.write_all(block.as_bytes());
+        let _ = self.file.flush();
+    }
+}
+
+impl rhd_ai::client::RawLogger for RawChatLogSink {
+    fn log_request(&mut self, request_json: &str) {
+        let block = format!("===== REQUEST =====\n{}\n", request_json);
+        self.write_block(&block);
+    }
+
+    fn log_stream_chunk(&mut self, index: usize, chunk_json: &str) {
+        let block = format!("===== STREAM CHUNK {} =====\n{}\n", index, chunk_json);
+        self.write_block(&block);
+    }
+
+    fn log_response(&mut self, response_json: &str) {
+        let block = format!("===== RESPONSE =====\n{}\n", response_json);
+        self.write_block(&block);
+    }
+
+    fn log_error(&mut self, status: Option<u16>, body: &str) {
+        let status_str = status.map(|s| s.to_string()).unwrap_or_else(|| "N/A".to_string());
+        let block = format!("===== ERROR =====\nstatus: {}\n{}\n", status_str, body);
+        self.write_block(&block);
+    }
 }

@@ -86,6 +86,7 @@ mcpDir: mcp
 defaultModel: null
 logs: null
 logChats: null
+logChatsRaw: false
 wsPort: null
 dbDir: rhd_db
 credentialsConfig: null   # Optional: path to credentials file
@@ -97,6 +98,7 @@ credentialsConfig: null   # Optional: path to credentials file
 - `defaultModel`: Fallback model for `aiChat` steps without `model` field (default: `null`)
 - `logs`: Directory for execution logs (default: `null`, no logging)
 - `logChats`: Directory for chat interaction logs (default: `null`, no logging)
+- `logChatsRaw`: Enable raw API request/response logging to `raw.txt` alongside `log.txt` (default: `false`). Requires `logChats` to be set.
 - `wsPort`: WebSocket server port (default: `null`, disabled)
 - `dbDir`: Directory for SQLite database (default: `rhd_db`, creates `meta.db` inside)
 - `credentialsConfig`: Path to credentials file (default: `null`, optional). Path is resolved relative to the config file location.

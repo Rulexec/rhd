@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use rhd_ai::client::{ChatMessage, FunctionCall, OpenAiClient, ToolCall};
+use rhd_ai::client::{ChatMessage, FunctionCall, OpenAiClient, RawLogger, ToolCall};
 use rhd_ai::{FunctionDefinition, ToolDefinition};
 use rhd_db::{ChatDb, Message};
 use rhd_mcp_client::client::McpClient;
@@ -8,7 +8,7 @@ use rhd_mcp_client::McpClientTrait;
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 
-use crate::chat_log::ChatLogSink;
+use crate::chat_log::ChatLoggers;
 use crate::error::ChatError;
 use crate::event::ChatEvent;
 use crate::manager::ChatManager;
@@ -63,12 +63,12 @@ pub async fn tool_loop<P: ProjectProvider>(
     iterations: &mut u32,
     current_content: &mut String,
     max_iterations: u32,
-    mut chat_log: Option<ChatLogSink>,
+    mut loggers: Option<ChatLoggers>,
 ) -> Result<i64, ChatError> {
     loop {
         if cancel_token.is_cancelled() {
-            if let Some(ref mut sink) = chat_log {
-                sink.log_stream_error("aborted");
+            if let Some(ref mut l) = loggers {
+                l.chat_log.log_stream_error("aborted");
             }
             let _ = event_sender.send(ChatEvent::StreamError {
                 chat_id,
@@ -92,17 +92,18 @@ pub async fn tool_loop<P: ProjectProvider>(
         let db_messages = manager.db().get_messages(chat_id)?;
         let chat_messages = build_chat_messages_for_tools(&db_messages);
 
+        let raw_log_ref = loggers.as_mut().and_then(|l| l.raw_log.as_mut().map(|r| r as &mut dyn RawLogger));
         let result = client
-            .chat_with_tools(api_model, chat_messages, tools)
+            .chat_with_tools(api_model, chat_messages, tools, raw_log_ref)
             .await?;
 
         if result.tool_calls.is_empty() {
             let final_content = result.content.unwrap_or_default();
             let finish_reason = result.finish_reason.unwrap_or_else(|| "stop".to_string());
             
-            if let Some(ref mut sink) = chat_log {
-                sink.log_assistant_response(None, &final_content, &finish_reason, result.usage.as_ref());
-                sink.log_stream_finished(&finish_reason, 0);
+            if let Some(ref mut l) = loggers {
+                l.chat_log.log_assistant_response(None, &final_content, &finish_reason, result.usage.as_ref());
+                l.chat_log.log_stream_finished(&finish_reason, 0);
             }
             
             if !final_content.is_empty() {
@@ -153,8 +154,8 @@ pub async fn tool_loop<P: ProjectProvider>(
 
         for tool_call in &result.tool_calls {
             if cancel_token.is_cancelled() {
-                if let Some(ref mut sink) = chat_log {
-                    sink.log_stream_error("aborted");
+                if let Some(ref mut l) = loggers {
+                    l.chat_log.log_stream_error("aborted");
                 }
                 let _ = event_sender.send(ChatEvent::StreamError {
                     chat_id,
@@ -167,8 +168,8 @@ pub async fn tool_loop<P: ProjectProvider>(
 
             let mcp_id = extract_mcp_id_from_tool_name(&tool_call.function.name);
 
-            if let Some(ref mut sink) = chat_log {
-                sink.log_tool_call(&tool_call.function.name, &tool_call.id, &tool_call.function.arguments);
+            if let Some(ref mut l) = loggers {
+                l.chat_log.log_tool_call(&tool_call.function.name, &tool_call.id, &tool_call.function.arguments);
             }
 
             let _ = event_sender.send(ChatEvent::ToolCallStarted {
@@ -181,8 +182,8 @@ pub async fn tool_loop<P: ProjectProvider>(
 
             let (tool_result, _) = execute_tool_call(tool_call, mcp_clients).await;
 
-            if let Some(ref mut sink) = chat_log {
-                sink.log_tool_result(&tool_call.function.name, &tool_call.id, &tool_result);
+            if let Some(ref mut l) = loggers {
+                l.chat_log.log_tool_result(&tool_call.function.name, &tool_call.id, &tool_result);
             }
 
             let _ = event_sender.send(ChatEvent::ToolCallCompleted {

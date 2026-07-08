@@ -19,6 +19,8 @@ pub struct DaemonConfig {
     #[serde(default)]
     pub log_chats: Option<PathBuf>,
     #[serde(default)]
+    pub log_chats_raw: bool,
+    #[serde(default)]
     pub ws_port: Option<u16>,
     #[serde(default = "default_db_dir")]
     pub db_dir: PathBuf,
@@ -59,6 +61,7 @@ impl Default for DaemonConfig {
             default_model: None,
             logs: None,
             log_chats: None,
+            log_chats_raw: false,
             ws_port: None,
             db_dir: default_db_dir(),
             projects_dir: default_projects_dir(),

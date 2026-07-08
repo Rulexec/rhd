@@ -126,3 +126,16 @@ When `logChats` is configured in `rhd.yaml`, the daemon writes detailed interact
   - Stream error: error message
 
 Logging is implemented in `packages/rhd_chat/src/chat_log.rs` via `ChatLogSink`.
+
+### Raw Logging (`logChatsRaw`)
+
+When `logChatsRaw: true` is set in `rhd.yaml` (requires `logChats` to be configured), the daemon writes raw API request/response data to `raw.txt` in the same log directory:
+
+- **File**: `<logChats>/<sanitized-chat-title>-<YYYY-MM-DD-HH-MM-SS>/raw.txt`
+- **Logged content**:
+  - Full JSON request body sent to AI API (model, messages, tools)
+  - Each SSE streaming chunk as received (with index), showing which chunks contain `reasoning_content` vs `content`
+  - Full JSON response body for non-streaming requests
+  - Detailed error information (HTTP status, response body)
+
+Raw logging uses the `RawLogger` trait defined in `packages/rhd_ai/src/client.rs`, implemented by `RawChatLogSink` in `packages/rhd_chat/src/chat_log.rs`.

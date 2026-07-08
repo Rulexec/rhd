@@ -92,7 +92,7 @@ pub async fn execute_ai_chat(
             
             let client = OpenAiClient::new(&current_model_config.base_url, &current_model_config.api_key);
             let messages = vec![ChatMessage::system(&system_prompt), ChatMessage::user(&message)];
-            let chat_future = client.chat_with_tools(&current_model_config.model, messages, &[]);
+            let chat_future = client.chat_with_tools(&current_model_config.model, messages, &[], None);
             
             let result = if let Some(h) = &handle {
                 let mut abort_signal = h.abort_signal();
@@ -314,7 +314,7 @@ async fn execute_ai_chat_with_tools(
         for (tool_call_id, content) in &tool_results {
             messages.push(ChatMessage::tool(tool_call_id, content));
         }
-        let chat_future = current_client.chat_with_tools(&current_api_model, messages, &tools);
+        let chat_future = current_client.chat_with_tools(&current_api_model, messages, &tools, None);
         
         let result = if let Some(h) = &handle {
             let mut abort_signal = h.abort_signal();

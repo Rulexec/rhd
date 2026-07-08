@@ -102,6 +102,35 @@ Persistent conversational interface for direct AI interaction. Users create chat
 - `chatMessageAdded` — new message persisted (user or assistant)
 - `chatUpdated` — chat metadata changed
 
+## Chat Logging
+
+When `logChats` is configured in `rhd.yaml`, the daemon writes detailed interaction logs for debugging:
+
+- **Log directory**: `<logChats>/<sanitized-chat-title>-<YYYY-MM-DD-HH-MM-SS>/log.txt`
+- **Collision handling**: Appends `-2`, `-3`, etc. if directory exists
+- **Logged content**:
+  - Stream start: model, available tools, full messages array sent to API
+  - Assistant response: reasoning (if present), message content, finish_reason, token usage
+  - Tool calls: tool name, call ID, arguments
+  - Tool results: tool name, call ID, result content
+  - Stream finished: finish_reason, duration
+  - Stream error: error message
+
+Logging is implemented in `packages/rhd_chat/src/chat_log.rs` via `ChatLogSink`.
+
+### Raw Logging (`logChatsRaw`)
+
+When `logChatsRaw: true` is set in `rhd.yaml` (requires `logChats` to be configured), the daemon writes raw API request/response data to `raw.txt` in the same log directory:
+
+- **File**: `<logChats>/<sanitized-chat-title>-<YYYY-MM-DD-HH-MM-SS>/raw.txt`
+- **Logged content**:
+  - Full JSON request body sent to AI API (model, messages, tools)
+  - Each SSE streaming chunk as received (with index), showing which chunks contain `reasoning_content` vs `content`
+  - Full JSON response body for non-streaming requests
+  - Detailed error information (HTTP status, response body)
+
+Raw logging uses the `RawLogger` trait defined in `packages/rhd_ai/src/client.rs`, implemented by `RawChatLogSink` in `packages/rhd_chat/src/chat_log.rs`.
+
 ## Key Files
 - Chat database: `packages/rhd_db/src/chat_db.rs`
 - Chat manager: `packages/rhd_app/src/chat.rs`
@@ -110,3 +139,4 @@ Persistent conversational interface for direct AI interaction. Users create chat
 - Frontend stores: `frontend/src/lib/chatStores.ts`
 - Frontend WebSocket: `frontend/src/lib/chatWs.ts`
 - Chat components: `frontend/src/components/Chat*.svelte`, `Message*.svelte`, `StreamingMessage.svelte`
+- Chat logging: `packages/rhd_chat/src/chat_log.rs`

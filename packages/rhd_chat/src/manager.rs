@@ -20,15 +20,22 @@ pub struct ChatManager<P: ProjectProvider> {
     active_streams: Mutex<HashMap<i64, StreamState>>,
     project_provider: Arc<P>,
     log_chats: Option<PathBuf>,
+    log_chats_raw: bool,
 }
 
 impl<P: ProjectProvider> ChatManager<P> {
-    pub fn new(db: Arc<ChatDb>, project_provider: Arc<P>, log_chats: Option<PathBuf>) -> Self {
+    pub fn new(
+        db: Arc<ChatDb>,
+        project_provider: Arc<P>,
+        log_chats: Option<PathBuf>,
+        log_chats_raw: bool,
+    ) -> Self {
         Self {
             db,
             active_streams: Mutex::new(HashMap::new()),
             project_provider,
             log_chats,
+            log_chats_raw,
         }
     }
 
@@ -42,6 +49,10 @@ impl<P: ProjectProvider> ChatManager<P> {
 
     pub fn log_chats(&self) -> &Option<PathBuf> {
         &self.log_chats
+    }
+
+    pub fn log_chats_raw(&self) -> bool {
+        self.log_chats_raw
     }
 
     pub fn create_chat(&self, title: &str) -> Result<i64, ChatError> {

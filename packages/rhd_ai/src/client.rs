@@ -223,6 +223,13 @@ struct StreamDelta {
     reasoning_content: Option<String>,
 }
 
+pub trait RawLogger: Send {
+    fn log_request(&mut self, request_json: &str);
+    fn log_stream_chunk(&mut self, index: usize, chunk_json: &str);
+    fn log_response(&mut self, response_json: &str);
+    fn log_error(&mut self, status: Option<u16>, body: &str);
+}
+
 pub struct OpenAiClient {
     base_url: String,
     api_key: String,
@@ -245,7 +252,7 @@ impl OpenAiClient {
         message: &str,
     ) -> Result<String, AiError> {
         let messages = vec![ChatMessage::system(system), ChatMessage::user(message)];
-        let result = self.chat_with_tools(model, messages, &[]).await?;
+        let result = self.chat_with_tools(model, messages, &[], None).await?;
         Ok(result.content.unwrap_or_default())
     }
 
@@ -254,6 +261,7 @@ impl OpenAiClient {
         model: &str,
         messages: Vec<ChatMessage>,
         tools: &[ToolDefinition],
+        mut raw_log: Option<&mut dyn RawLogger>,
     ) -> Result<ChatResult, AiError> {
         let url = format!("{}/chat/completions", self.base_url);
 
@@ -263,6 +271,12 @@ impl OpenAiClient {
             tools: if tools.is_empty() { None } else { Some(tools) },
             stream: false,
         };
+
+        if let Some(ref mut logger) = raw_log {
+            if let Ok(json) = serde_json::to_string_pretty(&request) {
+                logger.log_request(&json);
+            }
+        }
 
         let response = self
             .http
@@ -280,6 +294,9 @@ impl OpenAiClient {
         let status = response.status();
         if !status.is_success() {
             let body = response.text().await.unwrap_or_default();
+            if let Some(ref mut logger) = raw_log {
+                logger.log_error(Some(status.as_u16()), &body);
+            }
             return Err(AiError::Api {
                 model: model.to_string(),
                 status: status.as_u16(),
@@ -287,8 +304,19 @@ impl OpenAiClient {
             });
         }
 
-        let chat_response: ChatResponse = response.json().await.map_err(|source| {
+        let response_text = response.text().await.map_err(|source| {
             AiError::Parse {
+                model: model.to_string(),
+                source,
+            }
+        })?;
+
+        if let Some(ref mut logger) = raw_log {
+            logger.log_response(&response_text);
+        }
+
+        let chat_response: ChatResponse = serde_json::from_str(&response_text).map_err(|source| {
+            AiError::JsonParse {
                 model: model.to_string(),
                 source,
             }
@@ -336,6 +364,7 @@ impl OpenAiClient {
         model: &str,
         messages: &[ChatMessage],
         mut on_chunk: F,
+        mut raw_log: Option<&mut dyn RawLogger>,
     ) -> Result<StreamResult, AiError>
     where
         F: FnMut(StreamChunk) -> bool,
@@ -348,6 +377,12 @@ impl OpenAiClient {
             tools: None,
             stream: true,
         };
+
+        if let Some(ref mut logger) = raw_log {
+            if let Ok(json) = serde_json::to_string_pretty(&request) {
+                logger.log_request(&json);
+            }
+        }
 
         let response = self
             .http
@@ -365,6 +400,9 @@ impl OpenAiClient {
         let status = response.status();
         if !status.is_success() {
             let body = response.text().await.unwrap_or_default();
+            if let Some(ref mut logger) = raw_log {
+                logger.log_error(Some(status.as_u16()), &body);
+            }
             return Err(AiError::Api {
                 model: model.to_string(),
                 status: status.as_u16(),
@@ -376,6 +414,7 @@ impl OpenAiClient {
         let mut buffer = String::new();
         let mut finish_reason = None;
         let mut usage = None;
+        let mut event_index = 0usize;
 
         while let Some(chunk_result) = stream.next().await {
             let chunk = chunk_result.map_err(|source| AiError::Network {
@@ -400,6 +439,10 @@ impl OpenAiClient {
                                 finish_reason,
                                 usage,
                             });
+                        }
+
+                        if let Some(ref mut logger) = raw_log {
+                            logger.log_stream_chunk(event_index, data);
                         }
 
                         let stream_response: StreamResponse =
@@ -435,6 +478,7 @@ impl OpenAiClient {
                         }
                     }
                 }
+                event_index += 1;
             }
         }
 
@@ -450,6 +494,7 @@ impl OpenAiClient {
         messages: &[ChatMessage],
         cancel: CancellationToken,
         mut on_chunk: impl FnMut(StreamChunk) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>,
+        mut raw_log: Option<&mut dyn RawLogger>,
     ) -> Result<StreamResult, AiError> {
         let url = format!("{}/chat/completions", self.base_url);
 
@@ -459,6 +504,12 @@ impl OpenAiClient {
             tools: None,
             stream: true,
         };
+
+        if let Some(ref mut logger) = raw_log {
+            if let Ok(json) = serde_json::to_string_pretty(&request) {
+                logger.log_request(&json);
+            }
+        }
 
         let response = self
             .http
@@ -476,6 +527,9 @@ impl OpenAiClient {
         let status = response.status();
         if !status.is_success() {
             let body = response.text().await.unwrap_or_default();
+            if let Some(ref mut logger) = raw_log {
+                logger.log_error(Some(status.as_u16()), &body);
+            }
             return Err(AiError::Api {
                 model: model.to_string(),
                 status: status.as_u16(),
@@ -487,7 +541,7 @@ impl OpenAiClient {
         let mut buffer = String::new();
         let mut finish_reason = None;
         let mut usage = None;
-        let mut event_index = 0;
+        let mut event_index = 0usize;
 
         while let Some(chunk_result) = stream.next().await {
             if cancel.is_cancelled() {
@@ -520,6 +574,10 @@ impl OpenAiClient {
                                 finish_reason,
                                 usage,
                             });
+                        }
+
+                        if let Some(ref mut logger) = raw_log {
+                            logger.log_stream_chunk(event_index, data);
                         }
 
                         let stream_response: StreamResponse =
