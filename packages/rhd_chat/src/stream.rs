@@ -6,6 +6,7 @@ use rhd_ai::config::ModelConfig;
 use rhd_db::Message;
 use tokio::sync::{broadcast, Mutex};
 
+use crate::chat_log::{self, ChatLogSink};
 use crate::error::ChatError;
 use crate::event::ChatEvent;
 use crate::manager::ChatManager;
@@ -23,9 +24,8 @@ pub async fn send_message<P: ProjectProvider>(
     reload_lock: &tokio::sync::RwLock<()>,
 ) -> Result<i64, ChatError> {
     let _reload_guard = reload_lock.read().await;
-    if manager.db().get_chat(chat_id)?.is_none() {
-        return Err(ChatError::ChatNotFound);
-    }
+    let chat_info = manager.db().get_chat(chat_id)?.ok_or(ChatError::ChatNotFound)?;
+    let chat_title = chat_info.title.clone();
 
     let pause_notify = manager.get_paused_notify(chat_id).await;
 
@@ -63,10 +63,31 @@ pub async fn send_message<P: ProjectProvider>(
     )
     .await?;
 
+    let messages = manager.db().get_messages(chat_id)?;
+    
     let (tool_defs, mcp_clients) =
         tools::collect_tools_from_projects(manager.db(), manager.project_provider(), chat_id).await;
 
     if !tool_defs.is_empty() {
+        let tool_names: Vec<String> = tool_defs.iter().map(|t| t.function.name.clone()).collect();
+        
+        let mut chat_log = if let Some(log_chats_dir) = manager.log_chats() {
+            match chat_log::create_chat_log_dir(log_chats_dir, &chat_title) {
+                Ok(log_dir) => match chat_log::open_chat_log_file(&log_dir) {
+                    Ok(log_file) => Some(ChatLogSink::new(log_file)),
+                    Err(_) => None,
+                },
+                Err(_) => None,
+            }
+        } else {
+            None
+        };
+
+        if let Some(ref mut sink) = chat_log {
+            let messages_str = format_messages_for_log(&messages);
+            sink.log_stream_start(chat_id, &chat_title, model, &tool_names, &messages_str);
+        }
+
         return send_message_with_tools(
             manager,
             chat_id,
@@ -76,6 +97,7 @@ pub async fn send_message<P: ProjectProvider>(
             tool_defs,
             mcp_clients,
             event_sender,
+            chat_log,
         )
         .await;
     }
@@ -98,8 +120,24 @@ pub async fn send_message<P: ProjectProvider>(
         message: user_message,
     });
 
-    let messages = manager.db().get_messages(chat_id)?;
     let chat_messages = tools::build_chat_messages(&messages);
+
+    let mut chat_log = if let Some(log_chats_dir) = manager.log_chats() {
+        match chat_log::create_chat_log_dir(log_chats_dir, &chat_title) {
+            Ok(log_dir) => match chat_log::open_chat_log_file(&log_dir) {
+                Ok(log_file) => Some(ChatLogSink::new(log_file)),
+                Err(_) => None,
+            },
+            Err(_) => None,
+        }
+    } else {
+        None
+    };
+
+    if let Some(ref mut sink) = chat_log {
+        let messages_str = format_messages_for_log(&messages);
+        sink.log_stream_start(chat_id, &chat_title, model, &[], &messages_str);
+    }
 
     let (cancel_token, _pause_notify) = manager.register_stream(chat_id).await;
 
@@ -156,6 +194,7 @@ pub async fn send_message<P: ProjectProvider>(
         accumulated_content,
         accumulated_thinking,
         &event_sender,
+        chat_log.as_mut(),
     )
     .await
 }
@@ -173,6 +212,7 @@ async fn send_message_with_tools<P: ProjectProvider>(
         Arc<rhd_mcp_client::client::McpClient>,
     )>,
     event_sender: broadcast::Sender<ChatEvent>,
+    chat_log: Option<ChatLogSink>,
 ) -> Result<i64, ChatError> {
     const MAX_ITERATIONS: u32 = 20;
 
@@ -213,6 +253,7 @@ async fn send_message_with_tools<P: ProjectProvider>(
         &mut iterations,
         &mut current_content,
         MAX_ITERATIONS,
+        chat_log,
     )
     .await;
 
@@ -236,6 +277,9 @@ pub async fn edit_and_resend<P: ProjectProvider>(
         .get_message(message_id)?
         .ok_or(ChatError::MessageNotFound)?;
     let chat_id = original_message.chat_id;
+    
+    let chat_info = manager.db().get_chat(chat_id)?.ok_or(ChatError::ChatNotFound)?;
+    let chat_title = chat_info.title.clone();
 
     manager.db().update_message(message_id, &new_content)?;
     manager.db().truncate_messages(chat_id, message_id)?;
@@ -270,6 +314,23 @@ pub async fn edit_and_resend<P: ProjectProvider>(
     let model_config = models
         .get(model)
         .ok_or_else(|| ChatError::ModelNotFound(model.to_string()))?;
+
+    let mut chat_log = if let Some(log_chats_dir) = manager.log_chats() {
+        match chat_log::create_chat_log_dir(log_chats_dir, &chat_title) {
+            Ok(log_dir) => match chat_log::open_chat_log_file(&log_dir) {
+                Ok(log_file) => Some(ChatLogSink::new(log_file)),
+                Err(_) => None,
+            },
+            Err(_) => None,
+        }
+    } else {
+        None
+    };
+
+    if let Some(ref mut sink) = chat_log {
+        let messages_str = format_messages_for_log(&messages);
+        sink.log_stream_start(chat_id, &chat_title, model, &[], &messages_str);
+    }
 
     let (cancel_token, _pause_notify) = manager.register_stream(chat_id).await;
 
@@ -326,8 +387,33 @@ pub async fn edit_and_resend<P: ProjectProvider>(
         accumulated_content,
         accumulated_thinking,
         &event_sender,
+        chat_log.as_mut(),
     )
     .await
+}
+
+fn format_messages_for_log(messages: &[Message]) -> String {
+    let mut output = String::new();
+    for msg in messages {
+        match msg.role.as_str() {
+            "system" => {
+                output.push_str(&format!("[system] {}\n", msg.content));
+            }
+            "user" => {
+                output.push_str(&format!("[user] {}\n", msg.content));
+            }
+            "assistant" => {
+                output.push_str(&format!("[assistant] {}\n", msg.content));
+            }
+            "tool" => {
+                output.push_str(&format!("[tool {}] {}\n", msg.id, msg.content));
+            }
+            _ => {
+                output.push_str(&format!("[{}] {}\n", msg.role, msg.content));
+            }
+        }
+    }
+    output
 }
 
 async fn handle_stream_result<P: ProjectProvider>(
@@ -338,11 +424,32 @@ async fn handle_stream_result<P: ProjectProvider>(
     accumulated_content: Arc<Mutex<String>>,
     accumulated_thinking: Arc<Mutex<String>>,
     event_sender: &broadcast::Sender<ChatEvent>,
+    chat_log: Option<&mut ChatLogSink>,
 ) -> Result<i64, ChatError> {
     match result {
         Ok(stream_result) => {
             let full_content = accumulated_content.lock().await.clone();
             let full_thinking = accumulated_thinking.lock().await.clone();
+            let finish_reason = stream_result
+                .finish_reason
+                .clone()
+                .unwrap_or_else(|| "stop".to_string());
+            
+            if let Some(sink) = chat_log {
+                let reasoning = if full_thinking.is_empty() {
+                    None
+                } else {
+                    Some(full_thinking.as_str())
+                };
+                sink.log_assistant_response(
+                    reasoning,
+                    &full_content,
+                    &finish_reason,
+                    stream_result.usage.as_ref(),
+                );
+                sink.log_stream_finished(&finish_reason, 0);
+            }
+            
             let thinking_option = if full_thinking.is_empty() {
                 None
             } else {
@@ -372,9 +479,7 @@ async fn handle_stream_result<P: ProjectProvider>(
                 chat_id,
                 message: assistant_message,
             });
-            let finish_reason = stream_result
-                .finish_reason
-                .unwrap_or_else(|| "stop".to_string());
+            
             let _ = event_sender.send(ChatEvent::StreamFinished {
                 chat_id,
                 message_id: assistant_message_id,
@@ -383,6 +488,9 @@ async fn handle_stream_result<P: ProjectProvider>(
             Ok(assistant_message_id)
         }
         Err(rhd_ai::client::AiError::Aborted { .. }) => {
+            if let Some(sink) = chat_log {
+                sink.log_stream_error("aborted");
+            }
             let _ = event_sender.send(ChatEvent::StreamError {
                 chat_id,
                 error: "aborted".to_string(),
@@ -392,6 +500,9 @@ async fn handle_stream_result<P: ProjectProvider>(
             }))
         }
         Err(err) => {
+            if let Some(sink) = chat_log {
+                sink.log_stream_error(&err.to_string());
+            }
             let _ = event_sender.send(ChatEvent::StreamError {
                 chat_id,
                 error: err.to_string(),

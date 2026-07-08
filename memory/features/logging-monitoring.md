@@ -123,6 +123,55 @@ Each step records line ranges for all log sections (from `=====` and `-----` del
 - `toolCall`, `toolResult`
 - `outputStep`, `skipped`
 
+## Chat Logs
+
+When `logChats` directory configured in `rhd.yaml`, each chat interaction creates:
+- Directory: `<logChats>/<chatTitle>-<YYYY-MM-DD-HH-MM-SS>[-N]/`
+- File: `log.txt` inside directory
+- Collision suffix `-2`, `-3`, etc. if directory exists
+
+### Chat Log Format
+Written to `log.txt` (when logChats configured):
+
+```
+===== Chat "<title>" (id=<id>): stream started =====
+model: <model>
+available tools: <tool1>, <tool2>, ...
+
+----- messages sent to API -----
+[system] <content>
+[user] <content>
+[assistant] <content>
+
+===== Assistant response =====
+----- reasoning -----
+<reasoning content>
+
+----- message -----
+<assistant message>
+
+finish_reason: <stop|tool_calls|...>
+tokens: prompt=X, completion=Y, total=Z
+
+===== Tool call: <tool_name> (id=<call_id>) =====
+<arguments JSON>
+
+===== Tool result: <tool_name> (id=<call_id>) =====
+<result content>
+
+===== Stream finished =====
+finish_reason: <reason>
+total duration: <Xms>
+
+===== Stream error =====
+error: <error message>
+```
+
+- Full message history logged on each API call (not just new messages)
+- Tool calls and results logged inline with call IDs for correlation
+- Stream lifecycle markers (`stream started`, `stream finished`, `stream error`) for debugging stuck streams
+- Reasoning/thinking content logged separately from message content
+
 ## WebSocket Events
 
 ### Scenario Events
@@ -165,6 +214,7 @@ Each step records line ranges for all log sections (from `=====` and `-----` del
 
 ## Key Files
 - Log sink: `packages/rhd_app/src/log.rs`
+- Chat log sink: `packages/rhd_chat/src/chat_log.rs`
 - Execution tracker: `packages/rhd_app/src/execution.rs`
 - Meta types: `packages/rhd_api/src/lib.rs`
 - WebSocket events: `packages/rhd_app/src/ws.rs`

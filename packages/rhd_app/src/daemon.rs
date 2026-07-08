@@ -66,6 +66,7 @@ pub async fn run_daemon(
     mcp_configs: HashMap<String, McpConfig>,
     default_model: Option<String>,
     logs: Option<std::path::PathBuf>,
+    log_chats: Option<std::path::PathBuf>,
     socket_path: &Path,
     ws_port: Option<u16>,
     db_path: &str,
@@ -93,7 +94,7 @@ pub async fn run_daemon(
     let db_path_obj = std::path::Path::new(db_path);
     let chat_db_path = format!("{}/chats.db", db_path_obj.parent().unwrap_or(Path::new(".")).display());
     let chat_db = Arc::new(ChatDb::new(&chat_db_path).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?);
-    let chat_manager = Arc::new(ChatManager::new(chat_db.clone(), project_manager.clone()));
+    let chat_manager = Arc::new(ChatManager::new(chat_db.clone(), project_manager.clone(), log_chats));
     let (chat_event_sender, _) = broadcast::channel(100);
 
     let frontend_alive = Arc::new(AtomicBool::new(false));

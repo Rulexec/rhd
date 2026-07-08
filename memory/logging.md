@@ -111,3 +111,51 @@ available tools: <tool1>, <tool2>, ...   (only when MCP tools configured)
 
 ===== ABORTED =====
 ```
+
+## Chat Logs
+
+When `logChats` is configured, each chat interaction creates a timestamped log directory:
+- Format: `<logChats>/<chatTitle>-YYYY-MM-DD-HH-MM-SS/`
+- Collision handling: If directory exists, appends `-2`, `-3`, etc.
+- Log file: `log.txt` inside the directory
+
+### Chat Log Format
+
+```
+===== Chat "<title>" (id=<id>): stream started =====
+model: <model>
+available tools: <tool1>, <tool2>, ...
+
+----- messages sent to API -----
+[system] <content>
+[user] <content>
+[assistant] <content>
+
+===== Assistant response =====
+----- reasoning -----
+<reasoning content>
+
+----- message -----
+<assistant message>
+
+finish_reason: <stop|tool_calls|...>
+tokens: prompt=X, completion=Y, total=Z
+
+===== Tool call: <tool_name> (id=<call_id>) =====
+<arguments JSON>
+
+===== Tool result: <tool_name> (id=<call_id>) =====
+<result content>
+
+===== Stream finished =====
+finish_reason: <reason>
+total duration: <Xms>
+
+===== Stream error =====
+error: <error message>
+```
+
+- Full message history logged on each API call (not just new messages)
+- Tool calls and results logged inline with call IDs for correlation
+- Stream lifecycle markers (`stream started`, `stream finished`, `stream error`) for debugging stuck streams
+- Reasoning/thinking content logged separately from message content

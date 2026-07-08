@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use rhd_ai::config::ModelConfig;
@@ -18,14 +19,16 @@ pub struct ChatManager<P: ProjectProvider> {
     db: Arc<ChatDb>,
     active_streams: Mutex<HashMap<i64, StreamState>>,
     project_provider: Arc<P>,
+    log_chats: Option<PathBuf>,
 }
 
 impl<P: ProjectProvider> ChatManager<P> {
-    pub fn new(db: Arc<ChatDb>, project_provider: Arc<P>) -> Self {
+    pub fn new(db: Arc<ChatDb>, project_provider: Arc<P>, log_chats: Option<PathBuf>) -> Self {
         Self {
             db,
             active_streams: Mutex::new(HashMap::new()),
             project_provider,
+            log_chats,
         }
     }
 
@@ -35,6 +38,10 @@ impl<P: ProjectProvider> ChatManager<P> {
 
     pub fn project_provider(&self) -> &Arc<P> {
         &self.project_provider
+    }
+
+    pub fn log_chats(&self) -> &Option<PathBuf> {
+        &self.log_chats
     }
 
     pub fn create_chat(&self, title: &str) -> Result<i64, ChatError> {

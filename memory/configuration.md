@@ -85,6 +85,7 @@ scenariosDir: scenarios
 mcpDir: mcp
 defaultModel: null
 logs: null
+logChats: null
 wsPort: null
 dbDir: rhd_db
 credentialsConfig: null   # Optional: path to credentials file
@@ -95,6 +96,7 @@ credentialsConfig: null   # Optional: path to credentials file
 - `mcpDir`: Directory containing MCP server configurations (default: `mcp`)
 - `defaultModel`: Fallback model for `aiChat` steps without `model` field (default: `null`)
 - `logs`: Directory for execution logs (default: `null`, no logging)
+- `logChats`: Directory for chat interaction logs (default: `null`, no logging)
 - `wsPort`: WebSocket server port (default: `null`, disabled)
 - `dbDir`: Directory for SQLite database (default: `rhd_db`, creates `meta.db` inside)
 - `credentialsConfig`: Path to credentials file (default: `null`, optional). Path is resolved relative to the config file location.

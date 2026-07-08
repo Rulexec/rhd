@@ -5,6 +5,7 @@ pub mod manager;
 pub mod stream;
 pub mod tools;
 pub mod projects;
+pub mod chat_log;
 
 pub use error::ChatError;
 pub use event::ChatEvent;

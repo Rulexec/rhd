@@ -81,3 +81,19 @@ Chat operations (`send_message`, `edit_and_resend`) acquire a read lock on `relo
 - If a reload is in progress, chat operations wait silently (no error returned)
 - Reload waits for active chat streams to finish before proceeding
 - New chat messages block until reload completes
+
+## Chat Logging
+
+When `logChats` is configured in `rhd.yaml`, the daemon writes detailed interaction logs for debugging:
+
+- **Log directory**: `<logChats>/<sanitized-chat-title>-<YYYY-MM-DD-HH-MM-SS>/log.txt`
+- **Collision handling**: Appends `-2`, `-3`, etc. if directory exists
+- **Logged content**:
+  - Stream start: model, available tools, full messages array sent to API
+  - Assistant response: reasoning (if present), message content, finish_reason, token usage
+  - Tool calls: tool name, call ID, arguments
+  - Tool results: tool name, call ID, result content
+  - Stream finished: finish_reason, duration
+  - Stream error: error message
+
+Logging is implemented in `packages/rhd_chat/src/chat_log.rs` via `ChatLogSink`.

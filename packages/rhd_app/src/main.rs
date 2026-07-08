@@ -117,7 +117,7 @@ async fn run_daemon_command(
         projects_dir: merged.projects_dir.clone(),
         credentials_config: merged.credentials_config.clone(),
     };
-    daemon::run_daemon(scenarios, models, mcp_configs, merged.default_model, merged.logs, &socket_path, merged.ws_port, db_file.to_str().unwrap_or("db/meta.db"), merged.never_fail, project_manager, config_paths).await?;
+    daemon::run_daemon(scenarios, models, mcp_configs, merged.default_model, merged.logs, merged.log_chats, &socket_path, merged.ws_port, db_file.to_str().unwrap_or("db/meta.db"), merged.never_fail, project_manager, config_paths).await?;
     Ok(())
 }
 
@@ -138,6 +138,7 @@ fn merge_config(config: DaemonConfig, args: &cli::DaemonArgs) -> DaemonConfig {
         mcp_dir: args.mcp_dir.clone().unwrap_or(config.mcp_dir),
         default_model: args.default_model.clone().or(config.default_model),
         logs: args.logs.clone().or(config.logs),
+        log_chats: config.log_chats,
         ws_port: args.ws_port.or(config.ws_port),
         db_dir: args.db_dir.clone().unwrap_or(config.db_dir),
         projects_dir: args.projects_dir.clone().unwrap_or(config.projects_dir),
