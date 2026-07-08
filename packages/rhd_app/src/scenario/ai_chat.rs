@@ -405,14 +405,14 @@ async fn execute_ai_chat_with_tools(
             sink.log_step(
                 step_name,
                 "tool call",
-                &format!("{}({})", tool_call.name, tool_call.arguments),
+                &format!("{}({})", tool_call.function.name, tool_call.function.arguments),
             );
             if let Some(h) = &handle {
                 h.add_section(tool_call_tracker.end(sink));
             }
 
-            let tool_result = if tool_call.name == "rhd_set_flag" {
-                let args: serde_json::Value = serde_json::from_str(&tool_call.arguments)
+            let tool_result = if tool_call.function.name == "rhd_set_flag" {
+                let args: serde_json::Value = serde_json::from_str(&tool_call.function.arguments)
                     .unwrap_or(serde_json::json!({}));
                 let flag_name = args.get("name").and_then(|n| n.as_str()).unwrap_or("");
                 let flag_value = args.get("value").and_then(|v| v.as_bool()).unwrap_or(true);
@@ -421,17 +421,17 @@ async fn execute_ai_chat_with_tools(
                 format!("Flag '{}' set to {}", full_flag_name, flag_value)
             } else {
                 // Parse mcp_id from tool name prefix (format: "mcp_id/tool_name")
-                let (mcp_id, bare_tool_name) = if let Some((id, name)) = tool_call.name.split_once('/') {
+                let (mcp_id, bare_tool_name) = if let Some((id, name)) = tool_call.function.name.split_once('/') {
                     (id.to_string(), name.to_string())
                 } else {
-                    (String::new(), tool_call.name.clone())
+                    (String::new(), tool_call.function.name.clone())
                 };
 
                 let mut found = false;
                 let mut result_str = String::new();
                 for (client_mcp_id, mcp_client) in &mcp_clients {
                     if *client_mcp_id == mcp_id {
-                        match mcp_client.call_tool(&bare_tool_name, &tool_call.arguments).await {
+                        match mcp_client.call_tool(&bare_tool_name, &tool_call.function.arguments).await {
                             Ok(r) => {
                                 result_str = r.content;
                                 found = true;
@@ -447,7 +447,7 @@ async fn execute_ai_chat_with_tools(
                 }
                 
                 if !found {
-                    result_str = format!("Error: unknown tool '{}'", tool_call.name);
+                    result_str = format!("Error: unknown tool '{}'", tool_call.function.name);
                 }
                 result_str
             };

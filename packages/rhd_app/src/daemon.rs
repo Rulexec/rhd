@@ -153,6 +153,7 @@ pub async fn run_daemon(
     if let Some(port) = ws_port {
         let ws_state = state.clone();
         let ws_addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+        println!("WebSocket server started on port {}", port);
         tokio::spawn(async move {
             if let Err(err) = crate::ws::run_ws_server(ws_addr, ws_state).await {
                 eprintln!("WebSocket server error: {}", err);

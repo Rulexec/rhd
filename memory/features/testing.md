@@ -57,6 +57,7 @@ Located in `test_e2e/scenarios/`:
 
 ### Test Infrastructure
 - `rhd_test frontend` starts daemon with WebSocket + mock AI + control server
+- Daemon runs with `--db-dir` pointing to temp directory (no `rhd_db/` in project folder)
 - Tests connect to real daemon WebSocket (no mocking)
 - Control server configures mock AI responses
 - Test utilities in `frontend/src/tests/testUtils.ts`:
@@ -74,6 +75,7 @@ Located in `test_e2e/scenarios/`:
 - `chat.test.ts` — chat creation, model selection
 - `chat-messageflow.test.ts` — message send/receive, no duplication
 - `chat-streaming.test.ts` — streaming display, abort, retry
+- `chat-mcp-tools.test.ts` — chat with MCP tools, tool calls, streaming
 - `scenarios.test.ts` — scenario list, active/finished states
 
 ### Vitest Configs
@@ -109,9 +111,12 @@ npm run test:unit
 ## Key Files
 - Test runner: `packages/rhd_test/src/main.rs`
 - Mock server: `packages/rhd_test/src/mock_server.rs`
+- Mock MCP server: `packages/rhd_test/src/mock_mcp_server.rs`
 - Control server: `packages/rhd_test/src/control_server.rs`
 - Frontend test orchestrator: `packages/rhd_test/src/frontend_test.rs`
 - Test utilities: `frontend/src/tests/testUtils.ts`
 - E2E tests: `frontend/src/tests/e2e/*.test.ts`
 - Test scenarios: `test_e2e/scenarios/`
 - Test models: `test_e2e/models/`
+- Test projects: `test_e2e/projects/`
+- Test MCP configs: `test_e2e/mcp/`

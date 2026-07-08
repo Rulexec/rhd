@@ -2,6 +2,7 @@ mod args;
 mod control_server;
 mod frontend_test;
 mod mcp_test;
+mod mock_mcp_server;
 mod mock_server;
 mod sse_test;
 mod standard_test;
@@ -31,6 +32,9 @@ async fn main() {
         }
         Some(Commands::SseTest) => {
             sse_test::run_sse_test().await;
+        }
+        Some(Commands::McpServer) => {
+            mock_mcp_server::run_mock_mcp_server();
         }
         None => {
             run_standard_tests(args.seed, args.repetitions).await;

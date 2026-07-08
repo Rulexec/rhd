@@ -1,5 +1,33 @@
 # Chat Feature
 
+## ToolCall Structure
+
+The `ToolCall` struct in `packages/rhd_ai/src/client.rs` matches OpenAI API format:
+```rust
+pub struct ToolCall {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub call_type: String,
+    pub function: FunctionCall,
+}
+
+pub struct FunctionCall {
+    pub name: String,
+    pub arguments: String,
+}
+```
+
+Access tool name via `tool_call.function.name`, arguments via `tool_call.function.arguments`.
+
+## Tool Loop Streaming
+
+The `tool_loop()` in `packages/rhd_chat/src/tools.rs` streams only the **final agent message**:
+1. Non-streaming `chat_with_tools()` calls during tool loop (tool calls not streamed)
+2. When final response received (no tool calls): emit `StreamChunk` event with final content
+3. Emit `StreamFinished` when complete
+
+Tool calls visible via `ToolCallStarted`/`ToolCallCompleted` events, not streaming.
+
 ## Chat Backend (`ChatManager`)
 
 The `ChatManager` in `packages/rhd_app/src/chat.rs` handles all chat operations:
@@ -23,6 +51,7 @@ The `ChatManager` in `packages/rhd_app/src/chat.rs` handles all chat operations:
   - Emits `MessageAdded` event for updated message
   - Re-streams AI response (same flow as `send_message`, filters out empty content chunks)
 - **`abort_chat(chat_id)`**: Cancels active stream token if present, returns true if aborted
+- **`attach_project(chat_id, project_name, event_sender)`**: Attaches project to chat, starts MCP clients, emits `ProjectAttached` event. Called synchronously from WebSocket handler (not spawned) to ensure errors propagate to frontend.
 
 ## Chat Events (`ChatEvent` enum)
 

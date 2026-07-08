@@ -155,8 +155,8 @@ pub async fn chat_completions(
 
     let has_tools = body.tools.is_some();
     let has_tool_result = body.messages.iter().any(|m| m.role == "tool");
-    let should_call_tool = has_tools && system_content.contains("rhd_set_flag") && !has_tool_result;
-
+    let should_call_tool = has_tools && !has_tool_result;
+    
     requests.lock().unwrap().push(RecordedRequest {
         model: body.model.clone(),
         system_content,
@@ -250,21 +250,46 @@ pub async fn chat_completions(
     } else {
         // Non-streaming response
         let chat_response = if should_call_tool {
-            let expected_flag = *flag_value.lock().unwrap();
-            let arguments = format!(r#"{{"name":"test_flag","value":{}}}"#, expected_flag);
+            // Check if MCP tools are present (tools with "/" in name like "mock1/echo")
+            let tools = body.tools.as_ref().unwrap();
+            let has_mcp_tools = tools.iter().any(|t| {
+                t.get("function")
+                    .and_then(|f| f.get("name"))
+                    .and_then(|n| n.as_str())
+                    .map(|n| n.contains('/'))
+                    .unwrap_or(false)
+            });
+
+            let tool_call = if has_mcp_tools {
+                // Return MCP tool call (mock1/echo)
+                ToolCallResponse {
+                    id: "call_1".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCallResponse {
+                        name: "mock1/echo".to_string(),
+                        arguments: r#"{"message":"Hello MCP"}"#.to_string(),
+                    },
+                }
+            } else {
+                // Return built-in tool call (rhd_set_flag)
+                let expected_flag = *flag_value.lock().unwrap();
+                let arguments = format!(r#"{{"name":"test_flag","value":{}}}"#, expected_flag);
+                ToolCallResponse {
+                    id: "call_1".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCallResponse {
+                        name: "rhd_set_flag".to_string(),
+                        arguments,
+                    },
+                }
+            };
+
             ChatResponse {
                 choices: vec![Choice {
                     message: ResponseMessage {
                         role: "assistant".to_string(),
                         content: None,
-                        tool_calls: Some(vec![ToolCallResponse {
-                            id: "call_1".to_string(),
-                            call_type: "function".to_string(),
-                            function: FunctionCallResponse {
-                                name: "rhd_set_flag".to_string(),
-                                arguments,
-                            },
-                        }]),
+                        tool_calls: Some(vec![tool_call]),
                     },
                     finish_reason: Some("tool_calls".to_string()),
                 }],

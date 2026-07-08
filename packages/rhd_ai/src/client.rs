@@ -139,6 +139,13 @@ pub struct FunctionDefinition {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ToolCall {
     pub id: String,
+    #[serde(rename = "type")]
+    pub call_type: String,
+    pub function: FunctionCall,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct FunctionCall {
     pub name: String,
     pub arguments: String,
 }
@@ -175,12 +182,6 @@ struct ToolCallResponse {
     #[allow(dead_code)]
     call_type: String,
     function: FunctionCall,
-}
-
-#[derive(Deserialize, Clone)]
-struct FunctionCall {
-    name: String,
-    arguments: String,
 }
 
 pub struct ChatResult {
@@ -308,8 +309,11 @@ impl OpenAiClient {
             .into_iter()
             .map(|tc| ToolCall {
                 id: tc.id,
-                name: tc.function.name,
-                arguments: tc.function.arguments,
+                call_type: tc.call_type,
+                function: FunctionCall {
+                    name: tc.function.name,
+                    arguments: tc.function.arguments,
+                },
             })
             .collect();
 

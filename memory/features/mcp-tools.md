@@ -98,9 +98,28 @@ actions:
 - Max iterations exceeded → scenario fails with error
 - Tool name collisions → first match wins, warning logged
 
+## MCP Testing Infrastructure
+
+### Mock MCP Server
+- `packages/rhd_test/src/mock_mcp_server.rs` - stdio JSON-RPC 2.0 server
+- Supports `tools/list` and `tools/call` methods
+- Returns configurable tool definitions and responses
+- CLI: `rhd_test mcp-server`
+
+### Test Project
+- `test_e2e/projects/test-project-mcp/` - project with MCP configuration
+- `mcp.yaml` - references mock MCP server
+- `systemPrompt.md` - instructs AI to use MCP tools
+
+### Frontend E2E Test
+- `frontend/src/tests/e2e/chat-mcp-tools.test.ts` - tests chat with MCP tools
+- Verifies: MCP connects, tool calls execute, streaming works
+
 ## Key Files
 - MCP client crate: `packages/rhd_mcp_client/`
 - Built-in tools: `packages/rhd_mcp_client/src/builtin.rs`
 - MCP server cache: `packages/rhd_app/src/mcp_cache.rs`
 - Tool execution: `packages/rhd_app/src/scenario/ai_chat.rs`
 - MCP config loading: `packages/rhd_app/src/scenario/loader.rs`
+- Chat tool loop: `packages/rhd_chat/src/tools.rs`
+- Mock MCP server: `packages/rhd_test/src/mock_mcp_server.rs`

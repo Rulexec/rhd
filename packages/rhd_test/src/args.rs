@@ -29,4 +29,6 @@ pub enum Commands {
     },
     /// Run simple SSE streaming test
     SseTest,
+    /// Run mock MCP server (stdio JSON-RPC)
+    McpServer,
 }

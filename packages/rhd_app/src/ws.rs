@@ -647,14 +647,18 @@ async fn handle_attach_project(
     project_name: String,
     state: &Arc<DaemonState>,
 ) -> WsResponse {
-    let chat_manager = Arc::clone(&state.chat_manager);
-    let event_sender = state.chat_event_sender.clone();
-    tokio::spawn(async move {
-        let _ = chat_manager
-            .attach_project(chat_id, &project_name, event_sender)
-            .await;
-    });
-    WsResponse::success(id, serde_json::json!({ "status": "attaching" }))
+    match state
+        .chat_manager
+        .attach_project(chat_id, &project_name, state.chat_event_sender.clone())
+        .await
+    {
+        Ok(()) => WsResponse::success(id, serde_json::json!({ "attached": true })),
+        Err(err) => WsResponse::error(
+            id,
+            ErrorCode::InternalError,
+            format!("failed to attach project: {}", err),
+        ),
+    }
 }
 
 async fn handle_detach_project(
