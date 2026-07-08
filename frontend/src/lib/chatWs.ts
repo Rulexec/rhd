@@ -241,50 +241,155 @@ export function handleChatEvent(event: string, data: unknown): void {
       break;
     }
     case 'chatMessageAdded': {
-      const added = data as { message: { id: number; role: string; content: string } };
+      const added = data as { message: { id: number; role: string; content: string; thinkingContent?: string } };
       const tempId = get(streamingMessageId);
 
       messages.update((list) => {
-        if (added.message.role === 'assistant' && tempId) {
-          const tempIdx = list.findIndex((m) => m.id === tempId);
-          if (tempIdx !== -1) {
-            const updated = [...list];
-            updated[tempIdx] = added.message as any;
-            streamingMessageId.set(null);
-            return updated;
-          } else {
-            // Temp message not found, clear streamingMessageId anyway
-            streamingMessageId.set(null);
+        // Helper function to get numeric ID for ordering
+        const getNumericId = (id: number | string): number => {
+          if (typeof id === 'number') return id;
+          if (typeof id === 'string' && id.startsWith('temp-')) {
+            return Number.MAX_SAFE_INTEGER;
           }
-        }
+          return parseInt(id as string, 10) || Number.MAX_SAFE_INTEGER;
+        };
 
+        // Check if message with same ID already exists
         if (list.some((m) => m.id === added.message.id)) {
           return list;
         }
-        
-        // System message: insert before temp user message
-        if (added.message.role === 'system') {
+
+        // Handle user message: replace temp user message with real one from backend
+        if (added.message.role === 'user') {
           const tempUserIdx = list.findIndex(
-            (m) => m.role === 'user' && ((m.id as number) < 0 || (m.id as number) > 1000000000000)
+            (m) => m.role === 'user' && m.content === added.message.content && typeof m.id === 'number' && m.id > 1000000000000
           );
           if (tempUserIdx !== -1) {
             const updated = [...list];
-            updated.splice(tempUserIdx, 0, added.message as any);
+            updated[tempUserIdx] = added.message as any;
             return updated;
+          }
+          // No temp message found, add real message
+          return [...list, added.message as any];
+        }
+
+        // Handle tool result messages: merge result into assistant message, don't add separate tool message
+        if (added.message.role === 'tool') {
+          try {
+            const toolResult = JSON.parse(added.message.content);
+            const toolCallId = toolResult.toolCallId;
+            const result = toolResult.result;
+            
+            // Find the assistant message with this toolCallId and update it
+            return list.map((m) => {
+              if (m.role === 'assistant' && m.toolCalls) {
+                const toolCallIndex = m.toolCalls.findIndex((tc) => tc.id === toolCallId);
+                if (toolCallIndex !== -1) {
+                  const updatedToolCalls = [...m.toolCalls];
+                  updatedToolCalls[toolCallIndex] = {
+                    ...updatedToolCalls[toolCallIndex],
+                    result,
+                    status: 'completed' as const,
+                  };
+                  return { ...m, toolCalls: updatedToolCalls };
+                }
+              }
+              return m;
+            });
+          } catch {
+            // Not JSON, add as regular message
+            return [...list, added.message as any];
+          }
+        }
+
+        // Handle assistant message: replace temp message if exists
+        if (added.message.role === 'assistant' && tempId) {
+          const tempIdx = list.findIndex((m) => m.id === tempId);
+          if (tempIdx !== -1) {
+            const tempMsg = list[tempIdx];
+            
+            // Parse JSON content to extract toolCalls if present
+            let parsedContent = added.message.content;
+            let toolCalls: any[] | undefined;
+            
+            try {
+              const json = JSON.parse(added.message.content);
+              if (json.content !== undefined && json.toolCalls) {
+                // Intermediate message with toolCalls - use JSON toolCalls
+                parsedContent = json.content;
+                toolCalls = json.toolCalls.length > 0 ? json.toolCalls : undefined;
+              }
+            } catch {
+              // Not JSON, use as-is (final message)
+            }
+            
+            // Only include toolCalls if message content is JSON with toolCalls (intermediate message)
+            // Don't inherit toolCalls from tempMsg for final message
+            const realMessage = {
+              ...added.message,
+              content: parsedContent,
+              toolCalls,
+              thinkingContent: added.message.thinkingContent || tempMsg.thinkingContent,
+            } as any;
+            
+            // Remove temp message and insert real message at correct position
+            const updated = list.filter((m) => m.id !== tempId);
+            const newMsgId = getNumericId(realMessage.id);
+            const insertIndex = updated.findIndex((m) => getNumericId(m.id) > newMsgId);
+            
+            if (insertIndex === -1) {
+              updated.push(realMessage);
+            } else {
+              updated.splice(insertIndex, 0, realMessage);
+            }
+            
+            streamingMessageId.set(null);
+            return updated;
+          } else {
+            streamingMessageId.set(null);
           }
         }
         
-        if (added.message.role === 'user') {
-          const tempIdx = list.findIndex(
-            (m) => m.role === 'user' && m.content === added.message.content && ((m.id as number) < 0 || (m.id as number) > 1000000000000)
-          );
-          if (tempIdx !== -1) {
-            const updated = [...list];
-            updated[tempIdx] = added.message as any;
-            return updated;
+        // Parse JSON content for assistant messages to extract toolCalls
+        let parsedContent = added.message.content;
+        let toolCalls: any[] | undefined;
+        
+        if (added.message.role === 'assistant') {
+          try {
+            const json = JSON.parse(added.message.content);
+            if (json.content !== undefined && json.toolCalls) {
+              parsedContent = json.content;
+              toolCalls = json.toolCalls.map((tc: any) => ({
+                id: tc.id,
+                name: tc.function?.name || tc.name,
+                arguments: tc.function?.arguments || tc.arguments,
+                status: tc.status || 'completed',
+                mcpId: tc.mcpId || (tc.function?.name || tc.name || '').split('/')[0],
+                result: tc.result,
+              }));
+            }
+          } catch {
+            // Not JSON, use as-is
           }
         }
-        return [...list, added.message as any];
+        
+        const messageToAdd = {
+          ...added.message,
+          content: parsedContent,
+          toolCalls,
+        } as any;
+        
+        // Insert message in correct position based on ID
+        const newMsgId = getNumericId(messageToAdd.id);
+        const insertIndex = list.findIndex((m) => getNumericId(m.id) > newMsgId);
+        
+        if (insertIndex === -1) {
+          return [...list, messageToAdd];
+        } else {
+          const updated = [...list];
+          updated.splice(insertIndex, 0, messageToAdd);
+          return updated;
+        }
       });
       break;
     }
@@ -324,8 +429,26 @@ export function handleChatEvent(event: string, data: unknown): void {
       };
       pendingToolCalls.update((list) => [...list, newToolCall]);
       
-      const tempId = get(streamingMessageId);
-      if (tempId) {
+      let tempId = get(streamingMessageId);
+      
+      if (!tempId) {
+        const chatId = get(currentChatId);
+        if (!chatId) break;
+        
+        tempId = `temp-${Date.now()}`;
+        const assistantMessage = {
+          id: tempId,
+          chatId,
+          role: 'assistant' as const,
+          content: '',
+          createdAt: new Date().toISOString(),
+          model: get(selectedModel) || '',
+          thinkingContent: get(streamingThinkingContent) || undefined,
+          toolCalls: [newToolCall],
+        };
+        messages.update((list) => [...list, assistantMessage as any]);
+        streamingMessageId.set(tempId);
+      } else {
         messages.update((list) =>
           list.map((m) => {
             if (m.id === tempId) {

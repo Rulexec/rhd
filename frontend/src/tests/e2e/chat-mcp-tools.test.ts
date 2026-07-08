@@ -140,10 +140,46 @@ describe('Chat with MCP tools', () => {
     expect(userMsg).toBeDefined();
     expect(userMsg!.content).toContain('echo tool');
 
-    const assistantMsg = allMessages.find((m) => m.role === 'assistant');
+    // Find the final assistant message (last one, contains the actual response)
+    const assistantMessages = allMessages.filter((m) => m.role === 'assistant');
+    expect(assistantMessages.length).toBeGreaterThanOrEqual(2); // intermediate + final
+    const assistantMsg = assistantMessages[assistantMessages.length - 1];
     expect(assistantMsg).toBeDefined();
-    expect(assistantMsg!.content).toContain('Echo: Hello MCP');
-    expect(typeof assistantMsg!.id).toBe('number');
-    expect(assistantMsg!.id).toBeGreaterThan(0);
+    expect(assistantMsg.content).toContain('Echo: Hello MCP');
+    expect(typeof assistantMsg.id).toBe('number');
+    expect(assistantMsg.id).toBeGreaterThan(0);
+    // Final assistant message should NOT have toolCalls (already shown in intermediate message)
+    expect(assistantMsg.toolCalls).toBeUndefined();
+
+    // Verify tool calls are visible in messages
+    const assistantMsgsWithToolCalls = allMessages.filter(
+      (m) => m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0
+    );
+    expect(assistantMsgsWithToolCalls.length).toBeGreaterThan(0);
+
+    const toolCallMsg = assistantMsgsWithToolCalls[0];
+    expect(toolCallMsg.toolCalls![0].name).toContain('echo');
+    expect(toolCallMsg.toolCalls![0].status).toBe('completed');
+    expect(toolCallMsg.toolCalls![0].result).toBeDefined();
+
+    // Thinking content may be present if mock AI sends reasoning
+    // (mock server doesn't always send reasoning, so this is optional)
+
+    // Verify message order: user → assistant (with toolCalls) → assistant (final)
+    // Tool results are merged into assistant message, no separate tool message
+    const userMsgIndex = allMessages.findIndex((m) => m.role === 'user');
+    const toolCallMsgIndex = allMessages.findIndex(
+      (m) => m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0
+    );
+    const finalAssistantMsgIndex = allMessages.findIndex(
+      (m) => m.role === 'assistant' && m.content.includes('Echo: Hello MCP')
+    );
+
+    expect(userMsgIndex).toBeLessThan(toolCallMsgIndex);
+    expect(toolCallMsgIndex).toBeLessThan(finalAssistantMsgIndex);
+    
+    // Verify no separate tool result messages visible
+    const toolResultMsgCount = allMessages.filter((m) => m.role === 'tool').length;
+    expect(toolResultMsgCount).toBe(0);
   }, 30000);
 });

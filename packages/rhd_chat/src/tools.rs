@@ -184,19 +184,41 @@ pub async fn tool_loop<P: ProjectProvider>(
         *iterations += 1;
 
         let assistant_content: String = accumulated_content.lock().await.clone();
+        let thinking_content: String = accumulated_thinking.lock().await.clone();
         let assistant_msg_content = serde_json::json!({
             "content": assistant_content,
             "toolCalls": result.tool_calls,
         })
         .to_string();
-        manager.db().add_message(
+        let thinking_option = if thinking_content.is_empty() {
+            None
+        } else {
+            Some(thinking_content.as_str())
+        };
+        
+        // Save intermediate assistant message FIRST (before tool messages) so it gets lower ID
+        let intermediate_msg_id = manager.db().add_message(
             chat_id,
             "assistant",
             &assistant_msg_content,
             Some(model),
-            None,
+            thinking_option,
         )?;
-
+        let intermediate_message = Message {
+            id: intermediate_msg_id,
+            chat_id,
+            role: "assistant".to_string(),
+            content: assistant_msg_content,
+            created_at: chrono::Utc::now().to_rfc3339(),
+            model: Some(model.to_string()),
+            thinking_content: thinking_option.map(|s| s.to_string()),
+        };
+        let _ = event_sender.send(ChatEvent::MessageAdded {
+            chat_id,
+            message: intermediate_message,
+        });
+        
+        // Now emit ToolCallStarted events and save tool messages
         for tool_call in &result.tool_calls {
             if cancel_token.is_cancelled() {
                 if let Some(ref mut l) = loggers {
@@ -243,9 +265,22 @@ pub async fn tool_loop<P: ProjectProvider>(
                 "result": tool_result,
             })
             .to_string();
-            manager.db().add_message(chat_id, "tool", &tool_result_json, None, None)?;
+            let tool_msg_id = manager.db().add_message(chat_id, "tool", &tool_result_json, None, None)?;
+            let tool_message = Message {
+                id: tool_msg_id,
+                chat_id,
+                role: "tool".to_string(),
+                content: tool_result_json,
+                created_at: chrono::Utc::now().to_rfc3339(),
+                model: None,
+                thinking_content: None,
+            };
+            let _ = event_sender.send(ChatEvent::MessageAdded {
+                chat_id,
+                message: tool_message,
+            });
         }
-
+        
         if let Some(content) = result.content {
             *current_content = content;
         }
