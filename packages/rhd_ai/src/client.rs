@@ -358,8 +358,13 @@ impl OpenAiClient {
             .tool_calls
             .unwrap_or_default()
             .into_iter()
-            .map(|tc| ToolCall {
-                id: tc.id,
+            .enumerate()
+            .map(|(idx, tc)| ToolCall {
+                id: if tc.id.is_empty() {
+                    format!("call_{}", idx)
+                } else {
+                    tc.id
+                },
                 call_type: tc.call_type,
                 function: FunctionCall {
                     name: tc.function.name,
@@ -729,7 +734,8 @@ impl OpenAiClient {
                         if data == "[DONE]" {
                             let tool_calls = tool_call_accumulators
                                 .into_iter()
-                                .filter_map(|acc| acc.build())
+                                .enumerate()
+                                .filter_map(|(idx, acc)| acc.build(idx))
                                 .collect();
 
                             return Ok(StreamResultWithTools {
@@ -816,7 +822,8 @@ impl OpenAiClient {
 
         let tool_calls = tool_call_accumulators
             .into_iter()
-            .filter_map(|acc| acc.build())
+            .enumerate()
+            .filter_map(|(idx, acc)| acc.build(idx))
             .collect();
 
         Ok(StreamResultWithTools {
@@ -841,8 +848,8 @@ struct ToolCallAccumulator {
 }
 
 impl ToolCallAccumulator {
-    fn build(self) -> Option<ToolCall> {
-        let id = self.id?;
+    fn build(self, index: usize) -> Option<ToolCall> {
+        let id = self.id.filter(|s| !s.is_empty()).unwrap_or_else(|| format!("call_{}", index));
         let call_type = self.call_type.unwrap_or_else(|| "function".to_string());
         let function_name = self.function_name?;
 

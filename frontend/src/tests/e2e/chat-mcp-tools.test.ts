@@ -182,4 +182,78 @@ describe('Chat with MCP tools', () => {
     const toolResultMsgCount = allMessages.filter((m) => m.role === 'tool').length;
     expect(toolResultMsgCount).toBe(0);
   }, 30000);
+
+  it('handles multiple tool calls with different results', async () => {
+    await dispatch({ type: 'loadAvailableModels' });
+    await loadProjects();
+
+    const models = get(availableModels);
+    expect(models.length).toBeGreaterThan(0);
+    const model = models[0];
+
+    await dispatch({ type: 'createChat', payload: { title: 'MCP Multiple Calls Test' } });
+    const chatId = get(currentChatId);
+    expect(chatId).toBeDefined();
+
+    const attachResult = await attachProject(chatId!, 'test-project-mcp');
+    expect(attachResult.success).toBe(true);
+
+    await waitFor(() => {
+      const projects = get(chatProjects);
+      expect(projects.some((p) => p.name === 'test-project-mcp')).toBe(true);
+    }, { timeout: 5000 });
+
+    await waitFor(() => {
+      const statuses = get(mcpStatuses);
+      const mockMcpStatus = statuses.find(
+        (s) => s.projectName === 'test-project-mcp' && s.mcpId === 'mock1'
+      );
+      expect(mockMcpStatus).toBeDefined();
+      expect(mockMcpStatus?.status).toBe('connected');
+    }, { timeout: 10000 });
+
+    // Configure mock to return success
+    await configureMock('Tool executed successfully');
+
+    // Send message that triggers tool call
+    await dispatch({
+      type: 'sendMessage',
+      payload: { content: 'Please use the echo tool with message "Hello"', model },
+    });
+
+    await waitFor(() => {
+      expect(get(isStreaming)).toBe(false);
+    }, { timeout: 15000 });
+
+    const allMessages = get(messages);
+
+    // Find assistant messages with tool calls
+    const assistantMsgsWithToolCalls = allMessages.filter(
+      (m) => m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0
+    );
+
+    // Should have one intermediate message with tool call
+    expect(assistantMsgsWithToolCalls.length).toBe(1);
+    const toolCallMsg = assistantMsgsWithToolCalls[0];
+    expect(toolCallMsg.toolCalls!.length).toBe(1);
+
+    // Verify tool call has correct result
+    const toolCall = toolCallMsg.toolCalls![0];
+    expect(toolCall.name).toContain('echo');
+    expect(toolCall.status).toBe('completed');
+    expect(toolCall.result).toBeDefined();
+    expect(toolCall.result).toContain('Echo: Hello');
+
+    // Verify message order: user → tool call message → final assistant
+    const userMsgIndex = allMessages.findIndex((m) => m.role === 'user');
+    const toolCallMsgIndex = allMessages.findIndex(
+      (m) => m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0
+    );
+
+    expect(userMsgIndex).toBeLessThan(toolCallMsgIndex);
+    
+    // Verify no separate tool result messages visible
+    const toolResultMsgCount = allMessages.filter((m) => m.role === 'tool').length;
+    expect(toolResultMsgCount).toBe(0);
+  }, 30000);
 });

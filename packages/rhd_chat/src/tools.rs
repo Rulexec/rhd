@@ -183,11 +183,23 @@ pub async fn tool_loop<P: ProjectProvider>(
 
         *iterations += 1;
 
+        // Make tool call IDs unique across iterations by incorporating iteration number
+        let tool_calls_with_unique_ids: Vec<ToolCall> = result.tool_calls
+            .into_iter()
+            .enumerate()
+            .map(|(idx, mut tc)| {
+                if tc.id.starts_with("call_") {
+                    tc.id = format!("call_{}_{}", *iterations, idx);
+                }
+                tc
+            })
+            .collect();
+
         let assistant_content: String = accumulated_content.lock().await.clone();
         let thinking_content: String = accumulated_thinking.lock().await.clone();
         let assistant_msg_content = serde_json::json!({
             "content": assistant_content,
-            "toolCalls": result.tool_calls,
+            "toolCalls": tool_calls_with_unique_ids,
         })
         .to_string();
         let thinking_option = if thinking_content.is_empty() {
@@ -196,7 +208,26 @@ pub async fn tool_loop<P: ProjectProvider>(
             Some(thinking_content.as_str())
         };
         
-        // Save intermediate assistant message FIRST (before tool messages) so it gets lower ID
+        // Emit ToolCallStarted events FIRST (before saving intermediate message)
+        // This ensures frontend creates temp message before MessageAdded arrives
+        for tool_call in &tool_calls_with_unique_ids {
+            let mcp_id = extract_mcp_id_from_tool_name(&tool_call.function.name);
+
+            if let Some(ref mut l) = loggers {
+                l.chat_log.log_tool_call(&tool_call.function.name, &tool_call.id, &tool_call.function.arguments);
+            }
+
+            eprintln!("[DEBUG] Sending ToolCallStarted: tool_call_id={}, tool_name={}", tool_call.id, tool_call.function.name);
+            let _ = event_sender.send(ChatEvent::ToolCallStarted {
+                chat_id,
+                tool_call_id: tool_call.id.clone(),
+                tool_name: tool_call.function.name.clone(),
+                arguments: tool_call.function.arguments.clone(),
+                mcp_id: mcp_id.clone(),
+            });
+        }
+        
+        // Save intermediate assistant message (frontend will replace temp message created by ToolCallStarted)
         let intermediate_msg_id = manager.db().add_message(
             chat_id,
             "assistant",
@@ -204,6 +235,7 @@ pub async fn tool_loop<P: ProjectProvider>(
             Some(model),
             thinking_option,
         )?;
+        eprintln!("[DEBUG] Saved intermediate assistant message: msg_id={}, tool_calls_count={}", intermediate_msg_id, tool_calls_with_unique_ids.len());
         let intermediate_message = Message {
             id: intermediate_msg_id,
             chat_id,
@@ -213,13 +245,14 @@ pub async fn tool_loop<P: ProjectProvider>(
             model: Some(model.to_string()),
             thinking_content: thinking_option.map(|s| s.to_string()),
         };
+        eprintln!("[DEBUG] Sending MessageAdded for intermediate assistant: msg_id={}", intermediate_msg_id);
         let _ = event_sender.send(ChatEvent::MessageAdded {
             chat_id,
             message: intermediate_message,
         });
         
-        // Now emit ToolCallStarted events and save tool messages
-        for tool_call in &result.tool_calls {
+        // Execute tools and send completion events
+        for tool_call in &tool_calls_with_unique_ids {
             if cancel_token.is_cancelled() {
                 if let Some(ref mut l) = loggers {
                     l.chat_log.log_stream_error("aborted");
@@ -233,26 +266,13 @@ pub async fn tool_loop<P: ProjectProvider>(
                 }));
             }
 
-            let mcp_id = extract_mcp_id_from_tool_name(&tool_call.function.name);
-
-            if let Some(ref mut l) = loggers {
-                l.chat_log.log_tool_call(&tool_call.function.name, &tool_call.id, &tool_call.function.arguments);
-            }
-
-            let _ = event_sender.send(ChatEvent::ToolCallStarted {
-                chat_id,
-                tool_call_id: tool_call.id.clone(),
-                tool_name: tool_call.function.name.clone(),
-                arguments: tool_call.function.arguments.clone(),
-                mcp_id: mcp_id.clone(),
-            });
-
             let (tool_result, _) = execute_tool_call(tool_call, mcp_clients).await;
 
             if let Some(ref mut l) = loggers {
                 l.chat_log.log_tool_result(&tool_call.function.name, &tool_call.id, &tool_result);
             }
 
+            eprintln!("[DEBUG] Sending ToolCallCompleted: tool_call_id={}, result_preview={}", tool_call.id, &tool_result[..50.min(tool_result.len())]);
             let _ = event_sender.send(ChatEvent::ToolCallCompleted {
                 chat_id,
                 tool_call_id: tool_call.id.clone(),
@@ -266,6 +286,7 @@ pub async fn tool_loop<P: ProjectProvider>(
             })
             .to_string();
             let tool_msg_id = manager.db().add_message(chat_id, "tool", &tool_result_json, None, None)?;
+            eprintln!("[DEBUG] Saved tool result message: msg_id={}, tool_call_id={}", tool_msg_id, tool_call.id);
             let tool_message = Message {
                 id: tool_msg_id,
                 chat_id,
@@ -275,6 +296,7 @@ pub async fn tool_loop<P: ProjectProvider>(
                 model: None,
                 thinking_content: None,
             };
+            eprintln!("[DEBUG] Sending MessageAdded for tool result: msg_id={}, tool_call_id={}", tool_msg_id, tool_call.id);
             let _ = event_sender.send(ChatEvent::MessageAdded {
                 chat_id,
                 message: tool_message,
