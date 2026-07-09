@@ -243,8 +243,6 @@ export function handleChatEvent(event: string, data: unknown): void {
     case 'chatMessageAdded': {
       const added = data as { message: { id: number; role: string; content: string; thinkingContent?: string } };
       const tempId = get(streamingMessageId);
-      console.log('[DEBUG] Received chatMessageAdded: role=', added.message.role, 'id=', added.message.id, 'streamingMessageId=', tempId);
-
       messages.update((list) => {
         // Helper function to get numeric ID for ordering
         const getNumericId = (id: number | string): number => {
@@ -257,7 +255,6 @@ export function handleChatEvent(event: string, data: unknown): void {
 
         // Check if message with same ID already exists
         if (list.some((m) => m.id === added.message.id)) {
-          console.log('[DEBUG] chatMessageAdded: Message with id=', added.message.id, 'already exists, skipping');
           return list;
         }
 
@@ -269,11 +266,9 @@ export function handleChatEvent(event: string, data: unknown): void {
           if (tempUserIdx !== -1) {
             const updated = [...list];
             updated[tempUserIdx] = added.message as any;
-            console.log('[DEBUG] chatMessageAdded: Replaced temp user message at index=', tempUserIdx);
             return updated;
           }
           // No temp message found, add real message
-          console.log('[DEBUG] chatMessageAdded: Adding user message id=', added.message.id);
           return [...list, added.message as any];
         }
 
@@ -283,7 +278,6 @@ export function handleChatEvent(event: string, data: unknown): void {
             const toolResult = JSON.parse(added.message.content);
             const toolCallId = toolResult.toolCallId;
             const result = toolResult.result;
-            console.log('[DEBUG] chatMessageAdded: Tool result for toolCallId=', toolCallId, 'result=', result.substring(0, 50));
             
             // Find the assistant message with this toolCallId and update it
             let updatedMessageId: number | string | null = null;
@@ -303,11 +297,9 @@ export function handleChatEvent(event: string, data: unknown): void {
               }
               return m;
             });
-            console.log('[DEBUG] chatMessageAdded: Applied tool result to message id=', updatedMessageId);
             return updated;
           } catch {
             // Not JSON, add as regular message
-            console.log('[DEBUG] chatMessageAdded: Tool message not JSON, adding as regular message');
             return [...list, added.message as any];
           }
         }
@@ -317,7 +309,6 @@ export function handleChatEvent(event: string, data: unknown): void {
           const tempIdx = list.findIndex((m) => m.id === tempId);
           if (tempIdx !== -1) {
             const tempMsg = list[tempIdx];
-            console.log('[DEBUG] chatMessageAdded: Replacing temp message id=', tempId, 'with real message id=', added.message.id);
             
             // Parse JSON content to extract toolCalls if present
             let parsedContent = added.message.content;
@@ -336,16 +327,9 @@ export function handleChatEvent(event: string, data: unknown): void {
                   mcpId: tc.mcpId || (tc.function?.name || tc.name || '').split('/')[0],
                   result: tc.result,
                 })) : undefined;
-                console.log('[DEBUG] chatMessageAdded: Parsed toolCalls from JSON, count=', toolCalls?.length || 0);
-                if (toolCalls) {
-                  toolCalls.forEach((tc, idx) => {
-                    console.log('[DEBUG] chatMessageAdded: toolCall[', idx, '] id=', tc.id, 'name=', tc.name, 'result=', tc.result?.substring(0, 50));
-                  });
-                }
               }
             } catch {
               // Not JSON, use as-is (final message)
-              console.log('[DEBUG] chatMessageAdded: Assistant message not JSON, using as-is');
             }
             
             // Only include toolCalls if message content is JSON with toolCalls (intermediate message)
@@ -445,7 +429,6 @@ export function handleChatEvent(event: string, data: unknown): void {
         arguments: string;
         mcpId: string;
       };
-      console.log('[DEBUG] Received chatToolCallStarted: toolCallId=', toolCallId, 'toolName=', toolName);
       const newToolCall = {
         id: toolCallId,
         name: toolName,
@@ -456,7 +439,6 @@ export function handleChatEvent(event: string, data: unknown): void {
       pendingToolCalls.update((list) => [...list, newToolCall]);
       
       let tempId = get(streamingMessageId);
-      console.log('[DEBUG] chatToolCallStarted: streamingMessageId=', tempId);
       
       if (!tempId) {
         const chatId = get(currentChatId);
@@ -473,18 +455,15 @@ export function handleChatEvent(event: string, data: unknown): void {
           thinkingContent: get(streamingThinkingContent) || undefined,
           toolCalls: [newToolCall],
         };
-        console.log('[DEBUG] chatToolCallStarted: Creating new temp message with id=', tempId, 'for toolCallId=', toolCallId);
         messages.update((list) => [...list, assistantMessage as any]);
         streamingMessageId.set(tempId);
       } else {
-        console.log('[DEBUG] chatToolCallStarted: Adding toolCallId=', toolCallId, 'to existing message id=', tempId);
         messages.update((list) =>
           list.map((m) => {
             if (m.id === tempId) {
               const existingToolCalls = m.toolCalls || [];
               // Prevent duplicate tool calls
               if (existingToolCalls.some((tc) => tc.id === toolCallId)) {
-                console.log('[DEBUG] chatToolCallStarted: Duplicate toolCallId=', toolCallId, 'skipped');
                 return m;
               }
               return { ...m, toolCalls: [...existingToolCalls, newToolCall] };
@@ -501,7 +480,6 @@ export function handleChatEvent(event: string, data: unknown): void {
         toolCallId: string;
         result: string;
       };
-      console.log('[DEBUG] Received chatToolCallCompleted: toolCallId=', toolCallId, 'result=', result.substring(0, 50));
       pendingToolCalls.update((list) =>
         list.map((tc) =>
           tc.id === toolCallId ? { ...tc, result, status: 'completed' as const } : tc
@@ -528,7 +506,6 @@ export function handleChatEvent(event: string, data: unknown): void {
           }
           return m;
         });
-        console.log('[DEBUG] chatToolCallCompleted: Applied result to message id=', updatedMessageId, 'for toolCallId=', toolCallId);
         return updated;
       });
       break;

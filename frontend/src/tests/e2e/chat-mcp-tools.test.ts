@@ -256,4 +256,89 @@ describe('Chat with MCP tools', () => {
     const toolResultMsgCount = allMessages.filter((m) => m.role === 'tool').length;
     expect(toolResultMsgCount).toBe(0);
   }, 30000);
+
+  it('maintains unique tool call ids across multiple iterations', async () => {
+    await dispatch({ type: 'loadAvailableModels' });
+    await loadProjects();
+
+    const models = get(availableModels);
+    expect(models.length).toBeGreaterThan(0);
+    const model = models[0];
+
+    await dispatch({ type: 'createChat', payload: { title: 'MCP Unique IDs Test' } });
+    const chatId = get(currentChatId);
+    expect(chatId).toBeDefined();
+
+    const attachResult = await attachProject(chatId!, 'test-project-mcp');
+    expect(attachResult.success).toBe(true);
+
+    await waitFor(() => {
+      const projects = get(chatProjects);
+      expect(projects.some((p) => p.name === 'test-project-mcp')).toBe(true);
+    }, { timeout: 5000 });
+
+    await waitFor(() => {
+      const statuses = get(mcpStatuses);
+      const mockMcpStatus = statuses.find(
+        (s) => s.projectName === 'test-project-mcp' && s.mcpId === 'mock1'
+      );
+      expect(mockMcpStatus).toBeDefined();
+      expect(mockMcpStatus?.status).toBe('connected');
+    }, { timeout: 10000 });
+
+    // First tool call
+    await configureMock('First result');
+    await dispatch({
+      type: 'sendMessage',
+      payload: { content: 'Please use the echo tool with message "First"', model },
+    });
+
+    await waitFor(() => {
+      expect(get(isStreaming)).toBe(false);
+    }, { timeout: 15000 });
+
+    const messagesAfterFirst = get(messages);
+    const firstToolCallMsgs = messagesAfterFirst.filter(
+      (m) => m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0
+    );
+    expect(firstToolCallMsgs.length).toBe(1);
+    const firstToolCallId = firstToolCallMsgs[0].toolCalls![0].id;
+    expect(firstToolCallId).toBeDefined();
+    expect(firstToolCallMsgs[0].toolCalls![0].result).toContain('Echo: Hello MCP');
+
+    // Second tool call (different iteration)
+    await configureMock('Second result');
+    await dispatch({
+      type: 'sendMessage',
+      payload: { content: 'Please use the echo tool with message "Second"', model },
+    });
+
+    await waitFor(() => {
+      expect(get(isStreaming)).toBe(false);
+    }, { timeout: 15000 });
+
+    const allMessages = get(messages);
+    const allToolCallMsgs = allMessages.filter(
+      (m) => m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0
+    );
+
+    // Should have two intermediate messages with tool calls
+    expect(allToolCallMsgs.length).toBe(2);
+
+    // Verify each tool call has a unique ID
+    const toolCallIds = allToolCallMsgs.flatMap((m) => m.toolCalls!.map((tc) => tc.id));
+    const uniqueIds = new Set(toolCallIds);
+    expect(uniqueIds.size).toBe(toolCallIds.length);
+
+    // Verify first tool call still has correct result
+    const firstMsg = allToolCallMsgs[0];
+    expect(firstMsg.toolCalls![0].result).toContain('Echo: Hello MCP');
+
+    // Verify second tool call has correct result
+    const secondMsg = allToolCallMsgs[1];
+    expect(secondMsg.toolCalls![0].result).toContain('Echo: Hello MCP');
+
+    // Verify tool call IDs are different
+    expect(firstMsg.toolCalls![0].id).not.toBe(secondMsg.toolCalls![0].id);
+  }, 30000);
 });

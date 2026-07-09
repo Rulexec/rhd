@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use rhd_ai::client::{ChatMessage, OpenAiClient, RawLogger, ToolCall};
 use rhd_ai::{FunctionDefinition, ToolDefinition};
@@ -183,14 +184,13 @@ pub async fn tool_loop<P: ProjectProvider>(
 
         *iterations += 1;
 
-        // Make tool call IDs unique across iterations by incorporating iteration number
+        // Make tool call IDs globally unique using atomic counter
+        static TOOL_CALL_COUNTER: AtomicU64 = AtomicU64::new(0);
         let tool_calls_with_unique_ids: Vec<ToolCall> = result.tool_calls
             .into_iter()
-            .enumerate()
-            .map(|(idx, mut tc)| {
-                if tc.id.starts_with("call_") {
-                    tc.id = format!("call_{}_{}", *iterations, idx);
-                }
+            .map(|mut tc| {
+                let unique_id = TOOL_CALL_COUNTER.fetch_add(1, Ordering::SeqCst);
+                tc.id = format!("call_{}", unique_id);
                 tc
             })
             .collect();
@@ -217,7 +217,6 @@ pub async fn tool_loop<P: ProjectProvider>(
                 l.chat_log.log_tool_call(&tool_call.function.name, &tool_call.id, &tool_call.function.arguments);
             }
 
-            eprintln!("[DEBUG] Sending ToolCallStarted: tool_call_id={}, tool_name={}", tool_call.id, tool_call.function.name);
             let _ = event_sender.send(ChatEvent::ToolCallStarted {
                 chat_id,
                 tool_call_id: tool_call.id.clone(),
@@ -235,7 +234,6 @@ pub async fn tool_loop<P: ProjectProvider>(
             Some(model),
             thinking_option,
         )?;
-        eprintln!("[DEBUG] Saved intermediate assistant message: msg_id={}, tool_calls_count={}", intermediate_msg_id, tool_calls_with_unique_ids.len());
         let intermediate_message = Message {
             id: intermediate_msg_id,
             chat_id,
@@ -245,7 +243,6 @@ pub async fn tool_loop<P: ProjectProvider>(
             model: Some(model.to_string()),
             thinking_content: thinking_option.map(|s| s.to_string()),
         };
-        eprintln!("[DEBUG] Sending MessageAdded for intermediate assistant: msg_id={}", intermediate_msg_id);
         let _ = event_sender.send(ChatEvent::MessageAdded {
             chat_id,
             message: intermediate_message,
@@ -272,7 +269,6 @@ pub async fn tool_loop<P: ProjectProvider>(
                 l.chat_log.log_tool_result(&tool_call.function.name, &tool_call.id, &tool_result);
             }
 
-            eprintln!("[DEBUG] Sending ToolCallCompleted: tool_call_id={}, result_preview={}", tool_call.id, &tool_result[..50.min(tool_result.len())]);
             let _ = event_sender.send(ChatEvent::ToolCallCompleted {
                 chat_id,
                 tool_call_id: tool_call.id.clone(),
@@ -286,7 +282,6 @@ pub async fn tool_loop<P: ProjectProvider>(
             })
             .to_string();
             let tool_msg_id = manager.db().add_message(chat_id, "tool", &tool_result_json, None, None)?;
-            eprintln!("[DEBUG] Saved tool result message: msg_id={}, tool_call_id={}", tool_msg_id, tool_call.id);
             let tool_message = Message {
                 id: tool_msg_id,
                 chat_id,
@@ -296,7 +291,6 @@ pub async fn tool_loop<P: ProjectProvider>(
                 model: None,
                 thinking_content: None,
             };
-            eprintln!("[DEBUG] Sending MessageAdded for tool result: msg_id={}, tool_call_id={}", tool_msg_id, tool_call.id);
             let _ = event_sender.send(ChatEvent::MessageAdded {
                 chat_id,
                 message: tool_message,

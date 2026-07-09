@@ -176,8 +176,10 @@ pub async fn chat_completions(
         .unwrap_or_default();
 
     let has_tools = body.tools.is_some();
-    let has_tool_result = body.messages.iter().any(|m| m.role == "tool");
-    let should_call_tool = has_tools && !has_tool_result;
+    // Check if the last message is a user message (not a tool result)
+    // This allows triggering tool calls for each new user message
+    let last_message_is_user = body.messages.last().map(|m| m.role == "user").unwrap_or(false);
+    let should_call_tool = has_tools && last_message_is_user;
     
     requests.lock().unwrap().push(RecordedRequest {
         model: body.model.clone(),
