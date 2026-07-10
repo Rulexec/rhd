@@ -49,6 +49,8 @@ Persistent conversational interface for direct AI interaction. Users create chat
 - Tool calls attached to streaming assistant message via `toolCalls` array
 - Tool names are namespaced: `{mcp_id}/{tool_name}` format (e.g., `fs1/read_file`)
 - Built-in tools (e.g., `rhd_set_flag`) are not namespaced
+- Tool call IDs are made globally unique using atomic counter in backend
+- Event ordering: `ToolCallStarted` sent BEFORE `MessageAdded` (intermediate assistant) to ensure frontend creates temp message first
 
 ### Message Editing
 - User can edit their own messages
@@ -78,9 +80,10 @@ Persistent conversational interface for direct AI interaction. Users create chat
 ### Messages Table
 - `id` — auto-increment primary key
 - `chat_id` — foreign key to chats (cascade delete)
-- `role` — "user" or "assistant"
-- `content` — message text
+- `role` — "user", "assistant", "system", or "tool"
+- `content` — message text (JSON for assistant messages with tool calls, JSON for tool results)
 - `model` — model used for this message (nullable, for visual indicators)
+- `thinking_content` — reasoning/thinking content (nullable)
 - `created_at` — ISO 8601 UTC timestamp
 
 ## WebSocket Protocol
@@ -97,10 +100,18 @@ Persistent conversational interface for direct AI interaction. Users create chat
 
 ### Events
 - `chatStreamChunk` — partial content from AI
+- `chatThinkingChunk` — partial thinking/reasoning content from AI
 - `chatStreamFinished` — AI response complete
 - `chatStreamError` — AI request failed
-- `chatMessageAdded` — new message persisted (user or assistant)
+- `chatMessageAdded` — new message persisted (user, assistant, system, or tool)
 - `chatUpdated` — chat metadata changed
+- `chatToolCallStarted` — MCP tool call started (creates temp assistant message if none exists)
+- `chatToolCallCompleted` — MCP tool call completed (updates tool call with result)
+- `chatPaused` — chat paused during tool loop
+- `chatResumed` — chat resumed from pause
+- `projectAttached` — project attached to chat
+- `projectDetached` — project detached from chat
+- `projectMcpStatusChanged` — MCP status changed for attached project
 
 ## Chat Logging
 
@@ -133,10 +144,12 @@ Raw logging uses the `RawLogger` trait defined in `packages/rhd_ai/src/client.rs
 
 ## Key Files
 - Chat database: `packages/rhd_db/src/chat_db.rs`
-- Chat manager: `packages/rhd_app/src/chat.rs`
+- Chat manager: `packages/rhd_chat/src/manager.rs`
+- Tool loop: `packages/rhd_chat/src/tools.rs`
+- Chat events: `packages/rhd_chat/src/event.rs`
 - AI streaming client: `packages/rhd_ai/src/client.rs`
 - WebSocket handlers: `packages/rhd_app/src/ws.rs`
 - Frontend stores: `frontend/src/lib/chatStores.ts`
 - Frontend WebSocket: `frontend/src/lib/chatWs.ts`
-- Chat components: `frontend/src/components/Chat*.svelte`, `Message*.svelte`, `StreamingMessage.svelte`
+- Chat components: `frontend/src/components/Chat*.svelte`, `Message*.svelte`, `StreamingMessage.svelte`, `ToolCallMessage.svelte`
 - Chat logging: `packages/rhd_chat/src/chat_log.rs`

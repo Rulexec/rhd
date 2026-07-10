@@ -48,12 +48,13 @@ Two-column layout:
    - Message input with send/abort/retry
    - Streaming message display with animated dots indicator
    - Edit button on user messages (truncates and resends)
+   - MCP tool call display with collapsible details (ToolCallMessage component)
 
 ## Real-Time Updates
 - WebSocket connection to daemon (default port 9876, configurable via `VITE_WS_PORT`)
 - Auto-reconnect on connection drop
 - Ping/pong for liveness tracking (2s interval, 5s timeout)
-- Events: `scenarioStarted`, `stepStarted`, `scenarioFinished`, `scenarioPaused`, `scenarioResumed`, `chatStreamChunk`, `chatStreamFinished`, `chatMessageAdded`, etc.
+- Events: `scenarioStarted`, `stepStarted`, `scenarioFinished`, `scenarioPaused`, `scenarioResumed`, `chatStreamChunk`, `chatStreamFinished`, `chatMessageAdded`, `chatToolCallStarted`, `chatToolCallCompleted`, etc.
 
 ## URL Routing
 Hash-based routing persists active tab and selected chat:
@@ -80,7 +81,8 @@ Hash-based routing persists active tab and selected chat:
 - WebSocket client: `frontend/src/lib/ws.ts`
 - Scenario stores: `frontend/src/lib/stores.ts`
 - Chat stores: `frontend/src/lib/chatStores.ts`
+- Project stores: `frontend/src/lib/projectStores.ts`
 - Chat WebSocket: `frontend/src/lib/chatWs.ts`
 - Types & Zod schemas: `frontend/src/lib/types/index.ts`, `frontend/src/lib/types/ws.ts`
-- Components: `frontend/src/components/*.svelte`
+- Components: `frontend/src/components/*.svelte` (includes `ToolCallMessage.svelte`)
 - Styles: `frontend/src/styles/global.css`, `frontend/src/styles/utilities.css`

@@ -21,6 +21,7 @@ frontend/
     │   ├── stores.ts   # Svelte stores for scenario state
     │   ├── chatStores.ts # Svelte stores for chat state
     │   ├── chatWs.ts   # Chat WebSocket functions and event handlers
+    │   ├── projectStores.ts # Project and MCP status stores
     │   ├── utils.ts    # Helper functions
     │   ├── router.ts   # Hash-based routing
     │   └── types/
@@ -36,6 +37,7 @@ frontend/
     │   ├── Message.svelte
     │   ├── MessageInput.svelte
     │   ├── StreamingMessage.svelte
+    │   ├── ToolCallMessage.svelte
     │   ├── ActiveScenario.svelte
     │   └── FinishedScenario.svelte
     ├── styles/
@@ -48,7 +50,8 @@ frontend/
         └── e2e/
             ├── chat.test.ts
             ├── chat-messageflow.test.ts
-            └── chat-streaming.test.ts
+            ├── chat-streaming.test.ts
+            └── chat-mcp-tools.test.ts
 
 packages/rhd_app/src/
 ├── main.rs           # CLI entry point, command dispatch
@@ -57,11 +60,14 @@ packages/rhd_app/src/
 ├── daemon.rs         # Unix socket server, WebSocket server, connection handling
 ├── client.rs         # Unix socket client
 ├── execution.rs      # ExecutionTracker, ExecutionHandle, execution tracking
-├── chat.rs           # ChatManager, ChatEvent, ChatError
 ├── ws.rs             # WebSocket server, JSON protocol handlers, chat handlers
 ├── log.rs            # LogSink, execution logging, meta.json writing/reading
 ├── mcp_cache.rs      # MCP server instance caching
 ├── mcp_loader.rs     # MCP config loading from mcp/<name>/mcp.yaml
+├── project_loader.rs # Project loading from projects/<name>/
+├── project_manager.rs # Project management, MCP client lifecycle
+├── notifications.rs  # Desktop notifications (terminal-notifier, osascript)
+├── credentials.rs    # Credentials file loading
 ├── ipc/
 │   ├── mod.rs
 │   └── protocol.rs   # rkyv message types, read/write helpers
@@ -73,6 +79,17 @@ packages/rhd_app/src/
     ├── ai_chat.rs    # AI chat execution with token tracking
     ├── run_command.rs # Command execution with section tracking
     └── placeholder.rs # Placeholder resolution, ExecutionContext
+
+packages/rhd_chat/src/
+├── lib.rs            # Module exports, ProjectProvider trait
+├── manager.rs        # ChatManager, chat operations
+├── event.rs          # ChatEvent enum
+├── error.rs          # ChatError types
+├── tools.rs          # Tool loop, tool execution, MCP integration
+├── stream.rs         # Streaming helpers
+├── state.rs          # Chat state management
+├── projects.rs       # Project attachment/detachment
+└── chat_log.rs       # Chat logging (ChatLogSink, RawChatLogSink)
 
 packages/rhd_ai/src/
 ├── lib.rs
@@ -100,6 +117,7 @@ packages/rhd_test/src/
 ├── main.rs           # E2E test runner entry point
 ├── args.rs           # CLI argument definitions
 ├── mock_server.rs    # Mock OpenAI-compatible server with token usage and streaming
+├── mock_mcp_server.rs # Mock MCP server for testing
 ├── control_server.rs # HTTP control server for test coordination
 ├── standard_test.rs  # Standard test with meta.json validation
 ├── mcp_test.rs       # MCP tool test

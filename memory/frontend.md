@@ -44,6 +44,7 @@ Svelte-based web UI in `frontend/` directory for monitoring scenario execution a
 - Error states with retry button
 - Model selector dropdown in message input (shows available models, persists per chat)
 - Model indicators in message list (visual dividers showing when model changes between messages)
+- MCP tool call display with collapsible details (ToolCallMessage component)
 
 ## Architecture
 
@@ -53,11 +54,12 @@ Svelte-based web UI in `frontend/` directory for monitoring scenario execution a
 - Svelte stores for state management:
   - Scenario stores: `activeScenarios`, `finishedScenarios`, `pausedScenarios`, `lastKnownId`, `wsConnected`
   - Chat stores: `chats`, `currentChatId`, `messages`, `streamingContent`, `isStreaming`, `streamError`, `streamingMessageId`, `currentChat` (derived)
+  - Project stores: `chatProjects`, `mcpStatuses` (in `projectStores.ts`)
 - CSS modules + utility classes (Tailwind-like approach)
 - Components:
   - Layout: `TabNav`, `App`
   - Scenarios: `ScenariosTab`, `ActiveScenario`, `FinishedScenario`, `PausedScenario`
-  - Chats: `ChatsTab`, `ChatList`, `ChatView`, `MessageList`, `Message`, `MessageInput`, `StreamingMessage`
+  - Chats: `ChatsTab`, `ChatList`, `ChatView`, `MessageList`, `Message`, `MessageInput`, `StreamingMessage`, `ToolCallMessage`
 
 ## Actions Layer (`frontend/src/lib/actions/`)
 

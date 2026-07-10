@@ -10,6 +10,7 @@
 - `ChatMessage`: Public enum for building message history (System, User, Assistant, Tool variants)
 - `chat_stream()`: Streaming chat completion with callback-based chunk processing
 - `chat_stream_cancellable()`: Streaming with `CancellationToken` for abort support
+- `chat_stream_with_tools()`: Streaming with tool definitions for MCP tool loop
 - `StreamChunk`, `StreamResult`: Types for streaming response handling
 - Loads models from `models/*.yaml` at startup
 - Parses token usage from API responses
@@ -42,13 +43,22 @@
 - Built-in tools support (e.g., `rhd_set_flag`)
 - `pid()`: Returns PID of spawned MCP server process (for logging during reload)
 
+**rhd_chat**:
+- `ChatManager`: Handles all chat operations with streaming AI responses
+- `ChatEvent`: Enum for chat events (StreamChunk, ThinkingChunk, StreamFinished, StreamError, MessageAdded, ToolCallStarted, ToolCallCompleted, ChatPaused, ChatResumed, etc.)
+- `tool_loop()`: Implements the MCP tool call loop with streaming support
+- `collect_tools_from_projects()`: Gathers tools from attached projects' MCP clients
+- `ChatLoggers`: Logging infrastructure for chat interactions
+- `ProjectProvider`: Trait for accessing project MCP clients
+- Tool call IDs are made globally unique using atomic counter
+- Event ordering: ToolCallStarted sent BEFORE MessageAdded (intermediate assistant) to ensure frontend creates temp message first
+
 **rhd_app**:
 - **Daemon mode**: Unix socket server on `$HOME/rhd.sock` (default), accepts `RunScenario` and `Reload` requests
 - **WebSocket server**: Optional TCP listener on `127.0.0.1:{ws_port}` for Web UI integration
 - **Client mode**: Connects to daemon, sends scenario name, receives output. Also supports `rhd reload` command
 - **Scenario executor**: Runs action chains sequentially with placeholder resolution
 - **Execution tracking**: Tracks step timings, token usage, log sections
-- **Chat manager**: `ChatManager` handles chat operations with streaming AI responses
 - **IPC protocol**: rkyv serialization with version-prefixed framing (Unix socket)
 - **WebSocket protocol**: JSON over WebSocket (TCP)
 - **MCP integration**: Loads MCP configs, caches server instances, handles tool calls

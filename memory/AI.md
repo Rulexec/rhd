@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-RHD is a Rust-based automation tool for AI-assisted task execution. It uses a daemon/client architecture where a long-running daemon process executes scenarios (action chains) on behalf of client requests via Unix socket IPC. The system also includes a persistent chat feature for direct AI conversations with streaming responses.
+RHD is a Rust-based automation tool for AI-assisted task execution. It uses a daemon/client architecture where a long-running daemon process executes scenarios (action chains) on behalf of client requests via Unix socket IPC. The system also includes a persistent chat feature for direct AI conversations with streaming responses and MCP tool integration.
 
 ## Multi-Crate Workspace Structure
 
@@ -21,6 +21,7 @@ rhd/
 │   ├── rhd_api/      # Shared IPC types, protocol definitions, execution tracking types
 │   ├── rhd_db/       # SQLite database for scenario ID persistence
 │   ├── rhd_mcp_client/ # MCP protocol client for tool usage
+│   ├── rhd_chat/     # Chat manager, tool loop, MCP integration for chat
 │   ├── rhd_app/      # Main binary (daemon + client)
 │   └── rhd_test/     # E2E test runner with mock AI server
 ```

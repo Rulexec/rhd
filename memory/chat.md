@@ -21,16 +21,17 @@ Access tool name via `tool_call.function.name`, arguments via `tool_call.functio
 
 ## Tool Loop Streaming
 
-The `tool_loop()` in `packages/rhd_chat/src/tools.rs` streams only the **final agent message**:
-1. Non-streaming `chat_with_tools()` calls during tool loop (tool calls not streamed)
-2. When final response received (no tool calls): emit `StreamChunk` event with final content
-3. Emit `StreamFinished` when complete
+The `tool_loop()` in `packages/rhd_chat/src/tools.rs` streams the **final agent message** with tool call support:
+1. Streaming `chat_stream_with_tools()` calls during tool loop (content and thinking streamed)
+2. Tool calls are made globally unique using atomic counter
+3. Event ordering: `ToolCallStarted` sent BEFORE `MessageAdded` (intermediate assistant) to ensure frontend creates temp message first
+4. When final response received (no tool calls): emit `StreamFinished` when complete
 
-Tool calls visible via `ToolCallStarted`/`ToolCallCompleted` events, not streaming.
+Tool calls visible via `ToolCallStarted`/`ToolCallCompleted` events, with content streamed separately.
 
 ## Chat Backend (`ChatManager`)
 
-The `ChatManager` in `packages/rhd_app/src/chat.rs` handles all chat operations:
+The `ChatManager` in `packages/rhd_chat/src/manager.rs` handles all chat operations:
 
 - **State**: Holds `Arc<ChatDb>` for persistence and `Mutex<HashMap<i64, CancellationToken>>` for tracking active streams per chat
 - **`create_chat(title)`**: Creates new chat, returns chat_id
