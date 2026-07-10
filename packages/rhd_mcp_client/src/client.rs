@@ -120,6 +120,8 @@ impl McpClientTrait for McpClient {
             McpError::Protocol("tools/call returned no result".to_string())
         })?;
 
+        let raw_response = Some(result.clone());
+
         let content_value = result.get("content").ok_or_else(|| {
             McpError::Protocol("tools/call result missing 'content' field".to_string())
         })?;
@@ -139,6 +141,7 @@ impl McpClientTrait for McpClient {
         Ok(ToolResult {
             content: content_string,
             is_error,
+            raw_response,
         })
     }
 

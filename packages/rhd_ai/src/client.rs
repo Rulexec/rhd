@@ -251,6 +251,7 @@ pub trait RawLogger: Send {
     fn log_stream_chunk(&mut self, index: usize, chunk_json: &str);
     fn log_response(&mut self, response_json: &str);
     fn log_error(&mut self, status: Option<u16>, body: &str);
+    fn log_tool_result_raw(&mut self, tool_name: &str, call_id: &str, raw_json: &str);
 }
 
 pub struct OpenAiClient {

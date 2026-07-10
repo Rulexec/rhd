@@ -26,6 +26,8 @@ pub struct ToolResult {
     pub content: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_error: Option<bool>,
+    #[serde(skip)]
+    pub raw_response: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

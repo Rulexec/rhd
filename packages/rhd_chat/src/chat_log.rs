@@ -208,4 +208,12 @@ impl rhd_ai::client::RawLogger for RawChatLogSink {
         let block = format!("===== ERROR =====\nstatus: {}\n{}\n", status_str, body);
         self.write_block(&block);
     }
+
+    fn log_tool_result_raw(&mut self, tool_name: &str, call_id: &str, raw_json: &str) {
+        let block = format!(
+            "===== TOOL RESULT RAW: {} (id={}) =====\n{}\n",
+            tool_name, call_id, raw_json
+        );
+        self.write_block(&block);
+    }
 }

@@ -5,7 +5,7 @@ use rhd_ai::client::{ChatMessage, OpenAiClient, RawLogger, ToolCall};
 use rhd_ai::{FunctionDefinition, ToolDefinition};
 use rhd_db::{ChatDb, Message};
 use rhd_mcp_client::client::McpClient;
-use rhd_mcp_client::McpClientTrait;
+use rhd_mcp_client::{McpClientTrait, ToolResult};
 use tokio::sync::{broadcast, Mutex};
 use tokio_util::sync::CancellationToken;
 
@@ -266,19 +266,28 @@ pub async fn tool_loop<P: ProjectProvider>(
             let (tool_result, _) = execute_tool_call(tool_call, mcp_clients).await;
 
             if let Some(ref mut l) = loggers {
-                l.chat_log.log_tool_result(&tool_call.function.name, &tool_call.id, &tool_result);
+                l.chat_log.log_tool_result(&tool_call.function.name, &tool_call.id, &tool_result.content);
+            }
+
+            if let Some(ref mut l) = loggers {
+                if let Some(ref mut raw_log) = l.raw_log {
+                    if let Some(ref raw_response) = tool_result.raw_response {
+                        let raw_json = serde_json::to_string_pretty(raw_response).unwrap_or_else(|_| raw_response.to_string());
+                        raw_log.log_tool_result_raw(&tool_call.function.name, &tool_call.id, &raw_json);
+                    }
+                }
             }
 
             let _ = event_sender.send(ChatEvent::ToolCallCompleted {
                 chat_id,
                 tool_call_id: tool_call.id.clone(),
-                result: tool_result.clone(),
+                result: tool_result.content.clone(),
             });
 
             let tool_result_json = serde_json::json!({
                 "toolCallId": tool_call.id,
                 "name": tool_call.function.name,
-                "result": tool_result,
+                "result": tool_result.content,
             })
             .to_string();
             let tool_msg_id = manager.db().add_message(chat_id, "tool", &tool_result_json, None, None)?;
@@ -306,17 +315,25 @@ pub async fn tool_loop<P: ProjectProvider>(
 pub async fn execute_tool_call(
     tool_call: &ToolCall,
     mcp_clients: &[(String, String, Arc<McpClient>)],
-) -> (String, String) {
+) -> (ToolResult, String) {
     let (mcp_id, bare_tool_name) = split_tool_name(&tool_call.function.name);
     for (_project_name, client_mcp_id, client) in mcp_clients {
         if *client_mcp_id == mcp_id {
             match client.call_tool(&bare_tool_name, &tool_call.function.arguments).await {
-                Ok(result) => return (result.content, client_mcp_id.clone()),
-                Err(e) => return (format!("Error: {}", e), client_mcp_id.clone()),
+                Ok(result) => return (result, client_mcp_id.clone()),
+                Err(e) => return (ToolResult {
+                    content: format!("Error: {}", e),
+                    is_error: Some(true),
+                    raw_response: None,
+                }, client_mcp_id.clone()),
             }
         }
     }
-    (format!("Error: unknown tool '{}'", tool_call.function.name), String::new())
+    (ToolResult {
+        content: format!("Error: unknown tool '{}'", tool_call.function.name),
+        is_error: Some(true),
+        raw_response: None,
+    }, String::new())
 }
 
 pub fn extract_mcp_id_from_tool_name(tool_name: &str) -> String {
@@ -555,7 +572,7 @@ mod tests {
         let mcp_clients: Vec<(String, String, Arc<McpClient>)> = vec![];
         let (result, mcp_id) = execute_tool_call(&tool_call, &mcp_clients).await;
         
-        assert!(result.contains("Error: unknown tool"));
+        assert!(result.content.contains("Error: unknown tool"));
         assert_eq!(mcp_id, "");
     }
 
@@ -576,7 +593,7 @@ mod tests {
         let mcp_clients: Vec<(String, String, Arc<McpClient>)> = vec![];
         let (result, mcp_id) = execute_tool_call(&tool_call, &mcp_clients).await;
         
-        assert!(result.contains("Error: unknown tool 'mock1/echo'"));
+        assert!(result.content.contains("Error: unknown tool 'mock1/echo'"));
         assert_eq!(mcp_id, "");
     }
 
@@ -668,6 +685,7 @@ mod tests {
                 Ok(ToolResult {
                     content: result,
                     is_error: None,
+                    raw_response: None,
                 })
             }
         }
