@@ -377,6 +377,7 @@ export function handleChatEvent(event: string, data: unknown): void {
             }
             
             streamingMessageId.set(null);
+            streamingThinkingContent.set('');
             return updated;
           } else {
             streamingMessageId.set(null);
