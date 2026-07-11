@@ -5,6 +5,7 @@ import {
   createChat,
   selectChat,
   deleteChat,
+  deleteAllChats,
   sendMessage,
   editMessage,
   abortChat,
@@ -30,6 +31,9 @@ export async function processAction(action: ChatAction): Promise<void> {
       break;
     case 'deleteChat':
       await deleteChat(action.payload.chatId);
+      break;
+    case 'deleteAllChats':
+      await deleteAllChats();
       break;
     case 'sendMessage':
       await sendMessage(action.payload.content, action.payload.model);

@@ -174,6 +174,8 @@ pub enum WsRequest {
     GetChat { id: String, chat_id: i64 },
     #[serde(rename = "deleteChat", rename_all = "camelCase")]
     DeleteChat { id: String, chat_id: i64 },
+    #[serde(rename = "deleteAllChats")]
+    DeleteAllChats { id: String },
     #[serde(rename = "sendMessage", rename_all = "camelCase")]
     SendMessage {
         id: String,

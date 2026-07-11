@@ -97,6 +97,25 @@ export async function deleteChat(chatId: number): Promise<WsResponse> {
   return response;
 }
 
+export async function deleteAllChats(): Promise<WsResponse> {
+  const id = generateRequestId();
+  const response = await sendRequest({ type: 'deleteAllChats', id });
+  if (response.success) {
+    chats.set([]);
+    currentChatId.set(null);
+    messages.set([]);
+    streamingContent.set('');
+    streamingThinkingContent.set('');
+    isStreaming.set(false);
+    streamError.set(null);
+    streamingMessageId.set(null);
+    selectedModel.set(null);
+    chatProjects.set([]);
+    mcpStatuses.set([]);
+  }
+  return response;
+}
+
 export async function sendMessage(content: string, model: string): Promise<WsResponse> {
   const chatId = get(currentChatId);
   if (!chatId) return { id: '', type: 'response', success: false, error: 'No chat selected' };
@@ -530,6 +549,7 @@ export {
   createChat as _test_createChat,
   selectChat as _test_selectChat,
   deleteChat as _test_deleteChat,
+  deleteAllChats as _test_deleteAllChats,
   sendMessage as _test_sendMessage,
   editMessage as _test_editMessage,
   abortChat as _test_abortChat,

@@ -247,6 +247,7 @@ async fn handle_ws_message(text: &str, state: &Arc<DaemonState>) -> WsResponse {
         WsRequest::ListChats { id } => handle_list_chats(id, state),
         WsRequest::GetChat { id, chat_id } => handle_get_chat(id, chat_id, state),
         WsRequest::DeleteChat { id, chat_id } => handle_delete_chat(id, chat_id, state),
+        WsRequest::DeleteAllChats { id } => handle_delete_all_chats(id, state).await,
         WsRequest::SendMessage { id, chat_id, content, model } => {
             handle_send_message(id, chat_id, content, model, state).await
         }
@@ -486,6 +487,17 @@ fn handle_delete_chat(id: String, chat_id: i64, state: &Arc<DaemonState>) -> WsR
             id,
             ErrorCode::InternalError,
             format!("failed to delete chat: {}", err),
+        ),
+    }
+}
+
+async fn handle_delete_all_chats(id: String, state: &Arc<DaemonState>) -> WsResponse {
+    match state.chat_manager.delete_all_chats().await {
+        Ok(()) => WsResponse::success(id, serde_json::json!({ "deleted": true })),
+        Err(err) => WsResponse::error(
+            id,
+            ErrorCode::InternalError,
+            format!("failed to delete all chats: {}", err),
         ),
     }
 }

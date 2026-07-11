@@ -79,6 +79,15 @@ impl<P: ProjectProvider> ChatManager<P> {
         Ok(())
     }
 
+    pub async fn delete_all_chats(&self) -> Result<(), ChatError> {
+        self.db.delete_all_chats()?;
+        let mut active = self.active_streams.lock().await;
+        for (_, state) in active.drain() {
+            state.cancel_token().cancel();
+        }
+        Ok(())
+    }
+
     pub async fn abort_chat(&self, chat_id: i64) -> bool {
         let active = self.active_streams.lock().await;
         if let Some(state) = active.get(&chat_id) {

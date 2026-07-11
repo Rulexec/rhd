@@ -197,6 +197,15 @@ impl ChatDb {
         Ok(())
     }
 
+    pub fn delete_all_chats(&self) -> DbResult<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| DbError::InitializationError(e.to_string()))?;
+        conn.execute("DELETE FROM chats", [])?;
+        Ok(())
+    }
+
     pub fn update_chat_title(&self, id: i64, title: &str) -> DbResult<()> {
         let conn = self
             .conn
@@ -459,6 +468,24 @@ mod tests {
         db.delete_chat(id).unwrap();
         assert!(db.get_chat(id).unwrap().is_none());
         assert!(db.list_chats().unwrap().is_empty());
+
+        cleanup(path);
+    }
+
+    #[test]
+    fn test_delete_all_chats() {
+        let path = "test_chat_delete_all.db";
+        cleanup(path);
+
+        let db = ChatDb::new(path).unwrap();
+        let id1 = db.create_chat("First").unwrap();
+        let id2 = db.create_chat("Second").unwrap();
+        assert_eq!(db.list_chats().unwrap().len(), 2);
+
+        db.delete_all_chats().unwrap();
+        assert!(db.list_chats().unwrap().is_empty());
+        assert!(db.get_chat(id1).unwrap().is_none());
+        assert!(db.get_chat(id2).unwrap().is_none());
 
         cleanup(path);
     }

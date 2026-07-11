@@ -37,6 +37,12 @@
       await dispatch({ type: 'deleteChat', payload: { chatId } });
     }
   }
+
+  async function handleDeleteAllChats() {
+    if (confirm('Delete all chats? This action cannot be undone.')) {
+      await dispatch({ type: 'deleteAllChats' });
+    }
+  }
 </script>
 
 <div class="chat-list">
@@ -62,6 +68,11 @@
       </div>
     {/each}
   </div>
+  {#if $chats.length > 0}
+    <button class="delete-all-btn" on:click={handleDeleteAllChats}>
+      Delete all chats
+    </button>
+  {/if}
 </div>
 
 <dialog bind:this={dialogEl} class="chat-dialog" on:close={handleDialogClose}>
@@ -155,6 +166,23 @@
   .delete-btn:hover {
     background: rgba(0, 0, 0, 0.1);
     color: var(--color-text);
+  }
+
+  .delete-all-btn {
+    margin: var(--spacing-m);
+    padding: var(--spacing-s) var(--spacing-m);
+    background: none;
+    color: var(--color-danger, #dc3545);
+    border: 1px solid var(--color-danger, #dc3545);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s;
+  }
+
+  .delete-all-btn:hover {
+    background: var(--color-danger, #dc3545);
+    color: white;
   }
 
   .chat-dialog {

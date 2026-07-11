@@ -4,6 +4,7 @@ export type ChatAction =
   | { type: 'createChat'; payload: { title: string } }
   | { type: 'selectChat'; payload: { chatId: number } }
   | { type: 'deleteChat'; payload: { chatId: number } }
+  | { type: 'deleteAllChats' }
   | { type: 'sendMessage'; payload: { content: string; model: string } }
   | { type: 'editMessage'; payload: { messageId: number; content: string; model: string } }
   | { type: 'abortChat' }
