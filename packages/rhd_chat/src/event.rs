@@ -21,6 +21,7 @@ pub enum ChatEvent {
         chat_id: i64,
         tool_call_id: String,
         result: String,
+        is_error: bool,
     },
     ChatPaused { chat_id: i64 },
     ChatResumed { chat_id: i64 },

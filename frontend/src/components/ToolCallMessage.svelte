@@ -49,7 +49,7 @@
   }
 </script>
 
-<div class="tool-call">
+<div class="tool-call" class:failed={toolCall.status === 'failed'}>
   <button class="tool-header" on:click={() => (expanded = !expanded)}>
     <span class="toggle-icon">{expanded ? '▼' : '▶'}</span>
     <span class="tool-status {statusClass}">{statusIcon}</span>
@@ -101,6 +101,11 @@
     padding: var(--spacing-s, 8px);
     margin: var(--spacing-s, 8px) 0;
     font-size: 13px;
+  }
+
+  .tool-call.failed {
+    border-color: #dc3545;
+    background: #fff5f5;
   }
 
   .tool-header {

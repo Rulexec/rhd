@@ -404,6 +404,7 @@ pub struct ToolCallCompletedEvent {
     pub chat_id: i64,
     pub tool_call_id: String,
     pub result: String,
+    pub is_error: bool,
 }
 
 // ============================================================================

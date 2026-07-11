@@ -163,11 +163,13 @@ async fn handle_ws_connection(
                                 chat_id,
                                 tool_call_id,
                                 result,
+                                is_error,
                             } => {
                                 let payload = ToolCallCompletedEvent {
                                     chat_id,
                                     tool_call_id,
                                     result,
+                                    is_error,
                                 };
                                 WsEvent::new("chatToolCallCompleted", serde_json::to_value(&payload)?)
                             }

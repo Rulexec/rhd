@@ -297,6 +297,8 @@ export function handleChatEvent(event: string, data: unknown): void {
             const toolResult = JSON.parse(added.message.content);
             const toolCallId = toolResult.toolCallId;
             const result = toolResult.result;
+            const isError = toolResult.isError || false;
+            const toolStatus = isError ? 'failed' as const : 'completed' as const;
             
             // Find the assistant message with this toolCallId and update it
             let updatedMessageId: number | string | null = null;
@@ -309,7 +311,7 @@ export function handleChatEvent(event: string, data: unknown): void {
                   updatedToolCalls[toolCallIndex] = {
                     ...updatedToolCalls[toolCallIndex],
                     result,
-                    status: 'completed' as const,
+                    status: toolStatus,
                   };
                   return { ...m, toolCalls: updatedToolCalls };
                 }
@@ -494,14 +496,16 @@ export function handleChatEvent(event: string, data: unknown): void {
       break;
     }
     case 'chatToolCallCompleted': {
-      const { toolCallId, result } = data as {
+      const { toolCallId, result, isError } = data as {
         chatId: number;
         toolCallId: string;
         result: string;
+        isError: boolean;
       };
+      const toolStatus = isError ? 'failed' as const : 'completed' as const;
       pendingToolCalls.update((list) =>
         list.map((tc) =>
-          tc.id === toolCallId ? { ...tc, result, status: 'completed' as const } : tc
+          tc.id === toolCallId ? { ...tc, result, status: toolStatus } : tc
         )
       );
       
@@ -518,7 +522,7 @@ export function handleChatEvent(event: string, data: unknown): void {
               updatedToolCalls[toolCallIndex] = {
                 ...updatedToolCalls[toolCallIndex],
                 result,
-                status: 'completed' as const,
+                status: toolStatus,
               };
               return { ...m, toolCalls: updatedToolCalls };
             }

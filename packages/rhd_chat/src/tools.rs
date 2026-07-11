@@ -282,12 +282,14 @@ pub async fn tool_loop<P: ProjectProvider>(
                 chat_id,
                 tool_call_id: tool_call.id.clone(),
                 result: tool_result.content.clone(),
+                is_error: tool_result.is_error.unwrap_or(false),
             });
 
             let tool_result_json = serde_json::json!({
                 "toolCallId": tool_call.id,
                 "name": tool_call.function.name,
                 "result": tool_result.content,
+                "isError": tool_result.is_error.unwrap_or(false),
             })
             .to_string();
             let tool_msg_id = manager.db().add_message(chat_id, "tool", &tool_result_json, None, None)?;
