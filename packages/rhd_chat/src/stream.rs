@@ -63,6 +63,24 @@ pub async fn send_message<P: ProjectProvider>(
     )
     .await?;
 
+    manager.db().update_chat_active_model(chat_id, model)?;
+
+    let user_message_id =
+        manager.db().add_message(chat_id, "user", &content, Some(model), None)?;
+    let user_message = Message {
+        id: user_message_id,
+        chat_id,
+        role: "user".to_string(),
+        content: content.clone(),
+        created_at: chrono::Utc::now().to_rfc3339(),
+        model: Some(model.to_string()),
+        thinking_content: None,
+    };
+    let _ = event_sender.send(ChatEvent::MessageAdded {
+        chat_id,
+        message: user_message,
+    });
+
     let messages = manager.db().get_messages(chat_id)?;
     
     let (tool_defs, mcp_clients) =
@@ -98,24 +116,6 @@ pub async fn send_message<P: ProjectProvider>(
         )
         .await;
     }
-
-    manager.db().update_chat_active_model(chat_id, model)?;
-
-    let user_message_id =
-        manager.db().add_message(chat_id, "user", &content, Some(model), None)?;
-    let user_message = Message {
-        id: user_message_id,
-        chat_id,
-        role: "user".to_string(),
-        content,
-        created_at: chrono::Utc::now().to_rfc3339(),
-        model: Some(model.to_string()),
-        thinking_content: None,
-    };
-    let _ = event_sender.send(ChatEvent::MessageAdded {
-        chat_id,
-        message: user_message,
-    });
 
     let chat_messages = tools::build_chat_messages(&messages);
 
@@ -211,24 +211,6 @@ async fn send_message_with_tools<P: ProjectProvider>(
     loggers: Option<chat_log::ChatLoggers>,
 ) -> Result<i64, ChatError> {
     const MAX_ITERATIONS: u32 = 20;
-
-    manager.db().update_chat_active_model(chat_id, model)?;
-
-    let user_message_id =
-        manager.db().add_message(chat_id, "user", &content, Some(model), None)?;
-    let user_message = Message {
-        id: user_message_id,
-        chat_id,
-        role: "user".to_string(),
-        content: content.clone(),
-        created_at: chrono::Utc::now().to_rfc3339(),
-        model: Some(model.to_string()),
-        thinking_content: None,
-    };
-    let _ = event_sender.send(ChatEvent::MessageAdded {
-        chat_id,
-        message: user_message,
-    });
 
     let (cancel_token, _pause_notify) = manager.register_stream(chat_id).await;
 
