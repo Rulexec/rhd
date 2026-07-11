@@ -72,6 +72,7 @@ export async function selectChat(chatId: number): Promise<WsResponse> {
     currentChatId.set(chatId);
     messages.set(response.data.messages || []);
     streamingContent.set('');
+    streamingThinkingContent.set('');
     isStreaming.set(false);
     streamError.set(null);
     streamingMessageId.set(null);
@@ -250,6 +251,7 @@ export function handleChatEvent(event: string, data: unknown): void {
     case 'chatStreamFinished': {
       isStreaming.set(false);
       streamError.set(null);
+      streamingThinkingContent.set('');
       break;
     }
     case 'chatStreamError': {
@@ -257,6 +259,7 @@ export function handleChatEvent(event: string, data: unknown): void {
       streamError.set(error.error);
       isStreaming.set(false);
       streamingMessageId.set(null);
+      streamingThinkingContent.set('');
       break;
     }
     case 'chatMessageAdded': {
