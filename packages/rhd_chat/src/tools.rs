@@ -355,7 +355,7 @@ pub fn build_chat_messages(messages: &[Message]) -> Vec<ChatMessage> {
         .iter()
         .map(|m| match m.role.as_str() {
             "user" => ChatMessage::user(&m.content),
-            "assistant" => ChatMessage::assistant(&m.content),
+            "assistant" => ChatMessage::assistant_with_thinking(&m.content, m.thinking_content.clone()),
             "system" => ChatMessage::system(&m.content),
             _ => ChatMessage::user(&m.content),
         })
@@ -377,12 +377,12 @@ pub fn build_chat_messages_for_tools(messages: &[Message]) -> Vec<ChatMessage> {
                         .unwrap_or_default();
                     
                     if tool_calls.is_empty() {
-                        chat_messages.push(ChatMessage::assistant(content.unwrap_or_default()));
+                        chat_messages.push(ChatMessage::assistant_with_thinking(content.unwrap_or_default(), m.thinking_content.clone()));
                     } else {
-                        chat_messages.push(ChatMessage::assistant_with_tool_calls(content, tool_calls));
+                        chat_messages.push(ChatMessage::assistant_with_tool_calls(content, m.thinking_content.clone(), tool_calls));
                     }
                 } else {
-                    chat_messages.push(ChatMessage::assistant(&m.content));
+                    chat_messages.push(ChatMessage::assistant_with_thinking(&m.content, m.thinking_content.clone()));
                 }
             }
             "tool" => {

@@ -66,6 +66,8 @@ pub enum ChatMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         content: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
+        reasoning_content: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         tool_calls: Option<Vec<ToolCall>>,
     },
     Tool {
@@ -94,17 +96,29 @@ impl ChatMessage {
         ChatMessage::Assistant {
             role: "assistant".to_string(),
             content: Some(content.into()),
+            reasoning_content: None,
+            tool_calls: None,
+        }
+    }
+
+    pub fn assistant_with_thinking(content: impl Into<String>, thinking: Option<String>) -> Self {
+        ChatMessage::Assistant {
+            role: "assistant".to_string(),
+            content: Some(content.into()),
+            reasoning_content: thinking,
             tool_calls: None,
         }
     }
 
     pub fn assistant_with_tool_calls(
         content: Option<String>,
+        reasoning_content: Option<String>,
         tool_calls: Vec<ToolCall>,
     ) -> Self {
         ChatMessage::Assistant {
             role: "assistant".to_string(),
             content,
+            reasoning_content,
             tool_calls: if tool_calls.is_empty() {
                 None
             } else {
