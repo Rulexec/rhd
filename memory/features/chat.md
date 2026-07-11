@@ -3,6 +3,13 @@
 ## Purpose
 Persistent conversational interface for direct AI interaction. Users create chats, send messages, receive streaming responses, and can edit/resend previous messages. All conversations persist across daemon restarts.
 
+## Delete All Chats
+- "Delete all chats" button at the bottom of the chat list sidebar
+- Removes all chats and their messages at once
+- Shows confirmation dialog before deleting
+- Disabled when no chats exist
+- Clears all related stores (currentChatId, messages, chatProjects, mcpStatuses)
+
 ## How It Works
 
 ### Chat Lifecycle
@@ -29,12 +36,23 @@ Persistent conversational interface for direct AI interaction. Users create chat
 - Stream finish removes animated dots, shows final message
 - Empty chunks filtered on backend (not sent to frontend)
 
+### Smart Auto-Scrolling
+- Message list auto-scrolls to bottom when new content arrives **only if user is at bottom**
+- Tracks "at bottom" state with 30px threshold from bottom
+- If user scrolls up, auto-scroll stops (respects user's scroll position)
+- If user scrolls back to bottom, auto-scroll resumes
+- New streaming session resets auto-scroll to enabled
+- Thinking content collapsible also has smart auto-scroll (see Thinking/Reasoning Content section)
+
 ### Thinking/Reasoning Content
 - AI models with reasoning support (e.g., Qwen) emit `chatThinkingChunk` events
 - Thinking content accumulated separately in `streamingThinkingContent` store
 - Displayed in collapsible "Thinking" section (collapsed by default)
+- **Collapsed preview**: Shows last 3 visual lines (rendered/wrapped) so user sees live streaming progress
+- **Expanded state**: Auto-scrolls to bottom; continues auto-scroll while user stays at bottom; stops if user scrolls up; resumes if user scrolls back to bottom
 - Persisted in `thinking_content` column of messages table
 - Visible in message history for assistant messages
+- Cleared on stream finish, stream error, and chat switch (avoid stale content)
 
 ### System Prompts
 - System prompts emitted as `chatMessageAdded` events with `role="system"`
@@ -93,6 +111,7 @@ Persistent conversational interface for direct AI interaction. Users create chat
 - `listChats` — get all chats
 - `getChat` — get chat with messages
 - `deleteChat` — delete chat and all messages
+- `deleteAllChats` — delete all chats and their messages
 - `sendMessage` — send user message, trigger AI response
 - `editMessage` — edit message, truncate, resend
 - `abortChat` — cancel active streaming

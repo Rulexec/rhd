@@ -3,6 +3,14 @@
 ## Purpose
 Svelte-based web interface for monitoring scenario execution and interacting with AI chat. Connects to daemon via WebSocket for real-time updates.
 
+## State Export/Import
+For debugging and testing, the frontend exposes global functions on `window`:
+- `window.__exportState()` — returns a JSON-serializable object containing all frontend state (stores, router hash)
+- `window.__importState(state)` — restores all stores and URL hash from an exported state object
+- Round-trip is idempotent: exporting after import yields the same state (excluding volatile/derived values)
+- Works from browser console for debugging
+- Captures: scenario stores, chat stores, project stores, router hash
+
 ## Architecture
 - **Framework:** Svelte 5 with TypeScript
 - **Build tool:** Vite
@@ -36,25 +44,44 @@ Displays scenario execution status in three sections:
 Two-column layout:
 
 1. **Chat list sidebar**
-   - "New Chat" button
+   - "New Chat" button (opens modal dialog)
    - List of chats with title and timestamp
    - Delete button on each chat
+   - "Delete all chats" button at bottom (with confirmation)
    - Click to select chat
+
+### New Chat Dialog
+- Modal dialog using native HTML `<dialog>` element
+- Centered on screen with fade overlay (backdrop)
+- Input field for chat title (autofocused)
+- Create button (disabled when input empty)
+- Cancel button
+- Escape key closes dialog
+- Replaces browser's native `prompt()` for better UX
 
 2. **Chat view** (when chat selected)
    - Header with chat title
-   - Message list (scrollable, auto-scroll on new content)
+   - Message list (scrollable, smart auto-scroll on new content)
    - Model selector dropdown under input
    - Message input with send/abort/retry
    - Streaming message display with animated dots indicator
    - Edit button on user messages (truncates and resends)
    - MCP tool call display with collapsible details (ToolCallMessage component)
+   - Markdown rendering for assistant messages (enabled by default, per-message toggle)
+
+### Markdown Rendering
+- Assistant messages render markdown by default (headings, lists, code blocks, links, tables, etc.)
+- Per-message toggle button in top-right corner (MD/Raw) to switch between markdown and raw text
+- Applies to both message content and thinking content
+- User messages and system messages remain plain text
+- Uses `marked` for parsing and `dompurify` for XSS protection
+- Toggle state is per-session only (not persisted)
 
 ## Real-Time Updates
 - WebSocket connection to daemon (default port 9876, configurable via `VITE_WS_PORT`)
 - Auto-reconnect on connection drop
 - Ping/pong for liveness tracking (2s interval, 5s timeout)
-- Events: `scenarioStarted`, `stepStarted`, `scenarioFinished`, `scenarioPaused`, `scenarioResumed`, `chatStreamChunk`, `chatStreamFinished`, `chatMessageAdded`, `chatToolCallStarted`, `chatToolCallCompleted`, etc.
+- Events: `scenarioStarted`, `stepStarted`, `scenarioFinished`, `scenarioPaused`, `scenarioResumed`, `chatStreamChunk`, `chatStreamFinished`, `chatMessageAdded`, `chatToolCallStarted`, `chatToolCallCompleted`, `projectAttached`, `projectDetached`, `projectMcpStatusChanged`, etc.
 
 ## URL Routing
 Hash-based routing persists active tab and selected chat:
@@ -83,6 +110,8 @@ Hash-based routing persists active tab and selected chat:
 - Chat stores: `frontend/src/lib/chatStores.ts`
 - Project stores: `frontend/src/lib/projectStores.ts`
 - Chat WebSocket: `frontend/src/lib/chatWs.ts`
+- State export/import: `frontend/src/lib/stateExport.ts`
+- Markdown renderer: `frontend/src/lib/markdown.ts`
 - Types & Zod schemas: `frontend/src/lib/types/index.ts`, `frontend/src/lib/types/ws.ts`
-- Components: `frontend/src/components/*.svelte` (includes `ToolCallMessage.svelte`)
+- Components: `frontend/src/components/*.svelte` (includes `ToolCallMessage.svelte`, `ProjectsPanel.svelte`, `McpStatusDrawer.svelte`)
 - Styles: `frontend/src/styles/global.css`, `frontend/src/styles/utilities.css`
