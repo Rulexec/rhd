@@ -22,6 +22,8 @@ frontend/
     │   ├── chatStores.ts # Svelte stores for chat state
     │   ├── chatWs.ts   # Chat WebSocket functions and event handlers
     │   ├── projectStores.ts # Project and MCP status stores
+    │   ├── stateExport.ts # State export/import for window.__exportState/__importState
+    │   ├── stateExport.test.ts # Unit tests for state export/import
     │   ├── utils.ts    # Helper functions
     │   ├── router.ts   # Hash-based routing
     │   └── types/

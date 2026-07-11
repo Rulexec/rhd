@@ -2,6 +2,21 @@
 
 Svelte-based web UI in `frontend/` directory for monitoring scenario execution and chat interactions. Written in TypeScript with Zod validation for WebSocket messages.
 
+## State Export/Import
+
+The frontend exposes `window.__exportState()` and `window.__importState(state)` for debugging and testing. These functions serialize and restore all Svelte stores plus the URL hash.
+
+- **`exportState()`**: Returns a JSON-serializable object containing every writable store value (scenarios, chat, projects) and the current `window.location.hash`.
+- **`importState(state)`**: Validates the state object (version check + basic shape validation), restores all stores, and updates the URL hash to trigger the router.
+- **`setupStateExportImport()`**: Called in `main.ts` after app mount; attaches the two functions to `window`.
+
+Implementation details:
+- Custom scenario stores (`activeScenarios`, `pausedScenarios`) expose `setAll(map)` methods to support restoration from serialized arrays.
+- Derived stores (`currentChat`, `isToolLoopRunning`, `activeScenariosList`) are not exported; they recompute from base stores.
+- WebSocket connection state (`wsConnected`) is captured but not actively managed during import; auto-reconnect logic in `ws.ts` handles connection.
+
+See `frontend/src/lib/stateExport.ts` for the full implementation and `frontend/src/lib/stateExport.test.ts` for usage examples.
+
 ## Setup
 
 - Requires Node.js v24.13.0 (specified in `.nvmrc`)
