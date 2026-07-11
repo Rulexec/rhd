@@ -6,12 +6,24 @@
   import ToolCallMessage from './ToolCallMessage.svelte';
 
   let listElement: HTMLDivElement;
+  let isAtBottom = true;
+  const SCROLL_THRESHOLD = 30;
+
+  function handleScroll() {
+    if (!listElement) return;
+    const { scrollTop, scrollHeight, clientHeight } = listElement;
+    isAtBottom = scrollHeight - scrollTop - clientHeight < SCROLL_THRESHOLD;
+  }
 
   afterUpdate(() => {
-    if (listElement) {
+    if (listElement && isAtBottom) {
       listElement.scrollTop = listElement.scrollHeight;
     }
   });
+
+  $: if ($isStreaming && !$streamingMessageId) {
+    isAtBottom = true;
+  }
 
   function shouldShowModelIndicator(index: number): boolean {
     if (index === 0) return true;
@@ -21,7 +33,7 @@
   }
 </script>
 
-<div class="message-list" bind:this={listElement}>
+<div class="message-list" bind:this={listElement} on:scroll={handleScroll}>
   {#each $messages as message, index (message.id)}
     {#if shouldShowModelIndicator(index)}
       <div class="model-indicator">
