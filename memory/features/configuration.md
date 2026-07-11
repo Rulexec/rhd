@@ -3,11 +3,6 @@
 ## Purpose
 System configuration via YAML files and CLI arguments. Supports model definitions, scenario directories, credentials separation, and runtime overrides.
 
-## MCP ID Field
-Project MCP configurations support an optional `id` field. If not specified, the `name` field is used as the ID. The ID is used for:
-- Tool namespacing: tools are exposed to AI as `{id}/{tool_name}`
-- Conflict detection: attaching projects with duplicate MCP IDs is rejected
-
 ## Configuration Files
 
 ### `rhd.yaml` — Main Config
@@ -26,8 +21,6 @@ wsPort: null                 # WebSocket server port (null = disabled)
 credentialsConfig: null      # path to credentials file (relative to rhd.yaml)
 neverFail: false             # pause on AI errors instead of failing (requires wsPort)
 ```
-
-**Resolution order:** CLI arg → config file → built-in default
 
 ### `models/<name>.yaml` — Model Definitions
 Each file defines an AI model configuration. Filename = model name.
@@ -101,16 +94,14 @@ Two-stage resolution:
 
 CLI applies to any model, even YAML-alias-resolved ones. Logs and meta.json show final resolved model name.
 
+## MCP ID Field
+Project MCP configurations support an optional `id` field. If not specified, the `name` field is used as the ID. The ID is used for:
+- Tool namespacing: tools are exposed to AI as `{id}/{tool_name}`
+- Conflict detection: attaching projects with duplicate MCP IDs is rejected
+
 ## Startup Validation
 - All model configs validated at daemon startup
 - Invalid YAML → daemon exits with error (file path + line number)
 - Missing credentials file (when referenced) → daemon exits with error
 - Missing model directories → daemon exits with error
 - Socket path cleaned up on startup (stale socket removed)
-
-## Key Files
-- Config loading: `packages/rhd_app/src/config.rs`
-- Credentials: `packages/rhd_app/src/credentials.rs`
-- Model config: `packages/rhd_ai/src/config.rs`
-- CLI args: `packages/rhd_app/src/cli.rs`
-- Config merge: `packages/rhd_app/src/main.rs`

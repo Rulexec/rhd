@@ -26,6 +26,25 @@ rhd/
 │   └── rhd_test/     # E2E test runner with mock AI server
 ```
 
+## Documentation Structure
+
+### Product-View vs Implementation
+
+The knowledge base is organized into two layers:
+
+**Top-level files** (`chat.md`, `configuration.md`, `scenarios.md`, etc.):
+- **Implementation details**: crate APIs, database schemas, protocols, internal architecture
+- **When to read**: When implementing or modifying code in specific areas
+- **Contains**: Function signatures, struct definitions, database schemas, protocol messages, key file paths
+
+**Features files** (`features/chat.md`, `features/configuration.md`, etc.):
+- **Product-view only**: what the feature does, user interactions, behavior, configuration
+- **When to read**: When understanding what a feature does from a user perspective
+- **Contains**: User workflows, UI behavior, configuration options, error handling from user perspective
+- **Does NOT contain**: Database schemas, internal crate APIs, protocol details, key file paths
+
+**Pattern**: Features files describe "what it does" (product behavior), top-level files describe "how it's built" (implementation).
+
 ## Knowledge Base Index
 
 **IMPORTANT**: Always read [development.md](development.md) before starting any work. It contains project conventions, testing practices, and commit guidelines.

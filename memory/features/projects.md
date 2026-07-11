@@ -55,7 +55,7 @@ Plain markdown text injected as a system message at the start of the conversatio
 ### System Prompt Injection
 - Injected as a system message at the beginning of the conversation
 - Happens on the **first message** after project attachment
-- Tracked per-project per-chat in `chat_projects` table
+- Tracked per-project per-chat in database
 - Not re-injected on subsequent messages (avoid duplicates)
 - If project is detached and re-attached, system prompt is injected again
 
@@ -110,23 +110,6 @@ When attaching a project to a chat:
 - `projectDetached` — project detached from chat (chatId, projectName)
 - `projectMcpStatusChanged` — MCP status changed (projectName, mcpName, status, error?)
 
-## Data Model
-
-### chat_projects Table
-```sql
-CREATE TABLE chat_projects (
-    chat_id INTEGER NOT NULL,
-    project_name TEXT NOT NULL,
-    system_prompt_added BOOLEAN NOT NULL DEFAULT 0,
-    attached_at TEXT NOT NULL,
-    PRIMARY KEY (chat_id, project_name),
-    FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE
-);
-```
-
-- `system_prompt_added`: Tracks whether system prompt has been injected (avoid duplicates)
-- Cascade delete: When chat is deleted, all project attachments are removed
-
 ## Error Handling
 
 ### MCP Server Spawn Failure
@@ -142,11 +125,3 @@ CREATE TABLE chat_projects (
 - Status changes to "failed"
 - UI shows error indicator
 - User can retry by detaching and re-attaching
-
-## Key Files
-- Project loader: `packages/rhd_app/src/project_loader.rs`
-- Project manager: `packages/rhd_app/src/project_manager.rs`
-- Project types: `packages/rhd_api/src/project.rs`
-- Chat-project integration: `packages/rhd_chat/src/projects.rs`
-- Frontend project stores: `frontend/src/lib/projectStores.ts`
-- Frontend components: `frontend/src/components/ProjectsPanel.svelte`, `McpStatusDrawer.svelte`

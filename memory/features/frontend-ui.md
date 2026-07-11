@@ -9,15 +9,6 @@ For debugging and testing, the frontend exposes global functions on `window`:
 - `window.__importState(state)` — restores all stores and URL hash from an exported state object
 - Round-trip is idempotent: exporting after import yields the same state (excluding volatile/derived values)
 - Works from browser console for debugging
-- Captures: scenario stores, chat stores, project stores, router hash
-
-## Architecture
-- **Framework:** Svelte 5 with TypeScript
-- **Build tool:** Vite
-- **State management:** Svelte stores (writable, derived)
-- **Communication:** WebSocket (JSON protocol)
-- **Styling:** CSS modules + utility classes (Tailwind-like)
-- **Runtime validation:** Zod schemas for WebSocket messages
 
 ## Tabs
 
@@ -74,7 +65,6 @@ Two-column layout:
 - Per-message toggle button in top-right corner (MD/Raw) to switch between markdown and raw text
 - Applies to both message content and thinking content
 - User messages and system messages remain plain text
-- Uses `marked` for parsing and `dompurify` for XSS protection
 - Toggle state is per-session only (not persisted)
 
 ## Real-Time Updates
@@ -100,18 +90,3 @@ Hash-based routing persists active tab and selected chat:
 - Backend timestamps remain UTC ISO 8601
 - Duration formatted as human-readable string
 - Cost formatted as dollars with 4 decimal places
-
-## Key Files
-- Entry point: `frontend/src/main.ts`
-- App component: `frontend/src/App.svelte`
-- Router: `frontend/src/lib/router.ts`
-- WebSocket client: `frontend/src/lib/ws.ts`
-- Scenario stores: `frontend/src/lib/stores.ts`
-- Chat stores: `frontend/src/lib/chatStores.ts`
-- Project stores: `frontend/src/lib/projectStores.ts`
-- Chat WebSocket: `frontend/src/lib/chatWs.ts`
-- State export/import: `frontend/src/lib/stateExport.ts`
-- Markdown renderer: `frontend/src/lib/markdown.ts`
-- Types & Zod schemas: `frontend/src/lib/types/index.ts`, `frontend/src/lib/types/ws.ts`
-- Components: `frontend/src/components/*.svelte` (includes `ToolCallMessage.svelte`, `ProjectsPanel.svelte`, `McpStatusDrawer.svelte`)
-- Styles: `frontend/src/styles/global.css`, `frontend/src/styles/utilities.css`
