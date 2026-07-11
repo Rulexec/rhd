@@ -3,6 +3,7 @@
   import { dispatch } from '../lib/actions';
   import { streamingMessageId, selectedModel } from '../lib/chatStores';
   import type { ChatMessage } from '../lib/types/index';
+  import { renderMarkdown } from '../lib/markdown';
 
   export let message: ChatMessage;
 
@@ -11,13 +12,21 @@
   let model = 'gpt4';
   let systemExpanded = false;
   let thinkingExpanded = false;
-  let thinkingEl: HTMLPreElement | null = null;
+  let thinkingEl: HTMLElement | null = null;
   let thinkingAutoScroll = true;
+  let markdownEnabled = true;
   const SCROLL_THRESHOLD = 30;
 
   $: isStreamingMessage = $streamingMessageId === message.id;
   $: isSystemMessage = message.role === 'system';
+  $: isAssistantMessage = message.role === 'assistant';
   $: hasThinkingContent = message.thinkingContent && message.thinkingContent.length > 0;
+  $: renderedContent = markdownEnabled && isAssistantMessage ? renderMarkdown(message.content) : null;
+  $: renderedThinking = markdownEnabled && hasThinkingContent && message.thinkingContent ? renderMarkdown(message.thinkingContent) : null;
+
+  function toggleMarkdown() {
+    markdownEnabled = !markdownEnabled;
+  }
 
   function toggleThinking() {
     thinkingExpanded = !thinkingExpanded;
@@ -96,25 +105,55 @@
       <pre class="system-content">{message.content}</pre>
     {/if}
   {:else}
+    {#if isAssistantMessage}
+      <button
+        class="markdown-toggle-btn"
+        on:click={toggleMarkdown}
+        title={markdownEnabled ? 'Show raw text' : 'Show markdown'}
+      >
+        {markdownEnabled ? 'MD' : 'Raw'}
+      </button>
+    {/if}
     {#if hasThinkingContent}
       <button class="thinking-header" on:click={toggleThinking}>
         <span class="toggle-icon">{thinkingExpanded ? '▼' : '▶'}</span>
         <span class="thinking-label">Thinking</span>
       </button>
       {#if thinkingExpanded}
-        <pre class="thinking-content" bind:this={thinkingEl} on:scroll={handleThinkingScroll}>{message.thinkingContent}</pre>
+        {#if renderedThinking}
+          <div class="thinking-content markdown-body" bind:this={thinkingEl} on:scroll={handleThinkingScroll} style="overflow-y: auto; max-height: 300px;">
+            {@html renderedThinking}
+          </div>
+        {:else}
+          <pre class="thinking-content" bind:this={thinkingEl} on:scroll={handleThinkingScroll}>{message.thinkingContent}</pre>
+        {/if}
       {:else}
         <div class="thinking-preview">
-          <pre class="thinking-content">{message.thinkingContent}</pre>
+          {#if renderedThinking}
+            <div class="thinking-content markdown-body">
+              {@html renderedThinking}
+            </div>
+          {:else}
+            <pre class="thinking-content">{message.thinkingContent}</pre>
+          {/if}
         </div>
       {/if}
     {/if}
-    <div class="content">
-      {message.content}
-      {#if isStreamingMessage}
-        <span class="streaming-dots"></span>
-      {/if}
-    </div>
+    {#if renderedContent}
+      <div class="content markdown-body">
+        {@html renderedContent}
+        {#if isStreamingMessage}
+          <span class="streaming-dots"></span>
+        {/if}
+      </div>
+    {:else}
+      <div class="content">
+        {message.content}
+        {#if isStreamingMessage}
+          <span class="streaming-dots"></span>
+        {/if}
+      </div>
+    {/if}
     {#if message.role === 'user'}
       <button class="edit-btn" on:click={startEdit} aria-label="Edit message">
         ✎
@@ -347,5 +386,114 @@
     overflow-y: auto;
     color: var(--color-text-secondary, #666);
     font-style: italic;
+  }
+
+  .markdown-toggle-btn {
+    position: absolute;
+    top: var(--spacing-xs);
+    right: var(--spacing-xs);
+    background: none;
+    border: 1px solid var(--color-border);
+    color: var(--color-text-muted);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    opacity: 0;
+    transition: opacity 0.2s;
+    font-family: monospace;
+  }
+
+  .message.assistant:hover .markdown-toggle-btn {
+    opacity: 1;
+  }
+
+  .markdown-toggle-btn:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: var(--color-text);
+  }
+
+  .markdown-body {
+    white-space: normal;
+  }
+
+  .markdown-body :global(h1),
+  .markdown-body :global(h2),
+  .markdown-body :global(h3),
+  .markdown-body :global(h4),
+  .markdown-body :global(h5),
+  .markdown-body :global(h6) {
+    margin-top: 1em;
+    margin-bottom: 0.5em;
+    font-weight: 600;
+  }
+
+  .markdown-body :global(code) {
+    background: var(--color-bg-secondary, #f6f8fa);
+    padding: 0.2em 0.4em;
+    border-radius: 3px;
+    font-size: 0.9em;
+    font-family: monospace;
+  }
+
+  .markdown-body :global(pre) {
+    background: var(--color-bg-secondary, #f6f8fa);
+    padding: 1em;
+    border-radius: 6px;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+
+  .markdown-body :global(pre code) {
+    background: none;
+    padding: 0;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+
+  .markdown-body :global(ul),
+  .markdown-body :global(ol) {
+    padding-left: 2em;
+    margin: 0.5em 0;
+  }
+
+  .markdown-body :global(blockquote) {
+    border-left: 4px solid var(--color-border, #ddd);
+    padding-left: 1em;
+    margin: 0.5em 0;
+    color: var(--color-text-secondary, #666);
+  }
+
+  .markdown-body :global(a) {
+    color: var(--color-primary, #0066cc);
+    text-decoration: none;
+  }
+
+  .markdown-body :global(a:hover) {
+    text-decoration: underline;
+  }
+
+  .markdown-body :global(table) {
+    border-collapse: collapse;
+    margin: 0.5em 0;
+  }
+
+  .markdown-body :global(th),
+  .markdown-body :global(td) {
+    border: 1px solid var(--color-border, #ddd);
+    padding: 0.5em;
+  }
+
+  .markdown-body :global(th) {
+    background: var(--color-bg-secondary, #f6f8fa);
+    font-weight: 600;
+  }
+
+  .thinking-content.markdown-body {
+    font-style: italic;
+    color: var(--color-text-secondary, #666);
   }
 </style>

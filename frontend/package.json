@@ -16,6 +16,8 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/svelte": "^5.4.2",
     "@tsconfig/svelte": "^5.0.4",
+    "@types/dompurify": "^3.0.5",
+    "@types/marked": "^5.0.2",
     "@types/node": "^26.1.0",
     "happy-dom": "^20.10.6",
     "jsdom": "^29.1.1",
@@ -26,5 +28,9 @@
     "vite": "^6.3.5",
     "vitest": "^4.1.9",
     "zod": "^3.24.1"
+  },
+  "dependencies": {
+    "dompurify": "^3.4.12",
+    "marked": "^18.0.6"
   }
 }
