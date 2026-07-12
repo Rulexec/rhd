@@ -238,7 +238,7 @@ pub async fn inject_roles_prompt<P: ProjectProvider>(
 
     let mut prompt = String::new();
     prompt.push_str(&format!(
-        "Your behavior is defined by the current active role. Current active role is {}. You can switch your role by tool `rhd_set_role`.\n\n",
+        "Your behavior is defined by the current active role. Current active role is \"{}\". You can switch your role by tool `rhd_set_role`.\n\n",
         current_role_name
     ));
     prompt.push_str("These are the currently available roles:\n");
@@ -284,7 +284,7 @@ pub fn inject_role_system_prompt<P: ProjectProvider>(
         })?;
 
     let mut prompt = String::new();
-    prompt.push_str(&format!("Your current role is now {}.\n\n", role_name));
+    prompt.push_str(&format!("Your current role is now \"{}\".\n\n", role_name));
     prompt.push_str("-----\n\n");
     prompt.push_str(&system_prompt);
 
@@ -302,6 +302,33 @@ pub fn inject_role_system_prompt<P: ProjectProvider>(
         chat_id,
         message: system_message,
     });
+
+    Ok(())
+}
+
+pub fn inject_pending_role_prompt<P: ProjectProvider>(
+    db: &Arc<ChatDb>,
+    project_provider: &Arc<P>,
+    chat_id: i64,
+    event_sender: &broadcast::Sender<ChatEvent>,
+) -> Result<(), ChatError> {
+    if !db.has_role_prompt_pending(chat_id)? {
+        return Ok(());
+    }
+
+    let active_role = db.get_active_role(chat_id)?;
+    if let Some((project_name, role_name)) = active_role {
+        inject_role_system_prompt(
+            db,
+            project_provider,
+            chat_id,
+            &project_name,
+            &role_name,
+            event_sender,
+        )?;
+    }
+
+    db.set_role_prompt_pending(chat_id, false)?;
 
     Ok(())
 }
@@ -478,6 +505,7 @@ mod tests {
         assert_eq!(messages[0].role, "system");
         assert!(messages[0].content.contains("developer"));
         assert!(messages[0].content.contains("reviewer"));
+        assert!(messages[0].content.contains("Current active role is \"none\""));
 
         inject_roles_prompt(&db, &provider, chat_id, &event_sender)
             .await
@@ -521,7 +549,7 @@ mod tests {
         let messages = db.get_messages(chat_id).unwrap();
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].role, "system");
-        assert!(messages[0].content.contains("Your current role is now developer"));
+        assert!(messages[0].content.contains("Your current role is now \"developer\""));
         assert!(messages[0].content.contains("You are a developer."));
 
         cleanup(path);

@@ -276,16 +276,7 @@ impl<P: ProjectProvider> ChatManager<P> {
         }
 
         self.db.set_active_role(chat_id, project_name, role_name)?;
-        self.db.reset_roles_list_injected(chat_id)?;
-
-        projects::inject_role_system_prompt(
-            &self.db,
-            &self.project_provider,
-            chat_id,
-            project_name,
-            role_name,
-            &event_sender,
-        )?;
+        self.db.set_role_prompt_pending(chat_id, true)?;
 
         let _ = event_sender.send(ChatEvent::RoleChanged {
             chat_id,

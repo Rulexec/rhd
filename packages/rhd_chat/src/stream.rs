@@ -71,6 +71,13 @@ pub async fn send_message<P: ProjectProvider>(
     )
     .await?;
 
+    projects::inject_pending_role_prompt(
+        manager.db(),
+        manager.project_provider(),
+        chat_id,
+        &event_sender,
+    )?;
+
     manager.db().update_chat_active_model(chat_id, model)?;
 
     let user_message_id =
@@ -285,6 +292,13 @@ pub async fn edit_and_resend<P: ProjectProvider>(
         &event_sender,
     )
     .await?;
+
+    projects::inject_pending_role_prompt(
+        manager.db(),
+        manager.project_provider(),
+        chat_id,
+        &event_sender,
+    )?;
 
     manager.db().update_chat_active_model(chat_id, model)?;
 

@@ -213,6 +213,13 @@ pub async fn tool_loop<P: ProjectProvider>(
 
         manager.check_pause_state(chat_id, event_sender).await;
 
+        crate::projects::inject_pending_role_prompt(
+            manager.db(),
+            manager.project_provider(),
+            chat_id,
+            event_sender,
+        )?;
+
         let db_messages = manager.db().get_messages(chat_id)?;
         let chat_messages = build_chat_messages_for_tools(&db_messages);
 
@@ -1100,9 +1107,12 @@ mod tests {
         assert_eq!(active_role.0, "project-a");
         assert_eq!(active_role.1, "developer");
         
-        // Verify system message was injected
+        // Verify system message was NOT injected immediately (deferred injection)
         let messages = db.get_messages(chat_id).unwrap();
-        assert!(messages.iter().any(|m| m.role == "system" && m.content.contains("Your current role is now developer")));
+        assert!(!messages.iter().any(|m| m.role == "system" && m.content.contains("Your current role is now")));
+        
+        // Verify role_prompt_pending flag is set
+        assert!(db.has_role_prompt_pending(chat_id).unwrap());
         
         cleanup("test_set_role.db");
     }

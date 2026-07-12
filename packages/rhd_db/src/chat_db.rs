@@ -157,6 +157,16 @@ impl ChatDb {
             conn.execute_batch("ALTER TABLE chats ADD COLUMN roles_list_injected BOOLEAN NOT NULL DEFAULT 0")?;
         }
 
+        // Check if role_prompt_pending column exists in chats table
+        let has_role_prompt_pending: bool = conn
+            .prepare("SELECT COUNT(*) FROM pragma_table_info('chats') WHERE name='role_prompt_pending'")?
+            .query_row([], |row| row.get::<_, i64>(0))?
+            > 0;
+
+        if !has_role_prompt_pending {
+            conn.execute_batch("ALTER TABLE chats ADD COLUMN role_prompt_pending BOOLEAN NOT NULL DEFAULT 0")?;
+        }
+
         Ok(())
     }
 
@@ -533,6 +543,31 @@ impl ChatDb {
             params![chat_id],
         )?;
         Ok(())
+    }
+
+    /// Sets the role prompt pending flag (called when role is changed)
+    pub fn set_role_prompt_pending(&self, chat_id: i64, pending: bool) -> DbResult<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| DbError::InitializationError(e.to_string()))?;
+        conn.execute(
+            "UPDATE chats SET role_prompt_pending = ?1 WHERE id = ?2",
+            params![pending, chat_id],
+        )?;
+        Ok(())
+    }
+
+    /// Checks if the role prompt is pending injection
+    pub fn has_role_prompt_pending(&self, chat_id: i64) -> DbResult<bool> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| DbError::InitializationError(e.to_string()))?;
+        let pending: bool = conn
+            .prepare("SELECT role_prompt_pending FROM chats WHERE id = ?1")?
+            .query_row(params![chat_id], |row| row.get(0))?;
+        Ok(pending)
     }
 }
 
@@ -954,6 +989,28 @@ mod tests {
         let role = db.get_active_role(1).unwrap().unwrap();
         assert_eq!(role.0, "proj");
         assert_eq!(role.1, "role");
+
+        cleanup(path);
+    }
+
+    #[test]
+    fn test_role_prompt_pending_flag() {
+        let path = "test_chat_role_prompt_pending.db";
+        cleanup(path);
+
+        let db = ChatDb::new(path).unwrap();
+        let chat_id = db.create_chat("Test").unwrap();
+
+        // Initially not pending
+        assert!(!db.has_role_prompt_pending(chat_id).unwrap());
+
+        // Set as pending
+        db.set_role_prompt_pending(chat_id, true).unwrap();
+        assert!(db.has_role_prompt_pending(chat_id).unwrap());
+
+        // Clear pending
+        db.set_role_prompt_pending(chat_id, false).unwrap();
+        assert!(!db.has_role_prompt_pending(chat_id).unwrap());
 
         cleanup(path);
     }
