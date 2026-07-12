@@ -7,8 +7,8 @@ use rhd_api::{
     ActiveRoleClearedEvent, ChatMessageAddedEvent, ChatMessageDto, ChatPausedEvent,
     ChatResumedEvent, ChatStreamChunkEvent, ChatStreamErrorEvent, ChatStreamFinishedEvent,
     ChatThinkingChunkEvent, DevNotificationEvent, ErrorCode, ProjectAttachedEvent,
-    ProjectDetachedEvent, RoleChangedEvent, RoleInfo, RolesUpdatedEvent,
-    ToolCallCompletedEvent, ToolCallStartedEvent, WsEvent,
+    ProjectDetachedEvent, RoleChangedEvent, RoleInfo, RolesUpdatedEvent, TodoItemDto,
+    TodoListUpdatedEvent, ToolCallCompletedEvent, ToolCallStartedEvent, WsEvent,
     WsRequest, WsResponse,
 };
 use tokio::net::TcpListener;
@@ -214,6 +214,16 @@ async fn handle_ws_connection(
                             ChatEvent::ActiveRoleCleared { chat_id } => {
                                 let payload = ActiveRoleClearedEvent { chat_id };
                                 WsEvent::new("activeRoleCleared", serde_json::to_value(&payload)?)
+                            }
+                            ChatEvent::TodoListUpdated { chat_id, items } => {
+                                let payload = TodoListUpdatedEvent {
+                                    chat_id,
+                                    items: items.into_iter().map(|item| TodoItemDto {
+                                        content: item.content,
+                                        status: item.status.as_str().to_string(),
+                                    }).collect(),
+                                };
+                                WsEvent::new("todoListUpdated", serde_json::to_value(&payload)?)
                             }
                         };
                         let event_text = serde_json::to_string(&ws_event)?;

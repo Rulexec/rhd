@@ -497,6 +497,20 @@ pub struct ActiveRoleClearedEvent {
     pub chat_id: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TodoItemDto {
+    pub content: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TodoListUpdatedEvent {
+    pub chat_id: i64,
+    pub items: Vec<TodoItemDto>,
+}
+
 // ============================================================================
 // Token pricing types
 // ============================================================================

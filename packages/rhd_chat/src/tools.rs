@@ -16,6 +16,27 @@ use crate::manager::ChatManager;
 use crate::ProjectProvider;
 
 pub const RHD_SET_ROLE_TOOL_NAME: &str = "rhd_set_role";
+pub const RHD_SET_TODO_LIST_TOOL_NAME: &str = "rhd_set_todo_list";
+
+pub fn rhd_set_todo_list_tool_definition() -> ToolDefinition {
+    ToolDefinition {
+        tool_type: "function".to_string(),
+        function: FunctionDefinition {
+            name: RHD_SET_TODO_LIST_TOOL_NAME.to_string(),
+            description: "Replace the entire TODO list with an updated checklist reflecting the current state. Always provide the full list; the system will overwrite the previous one. This tool is designed for step-by-step task tracking, allowing you to confirm completion of each step before updating, update multiple statuses at once (e.g., mark one as completed and start the next), and dynamically add new todos as they're discovered.".to_string(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "todos": {
+                        "type": "string",
+                        "description": "Full markdown checklist in execution order, using [ ] for pending, [x] for completed, [-] for in progress, and [!] for discarded"
+                    }
+                },
+                "required": ["todos"]
+            }),
+        },
+    }
+}
 
 pub fn rhd_set_role_tool_definition() -> ToolDefinition {
     ToolDefinition {
@@ -43,6 +64,8 @@ pub fn collect_builtin_tools(
     chat_id: i64,
 ) -> Vec<ToolDefinition> {
     let mut tools = Vec::new();
+
+    tools.push(rhd_set_todo_list_tool_definition());
 
     let attached_projects = match db.get_chat_projects(chat_id) {
         Ok(projects) => projects,
@@ -96,6 +119,101 @@ pub async fn collect_tools_from_projects<P: ProjectProvider>(
     }
 
     (tools, mcp_clients)
+}
+
+pub async fn handle_rhd_set_todo_list<P: ProjectProvider>(
+    manager: &ChatManager<P>,
+    chat_id: i64,
+    arguments: &str,
+    event_sender: &broadcast::Sender<ChatEvent>,
+) -> ToolResult {
+    let args: serde_json::Value = match serde_json::from_str(arguments) {
+        Ok(v) => v,
+        Err(e) => {
+            return ToolResult {
+                content: format!("Error: invalid arguments: {}", e),
+                is_error: Some(true),
+                raw_response: None,
+            };
+        }
+    };
+
+    let todos = match args.get("todos").and_then(|v| v.as_str()) {
+        Some(todos) => todos.to_string(),
+        None => {
+            return ToolResult {
+                content: "Error: missing required parameter 'todos'".to_string(),
+                is_error: Some(true),
+                raw_response: None,
+            };
+        }
+    };
+
+    let todo_items = match parse_todo_list(&todos) {
+        Ok(items) => items,
+        Err(e) => {
+            return ToolResult {
+                content: format!("Error: failed to parse todo list: {}", e),
+                is_error: Some(true),
+                raw_response: None,
+            };
+        }
+    };
+
+    match manager.db().set_todo_list(chat_id, &todos) {
+        Ok(()) => {
+            let _ = event_sender.send(ChatEvent::TodoListUpdated {
+                chat_id,
+                items: todo_items,
+            });
+            
+            ToolResult {
+                content: "Todo list updated successfully.".to_string(),
+                is_error: Some(false),
+                raw_response: None,
+            }
+        }
+        Err(e) => ToolResult {
+            content: format!("Error: failed to save todo list: {}", e),
+            is_error: Some(true),
+            raw_response: None,
+        },
+    }
+}
+
+pub fn parse_todo_list(input: &str) -> Result<Vec<crate::TodoItem>, String> {
+    let mut items = Vec::new();
+    
+    for line in input.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        
+        if let Some(content) = trimmed.strip_prefix("[ ] ") {
+            items.push(crate::TodoItem {
+                content: content.to_string(),
+                status: crate::TodoStatus::Pending,
+            });
+        } else if let Some(content) = trimmed.strip_prefix("[-] ") {
+            items.push(crate::TodoItem {
+                content: content.to_string(),
+                status: crate::TodoStatus::InProgress,
+            });
+        } else if let Some(content) = trimmed.strip_prefix("[x] ") {
+            items.push(crate::TodoItem {
+                content: content.to_string(),
+                status: crate::TodoStatus::Completed,
+            });
+        } else if let Some(content) = trimmed.strip_prefix("[!] ") {
+            items.push(crate::TodoItem {
+                content: content.to_string(),
+                status: crate::TodoStatus::Discarded,
+            });
+        }
+    }
+    
+    Ok(items)
 }
 
 pub async fn handle_rhd_set_role<P: ProjectProvider>(
@@ -452,6 +570,11 @@ pub async fn execute_tool_call<P: ProjectProvider>(
     event_sender: &broadcast::Sender<ChatEvent>,
 ) -> (ToolResult, String) {
     let tool_name = &tool_call.function.name;
+
+    if tool_name == RHD_SET_TODO_LIST_TOOL_NAME {
+        let result = handle_rhd_set_todo_list(manager, chat_id, &tool_call.function.arguments, event_sender).await;
+        return (result, String::new());
+    }
 
     if tool_name == RHD_SET_ROLE_TOOL_NAME {
         let result = handle_rhd_set_role(manager, chat_id, &tool_call.function.arguments, event_sender).await;
@@ -1038,7 +1161,8 @@ mod tests {
         };
         
         let tools = collect_builtin_tools(&db, &Arc::new(provider), chat_id);
-        assert!(tools.is_empty());
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0].function.name, "rhd_set_todo_list");
         
         cleanup("test_no_roles.db");
     }
@@ -1063,8 +1187,9 @@ mod tests {
         db.attach_project(chat_id, "project-a").unwrap();
         
         let tools = collect_builtin_tools(&db, &Arc::new(provider), chat_id);
-        assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].function.name, "rhd_set_role");
+        assert_eq!(tools.len(), 2);
+        assert_eq!(tools[0].function.name, "rhd_set_todo_list");
+        assert_eq!(tools[1].function.name, "rhd_set_role");
         
         cleanup("test_with_roles.db");
     }
@@ -1161,5 +1286,96 @@ mod tests {
         assert!(result.content.contains("missing required parameter"));
         
         cleanup("test_set_role_invalid.db");
+    }
+
+    #[test]
+    fn test_rhd_set_todo_list_tool_definition() {
+        let tool = rhd_set_todo_list_tool_definition();
+        assert_eq!(tool.function.name, "rhd_set_todo_list");
+        assert!(tool.function.description.contains("TODO list"));
+        
+        let params = tool.function.parameters;
+        assert_eq!(params["type"], "object");
+        assert!(params["properties"]["todos"].is_object());
+        assert_eq!(params["required"], serde_json::json!(["todos"]));
+    }
+
+    #[test]
+    fn test_parse_todo_list() {
+        let input = "[x] Completed task\n[-] In progress task\n[ ] Pending task\n[!] Discarded task";
+        let items = parse_todo_list(input).unwrap();
+        
+        assert_eq!(items.len(), 4);
+        assert_eq!(items[0].content, "Completed task");
+        assert_eq!(items[0].status, crate::TodoStatus::Completed);
+        assert_eq!(items[1].content, "In progress task");
+        assert_eq!(items[1].status, crate::TodoStatus::InProgress);
+        assert_eq!(items[2].content, "Pending task");
+        assert_eq!(items[2].status, crate::TodoStatus::Pending);
+        assert_eq!(items[3].content, "Discarded task");
+        assert_eq!(items[3].status, crate::TodoStatus::Discarded);
+    }
+
+    #[test]
+    fn test_parse_todo_list_empty_lines() {
+        let input = "[x] Task 1\n\n[-] Task 2\n\n";
+        let items = parse_todo_list(input).unwrap();
+        assert_eq!(items.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_todo_list_invalid_lines() {
+        let input = "[x] Valid task\nInvalid line\n[-] Another valid task";
+        let items = parse_todo_list(input).unwrap();
+        assert_eq!(items.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_handle_rhd_set_todo_list_success() {
+        let db = Arc::new(ChatDb::new("test_todo_list.db").unwrap());
+        let chat_id = db.create_chat("Test").unwrap();
+        
+        let provider = MockProjectProvider {
+            roles: std::collections::HashMap::new(),
+            role_prompts: std::collections::HashMap::new(),
+        };
+        
+        let provider = Arc::new(provider);
+        let manager = ChatManager::new(db.clone(), provider.clone(), None, false);
+        let (event_sender, _) = broadcast::channel(100);
+        
+        let args = r#"{"todos": "[x] Task 1\n[-] Task 2\n[ ] Task 3"}"#;
+        let result = handle_rhd_set_todo_list(&manager, chat_id, args, &event_sender).await;
+        
+        assert_eq!(result.is_error, Some(false));
+        assert!(result.content.contains("successfully"));
+        
+        let saved = db.get_todo_list(chat_id).unwrap().unwrap();
+        assert!(saved.contains("Task 1"));
+        
+        cleanup("test_todo_list.db");
+    }
+
+    #[tokio::test]
+    async fn test_handle_rhd_set_todo_list_invalid_args() {
+        let db = Arc::new(ChatDb::new("test_todo_list_invalid.db").unwrap());
+        let chat_id = db.create_chat("Test").unwrap();
+        
+        let provider = MockProjectProvider {
+            roles: std::collections::HashMap::new(),
+            role_prompts: std::collections::HashMap::new(),
+        };
+        
+        let provider = Arc::new(provider);
+        let manager = ChatManager::new(db.clone(), provider.clone(), None, false);
+        let (event_sender, _) = broadcast::channel(100);
+        
+        let args = r#"{"invalid": "args"}"#;
+        let result = handle_rhd_set_todo_list(&manager, chat_id, args, &event_sender).await;
+        
+        assert_eq!(result.is_error, Some(true));
+        assert!(result.content.contains("missing required parameter"));
+        
+        cleanup("test_todo_list_invalid.db");
     }
 }

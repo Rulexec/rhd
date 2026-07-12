@@ -14,6 +14,7 @@ pub struct ChatInfo {
     pub active_model: Option<String>,
     pub active_role_project: Option<String>,
     pub active_role_name: Option<String>,
+    pub todo_list: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -167,6 +168,16 @@ impl ChatDb {
             conn.execute_batch("ALTER TABLE chats ADD COLUMN role_prompt_pending BOOLEAN NOT NULL DEFAULT 0")?;
         }
 
+        // Check if todo_list column exists in chats table
+        let has_todo_list: bool = conn
+            .prepare("SELECT COUNT(*) FROM pragma_table_info('chats') WHERE name='todo_list'")?
+            .query_row([], |row| row.get::<_, i64>(0))?
+            > 0;
+
+        if !has_todo_list {
+            conn.execute_batch("ALTER TABLE chats ADD COLUMN todo_list TEXT")?;
+        }
+
         Ok(())
     }
 
@@ -189,7 +200,7 @@ impl ChatDb {
             .lock()
             .map_err(|e| DbError::InitializationError(e.to_string()))?;
         let mut stmt = conn.prepare(
-            "SELECT id, title, created_at, updated_at, active_model, active_role_project, active_role_name FROM chats ORDER BY updated_at DESC",
+            "SELECT id, title, created_at, updated_at, active_model, active_role_project, active_role_name, todo_list FROM chats ORDER BY updated_at DESC",
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(ChatInfo {
@@ -200,6 +211,7 @@ impl ChatDb {
                 active_model: row.get(4)?,
                 active_role_project: row.get(5)?,
                 active_role_name: row.get(6)?,
+                todo_list: row.get(7)?,
             })
         })?;
         let mut chats = Vec::new();
@@ -215,7 +227,7 @@ impl ChatDb {
             .lock()
             .map_err(|e| DbError::InitializationError(e.to_string()))?;
         let mut stmt = conn.prepare(
-            "SELECT id, title, created_at, updated_at, active_model, active_role_project, active_role_name FROM chats WHERE id = ?1",
+            "SELECT id, title, created_at, updated_at, active_model, active_role_project, active_role_name, todo_list FROM chats WHERE id = ?1",
         )?;
         let mut rows = stmt.query_map(params![id], |row| {
             Ok(ChatInfo {
@@ -226,6 +238,7 @@ impl ChatDb {
                 active_model: row.get(4)?,
                 active_role_project: row.get(5)?,
                 active_role_name: row.get(6)?,
+                todo_list: row.get(7)?,
             })
         })?;
         match rows.next() {
@@ -568,6 +581,38 @@ impl ChatDb {
             .prepare("SELECT role_prompt_pending FROM chats WHERE id = ?1")?
             .query_row(params![chat_id], |row| row.get(0))?;
         Ok(pending)
+    }
+
+    /// Sets the todo list for a chat
+    pub fn set_todo_list(&self, chat_id: i64, todo_list: &str) -> DbResult<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| DbError::InitializationError(e.to_string()))?;
+        let now = now_iso();
+        conn.execute(
+            "UPDATE chats SET todo_list = ?1, updated_at = ?2 WHERE id = ?3",
+            params![todo_list, now, chat_id],
+        )?;
+        Ok(())
+    }
+
+    /// Gets the todo list for a chat, returns None if not set
+    pub fn get_todo_list(&self, chat_id: i64) -> DbResult<Option<String>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| DbError::InitializationError(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT todo_list FROM chats WHERE id = ?1",
+        )?;
+        let mut rows = stmt.query_map(params![chat_id], |row| {
+            row.get::<_, Option<String>>(0)
+        })?;
+        match rows.next() {
+            Some(row) => Ok(row?),
+            None => Ok(None),
+        }
     }
 }
 
@@ -1011,6 +1056,68 @@ mod tests {
         // Clear pending
         db.set_role_prompt_pending(chat_id, false).unwrap();
         assert!(!db.has_role_prompt_pending(chat_id).unwrap());
+
+        cleanup(path);
+    }
+
+    #[test]
+    fn test_set_and_get_todo_list() {
+        let path = "test_chat_todo_list.db";
+        cleanup(path);
+
+        let db = ChatDb::new(path).unwrap();
+        let chat_id = db.create_chat("Test").unwrap();
+
+        assert!(db.get_todo_list(chat_id).unwrap().is_none());
+
+        let todo_list = "[x] Task 1\n[-] Task 2\n[ ] Task 3";
+        db.set_todo_list(chat_id, todo_list).unwrap();
+        
+        let retrieved = db.get_todo_list(chat_id).unwrap().unwrap();
+        assert_eq!(retrieved, todo_list);
+
+        let new_todo_list = "[x] Task 1\n[x] Task 2\n[-] Task 3";
+        db.set_todo_list(chat_id, new_todo_list).unwrap();
+        
+        let retrieved = db.get_todo_list(chat_id).unwrap().unwrap();
+        assert_eq!(retrieved, new_todo_list);
+
+        cleanup(path);
+    }
+
+    #[test]
+    fn test_migration_adds_todo_list_column() {
+        let path = "test_chat_todo_migration.db";
+        cleanup(path);
+
+        {
+            let conn = Connection::open(path).unwrap();
+            conn.execute_batch(
+                "PRAGMA journal_mode=WAL;
+                 PRAGMA foreign_keys=ON;
+                 CREATE TABLE chats (
+                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                     title TEXT NOT NULL,
+                     created_at TEXT NOT NULL,
+                     updated_at TEXT NOT NULL,
+                     active_model TEXT,
+                     active_role_project TEXT,
+                     active_role_name TEXT,
+                     roles_list_injected BOOLEAN NOT NULL DEFAULT 0,
+                     role_prompt_pending BOOLEAN NOT NULL DEFAULT 0
+                 );",
+            ).unwrap();
+            conn.execute(
+                "INSERT INTO chats (title, created_at, updated_at) VALUES ('Old Chat', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z')",
+                [],
+            ).unwrap();
+        }
+
+        let db = ChatDb::new(path).unwrap();
+
+        db.set_todo_list(1, "[x] Test task").unwrap();
+        let todo = db.get_todo_list(1).unwrap().unwrap();
+        assert_eq!(todo, "[x] Test task");
 
         cleanup(path);
     }

@@ -32,4 +32,8 @@ pub enum ChatEvent {
     },
     RolesUpdated { chat_id: i64 },
     ActiveRoleCleared { chat_id: i64 },
+    TodoListUpdated {
+        chat_id: i64,
+        items: Vec<crate::TodoItem>,
+    },
 }
