@@ -63,6 +63,14 @@ pub async fn send_message<P: ProjectProvider>(
     )
     .await?;
 
+    projects::inject_roles_prompt(
+        manager.db(),
+        manager.project_provider(),
+        chat_id,
+        &event_sender,
+    )
+    .await?;
+
     manager.db().update_chat_active_model(chat_id, model)?;
 
     let user_message_id =
@@ -263,6 +271,14 @@ pub async fn edit_and_resend<P: ProjectProvider>(
     manager.db().truncate_messages(chat_id, message_id)?;
 
     projects::inject_system_prompts(
+        manager.db(),
+        manager.project_provider(),
+        chat_id,
+        &event_sender,
+    )
+    .await?;
+
+    projects::inject_roles_prompt(
         manager.db(),
         manager.project_provider(),
         chat_id,

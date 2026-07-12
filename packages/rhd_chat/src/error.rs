@@ -25,4 +25,10 @@ pub enum ChatError {
 
     #[error("MCP id conflict: {0}")]
     McpIdConflict(String),
+
+    #[error("role name conflict: {0}")]
+    RoleNameConflict(String),
+
+    #[error("role not found: {0}")]
+    RoleNotFound(String),
 }

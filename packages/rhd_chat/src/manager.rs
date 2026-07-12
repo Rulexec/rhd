@@ -252,4 +252,74 @@ impl<P: ProjectProvider> ChatManager<P> {
             None
         }
     }
+
+    pub async fn set_active_role(
+        &self,
+        chat_id: i64,
+        project_name: &str,
+        role_name: &str,
+        event_sender: broadcast::Sender<ChatEvent>,
+    ) -> Result<(), ChatError> {
+        if self.db.get_chat(chat_id)?.is_none() {
+            return Err(ChatError::ChatNotFound);
+        }
+
+        if self
+            .project_provider
+            .get_role_system_prompt(project_name, role_name)
+            .is_none()
+        {
+            return Err(ChatError::RoleNotFound(format!(
+                "{}:{}",
+                project_name, role_name
+            )));
+        }
+
+        self.db.set_active_role(chat_id, project_name, role_name)?;
+        self.db.reset_roles_list_injected(chat_id)?;
+
+        projects::inject_role_system_prompt(
+            &self.db,
+            &self.project_provider,
+            chat_id,
+            project_name,
+            role_name,
+            &event_sender,
+        )?;
+
+        Ok(())
+    }
+
+    pub fn clear_active_role(&self, chat_id: i64) -> Result<(), ChatError> {
+        if self.db.get_chat(chat_id)?.is_none() {
+            return Err(ChatError::ChatNotFound);
+        }
+        self.db.clear_active_role(chat_id)?;
+        self.db.reset_roles_list_injected(chat_id)?;
+        Ok(())
+    }
+
+    pub fn get_active_role(&self, chat_id: i64) -> Result<Option<(String, String)>, ChatError> {
+        Ok(self.db.get_active_role(chat_id)?)
+    }
+
+    pub fn get_available_roles(
+        &self,
+        chat_id: i64,
+    ) -> Result<Vec<(String, String, String)>, ChatError> {
+        if self.db.get_chat(chat_id)?.is_none() {
+            return Err(ChatError::ChatNotFound);
+        }
+
+        let attached_projects = self.db.get_chat_projects(chat_id)?;
+        let mut roles = Vec::new();
+
+        for (project_name, _) in attached_projects {
+            for role in self.project_provider.get_project_roles(&project_name) {
+                roles.push((project_name.clone(), role.name, role.when_to_use));
+            }
+        }
+
+        Ok(roles)
+    }
 }
