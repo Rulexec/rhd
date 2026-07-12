@@ -25,4 +25,11 @@ pub enum ChatEvent {
     },
     ChatPaused { chat_id: i64 },
     ChatResumed { chat_id: i64 },
+    RoleChanged {
+        chat_id: i64,
+        project_name: String,
+        role_name: String,
+    },
+    RolesUpdated { chat_id: i64 },
+    ActiveRoleCleared { chat_id: i64 },
 }

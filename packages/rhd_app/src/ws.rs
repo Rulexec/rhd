@@ -4,9 +4,10 @@ use std::time::Instant;
 
 use futures_util::{SinkExt, StreamExt};
 use rhd_api::{
-    ChatMessageAddedEvent, ChatMessageDto, ChatPausedEvent, ChatResumedEvent,
-    ChatStreamChunkEvent, ChatStreamErrorEvent, ChatStreamFinishedEvent, ChatThinkingChunkEvent,
-    DevNotificationEvent, ErrorCode, ProjectAttachedEvent, ProjectDetachedEvent,
+    ActiveRoleClearedEvent, ChatMessageAddedEvent, ChatMessageDto, ChatPausedEvent,
+    ChatResumedEvent, ChatStreamChunkEvent, ChatStreamErrorEvent, ChatStreamFinishedEvent,
+    ChatThinkingChunkEvent, DevNotificationEvent, ErrorCode, ProjectAttachedEvent,
+    ProjectDetachedEvent, RoleChangedEvent, RoleInfo, RolesUpdatedEvent,
     ToolCallCompletedEvent, ToolCallStartedEvent, WsEvent,
     WsRequest, WsResponse,
 };
@@ -181,6 +182,39 @@ async fn handle_ws_connection(
                                 let payload = ChatResumedEvent { chat_id };
                                 WsEvent::new("chatResumed", serde_json::to_value(&payload)?)
                             }
+                            ChatEvent::RoleChanged { chat_id, project_name, role_name } => {
+                                let payload = RoleChangedEvent {
+                                    chat_id,
+                                    project_name,
+                                    role_name,
+                                };
+                                WsEvent::new("roleChanged", serde_json::to_value(&payload)?)
+                            }
+                            ChatEvent::RolesUpdated { chat_id } => {
+                                let roles = state.chat_manager.get_available_roles(chat_id).unwrap_or_default();
+                                let active_role: Option<(String, String)> = state.chat_manager.get_active_role(chat_id).ok().flatten();
+                                
+                                let role_infos: Vec<RoleInfo> = roles
+                                    .into_iter()
+                                    .map(|(project_name, role_name, when_to_use)| RoleInfo {
+                                        project_name,
+                                        role_name,
+                                        when_to_use,
+                                    })
+                                    .collect();
+                                
+                                let payload = RolesUpdatedEvent {
+                                    chat_id,
+                                    roles: role_infos,
+                                    active_role_project: active_role.as_ref().map(|(p, _)| p.clone()),
+                                    active_role_name: active_role.as_ref().map(|(_, r)| r.clone()),
+                                };
+                                WsEvent::new("rolesUpdated", serde_json::to_value(&payload)?)
+                            }
+                            ChatEvent::ActiveRoleCleared { chat_id } => {
+                                let payload = ActiveRoleClearedEvent { chat_id };
+                                WsEvent::new("activeRoleCleared", serde_json::to_value(&payload)?)
+                            }
                         };
                         let event_text = serde_json::to_string(&ws_event)?;
                         write.send(Message::Text(event_text)).await?;
@@ -280,6 +314,15 @@ async fn handle_ws_message(text: &str, state: &Arc<DaemonState>) -> WsResponse {
         }
         WsRequest::PauseChat { id, chat_id } => handle_pause_chat(id, chat_id, state).await,
         WsRequest::ResumeChat { id, chat_id } => handle_resume_chat(id, chat_id, state).await,
+        WsRequest::SetRole { id, chat_id, project_name, role_name } => {
+            handle_set_role(id, chat_id, project_name, role_name, state).await
+        }
+        WsRequest::GetAvailableRoles { id, chat_id } => {
+            handle_get_available_roles(id, chat_id, state)
+        }
+        WsRequest::ClearActiveRole { id, chat_id } => {
+            handle_clear_active_role(id, chat_id, state).await
+        }
     }
 }
 
@@ -714,4 +757,92 @@ async fn handle_pause_chat(id: String, chat_id: i64, state: &Arc<DaemonState>) -
 async fn handle_resume_chat(id: String, chat_id: i64, state: &Arc<DaemonState>) -> WsResponse {
     let resumed = state.chat_manager.resume_chat(chat_id).await;
     WsResponse::success(id, serde_json::json!({ "resumed": resumed }))
+}
+
+async fn handle_set_role(
+    id: String,
+    chat_id: i64,
+    project_name: String,
+    role_name: String,
+    state: &Arc<DaemonState>,
+) -> WsResponse {
+    match state
+        .chat_manager
+        .set_active_role(chat_id, &project_name, &role_name, state.chat_event_sender.clone())
+        .await
+    {
+        Ok(()) => WsResponse::success(id, serde_json::json!({ "set": true })),
+        Err(rhd_chat::ChatError::ChatNotFound) => WsResponse::error(
+            id,
+            ErrorCode::ChatNotFound,
+            format!("chat not found: {}", chat_id),
+        ),
+        Err(rhd_chat::ChatError::RoleNotFound(role)) => WsResponse::error(
+            id,
+            ErrorCode::InvalidRequest,
+            format!("role not found: {}", role),
+        ),
+        Err(err) => WsResponse::error(
+            id,
+            ErrorCode::InternalError,
+            format!("failed to set role: {}", err),
+        ),
+    }
+}
+
+fn handle_get_available_roles(id: String, chat_id: i64, state: &Arc<DaemonState>) -> WsResponse {
+    match state.chat_manager.get_available_roles(chat_id) {
+        Ok(roles) => {
+            let role_infos: Vec<RoleInfo> = roles
+                .into_iter()
+                .map(|(project_name, role_name, when_to_use)| RoleInfo {
+                    project_name,
+                    role_name,
+                    when_to_use,
+                })
+                .collect();
+            
+            let active_role: Option<(String, String)> = state.chat_manager.get_active_role(chat_id).ok().flatten();
+            
+            let data = serde_json::json!({
+                "roles": role_infos,
+                "activeRoleProject": active_role.as_ref().map(|(p, _)| p),
+                "activeRoleName": active_role.as_ref().map(|(_, r)| r),
+            });
+            WsResponse::success(id, data)
+        }
+        Err(rhd_chat::ChatError::ChatNotFound) => WsResponse::error(
+            id,
+            ErrorCode::ChatNotFound,
+            format!("chat not found: {}", chat_id),
+        ),
+        Err(err) => WsResponse::error(
+            id,
+            ErrorCode::InternalError,
+            format!("failed to get available roles: {}", err),
+        ),
+    }
+}
+
+async fn handle_clear_active_role(
+    id: String,
+    chat_id: i64,
+    state: &Arc<DaemonState>,
+) -> WsResponse {
+    match state
+        .chat_manager
+        .clear_active_role(chat_id, state.chat_event_sender.clone())
+    {
+        Ok(()) => WsResponse::success(id, serde_json::json!({ "cleared": true })),
+        Err(rhd_chat::ChatError::ChatNotFound) => WsResponse::error(
+            id,
+            ErrorCode::ChatNotFound,
+            format!("chat not found: {}", chat_id),
+        ),
+        Err(err) => WsResponse::error(
+            id,
+            ErrorCode::InternalError,
+            format!("failed to clear active role: {}", err),
+        ),
+    }
 }

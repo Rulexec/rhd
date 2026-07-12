@@ -157,7 +157,7 @@ impl<P: ProjectProvider> ChatManager<P> {
         project_name: &str,
         event_sender: broadcast::Sender<ChatEvent>,
     ) -> Result<(), ChatError> {
-        projects::detach_project(&self.db, chat_id, project_name, event_sender)
+        projects::detach_project(&self.db, &self.project_provider, chat_id, project_name, event_sender)
     }
 
     pub fn get_chat_projects(&self, chat_id: i64) -> Result<Vec<ProjectInfo>, ChatError> {
@@ -287,15 +287,28 @@ impl<P: ProjectProvider> ChatManager<P> {
             &event_sender,
         )?;
 
+        let _ = event_sender.send(ChatEvent::RoleChanged {
+            chat_id,
+            project_name: project_name.to_string(),
+            role_name: role_name.to_string(),
+        });
+
         Ok(())
     }
 
-    pub fn clear_active_role(&self, chat_id: i64) -> Result<(), ChatError> {
+    pub fn clear_active_role(
+        &self,
+        chat_id: i64,
+        event_sender: broadcast::Sender<ChatEvent>,
+    ) -> Result<(), ChatError> {
         if self.db.get_chat(chat_id)?.is_none() {
             return Err(ChatError::ChatNotFound);
         }
         self.db.clear_active_role(chat_id)?;
         self.db.reset_roles_list_injected(chat_id)?;
+
+        let _ = event_sender.send(ChatEvent::ActiveRoleCleared { chat_id });
+
         Ok(())
     }
 

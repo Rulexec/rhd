@@ -226,6 +226,19 @@ pub enum WsRequest {
     AbortScenarioWithError { id: String, execution_id: u64 },
     #[serde(rename = "devNotification")]
     DevNotification { id: String },
+
+    // Role operations
+    #[serde(rename = "setRole", rename_all = "camelCase")]
+    SetRole {
+        id: String,
+        chat_id: i64,
+        project_name: String,
+        role_name: String,
+    },
+    #[serde(rename = "getAvailableRoles", rename_all = "camelCase")]
+    GetAvailableRoles { id: String, chat_id: i64 },
+    #[serde(rename = "clearActiveRole", rename_all = "camelCase")]
+    ClearActiveRole { id: String, chat_id: i64 },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -447,6 +460,41 @@ pub struct ScenarioResumedEvent {
 pub struct DevNotificationEvent {
     pub title: String,
     pub message: String,
+}
+
+// ============================================================================
+// Role event types
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoleInfo {
+    pub project_name: String,
+    pub role_name: String,
+    pub when_to_use: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoleChangedEvent {
+    pub chat_id: i64,
+    pub project_name: String,
+    pub role_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RolesUpdatedEvent {
+    pub chat_id: i64,
+    pub roles: Vec<RoleInfo>,
+    pub active_role_project: Option<String>,
+    pub active_role_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActiveRoleClearedEvent {
+    pub chat_id: i64,
 }
 
 // ============================================================================
@@ -749,5 +797,89 @@ mod tests {
         let event = EventType::ScenarioResumed;
         let json = serde_json::to_string(&event).unwrap();
         assert_eq!(json, r#""scenarioResumed""#);
+    }
+
+    #[test]
+    fn test_ws_request_set_role_serialization() {
+        let req = WsRequest::SetRole {
+            id: "req-1".to_string(),
+            chat_id: 42,
+            project_name: "project-a".to_string(),
+            role_name: "developer".to_string(),
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains(r#""type":"setRole""#));
+        assert!(json.contains(r#""chatId":42"#));
+        assert!(json.contains(r#""projectName":"project-a""#));
+        assert!(json.contains(r#""roleName":"developer""#));
+
+        let deserialized: WsRequest = serde_json::from_str(&json).unwrap();
+        match deserialized {
+            WsRequest::SetRole { id, chat_id, project_name, role_name } => {
+                assert_eq!(id, "req-1");
+                assert_eq!(chat_id, 42);
+                assert_eq!(project_name, "project-a");
+                assert_eq!(role_name, "developer");
+            }
+            _ => panic!("Wrong variant"),
+        }
+    }
+
+    #[test]
+    fn test_ws_request_get_available_roles_serialization() {
+        let req = WsRequest::GetAvailableRoles {
+            id: "req-2".to_string(),
+            chat_id: 42,
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains(r#""type":"getAvailableRoles""#));
+        assert!(json.contains(r#""chatId":42"#));
+    }
+
+    #[test]
+    fn test_role_info_serialization() {
+        let info = RoleInfo {
+            project_name: "project-a".to_string(),
+            role_name: "developer".to_string(),
+            when_to_use: "Use for coding tasks.".to_string(),
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        assert!(json.contains(r#""projectName":"project-a""#));
+        assert!(json.contains(r#""roleName":"developer""#));
+        assert!(json.contains(r#""whenToUse":"Use for coding tasks.""#));
+    }
+
+    #[test]
+    fn test_role_changed_event_serialization() {
+        let event = RoleChangedEvent {
+            chat_id: 42,
+            project_name: "project-a".to_string(),
+            role_name: "developer".to_string(),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains(r#""chatId":42"#));
+        assert!(json.contains(r#""projectName":"project-a""#));
+        assert!(json.contains(r#""roleName":"developer""#));
+    }
+
+    #[test]
+    fn test_roles_updated_event_serialization() {
+        let event = RolesUpdatedEvent {
+            chat_id: 42,
+            roles: vec![
+                RoleInfo {
+                    project_name: "project-a".to_string(),
+                    role_name: "developer".to_string(),
+                    when_to_use: "Use for coding.".to_string(),
+                },
+            ],
+            active_role_project: Some("project-a".to_string()),
+            active_role_name: Some("developer".to_string()),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains(r#""chatId":42"#));
+        assert!(json.contains(r#""roles":["#));
+        assert!(json.contains(r#""activeRoleProject":"project-a""#));
+        assert!(json.contains(r#""activeRoleName":"developer""#));
     }
 }

@@ -94,6 +94,7 @@ pub async fn attach_project<P: ProjectProvider>(
     let roles = project_provider.get_project_roles(project_name);
     if !roles.is_empty() {
         db.reset_roles_list_injected(chat_id)?;
+        let _ = event_sender.send(ChatEvent::RolesUpdated { chat_id });
     }
 
     let _ = event_sender.send(ChatEvent::ProjectAttached {
@@ -104,13 +105,21 @@ pub async fn attach_project<P: ProjectProvider>(
     Ok(())
 }
 
-pub fn detach_project(
+pub fn detach_project<P: ProjectProvider>(
     db: &Arc<ChatDb>,
+    project_provider: &Arc<P>,
     chat_id: i64,
     project_name: &str,
     event_sender: broadcast::Sender<ChatEvent>,
 ) -> Result<(), ChatError> {
+    let had_roles = !project_provider.get_project_roles(project_name).is_empty();
+
     db.detach_project(chat_id, project_name)?;
+
+    if had_roles {
+        db.reset_roles_list_injected(chat_id)?;
+        let _ = event_sender.send(ChatEvent::RolesUpdated { chat_id });
+    }
 
     let _ = event_sender.send(ChatEvent::ProjectDetached {
         chat_id,
