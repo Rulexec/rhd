@@ -15,6 +15,51 @@ use crate::event::ChatEvent;
 use crate::manager::ChatManager;
 use crate::ProjectProvider;
 
+pub const RHD_SET_ROLE_TOOL_NAME: &str = "rhd_set_role";
+
+pub fn rhd_set_role_tool_definition() -> ToolDefinition {
+    ToolDefinition {
+        tool_type: "function".to_string(),
+        function: FunctionDefinition {
+            name: RHD_SET_ROLE_TOOL_NAME.to_string(),
+            description: "Switch the current active role. Use this tool when you need to change your behavioral role based on the task requirements. The role determines your system prompt and behavior patterns.".to_string(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "role_name": {
+                        "type": "string",
+                        "description": "The name of the role to switch to. Must be one of the available roles listed in the system prompt."
+                    }
+                },
+                "required": ["role_name"]
+            }),
+        },
+    }
+}
+
+pub fn collect_builtin_tools(
+    db: &Arc<ChatDb>,
+    project_provider: &Arc<impl ProjectProvider>,
+    chat_id: i64,
+) -> Vec<ToolDefinition> {
+    let mut tools = Vec::new();
+
+    let attached_projects = match db.get_chat_projects(chat_id) {
+        Ok(projects) => projects,
+        Err(_) => return tools,
+    };
+
+    let has_roles = attached_projects
+        .iter()
+        .any(|(project_name, _)| !project_provider.get_project_roles(project_name).is_empty());
+
+    if has_roles {
+        tools.push(rhd_set_role_tool_definition());
+    }
+
+    tools
+}
+
 pub async fn collect_tools_from_projects<P: ProjectProvider>(
     db: &Arc<ChatDb>,
     project_provider: &Arc<P>,
@@ -22,6 +67,8 @@ pub async fn collect_tools_from_projects<P: ProjectProvider>(
 ) -> (Vec<ToolDefinition>, Vec<(String, String, Arc<McpClient>)>) {
     let mut tools = Vec::new();
     let mut mcp_clients = Vec::new();
+
+    tools.extend(collect_builtin_tools(db, project_provider, chat_id));
 
     let attached_projects = match db.get_chat_projects(chat_id) {
         Ok(projects) => projects,
@@ -49,6 +96,82 @@ pub async fn collect_tools_from_projects<P: ProjectProvider>(
     }
 
     (tools, mcp_clients)
+}
+
+pub async fn handle_rhd_set_role<P: ProjectProvider>(
+    manager: &ChatManager<P>,
+    chat_id: i64,
+    arguments: &str,
+    event_sender: &broadcast::Sender<ChatEvent>,
+) -> ToolResult {
+    let args: serde_json::Value = match serde_json::from_str(arguments) {
+        Ok(v) => v,
+        Err(e) => {
+            return ToolResult {
+                content: format!("Error: invalid arguments: {}", e),
+                is_error: Some(true),
+                raw_response: None,
+            };
+        }
+    };
+
+    let role_name = match args.get("role_name").and_then(|v| v.as_str()) {
+        Some(name) => name.to_string(),
+        None => {
+            return ToolResult {
+                content: "Error: missing required parameter 'role_name'".to_string(),
+                is_error: Some(true),
+                raw_response: None,
+            };
+        }
+    };
+
+    let attached_projects = match manager.db().get_chat_projects(chat_id) {
+        Ok(projects) => projects,
+        Err(e) => {
+            return ToolResult {
+                content: format!("Error: failed to get attached projects: {}", e),
+                is_error: Some(true),
+                raw_response: None,
+            };
+        }
+    };
+
+    let mut found_project = None;
+    for (project_name, _) in &attached_projects {
+        let roles = manager.project_provider().get_project_roles(project_name);
+        if roles.iter().any(|r| r.name == role_name) {
+            found_project = Some(project_name.clone());
+            break;
+        }
+    }
+
+    let project_name = match found_project {
+        Some(p) => p,
+        None => {
+            return ToolResult {
+                content: format!("Error: role '{}' not found in any attached project", role_name),
+                is_error: Some(true),
+                raw_response: None,
+            };
+        }
+    };
+
+    match manager
+        .set_active_role(chat_id, &project_name, &role_name, event_sender.clone())
+        .await
+    {
+        Ok(()) => ToolResult {
+            content: format!("Successfully switched to role '{}'", role_name),
+            is_error: Some(false),
+            raw_response: None,
+        },
+        Err(e) => ToolResult {
+            content: format!("Error: failed to set role: {}", e),
+            is_error: Some(true),
+            raw_response: None,
+        },
+    }
 }
 
 pub async fn tool_loop<P: ProjectProvider>(
@@ -263,7 +386,7 @@ pub async fn tool_loop<P: ProjectProvider>(
                 }));
             }
 
-            let (tool_result, _) = execute_tool_call(tool_call, mcp_clients).await;
+            let (tool_result, _) = execute_tool_call(manager, chat_id, tool_call, mcp_clients, event_sender).await;
 
             if let Some(ref mut l) = loggers {
                 l.chat_log.log_tool_result(&tool_call.function.name, &tool_call.id, &tool_result.content);
@@ -314,11 +437,21 @@ pub async fn tool_loop<P: ProjectProvider>(
     }
 }
 
-pub async fn execute_tool_call(
+pub async fn execute_tool_call<P: ProjectProvider>(
+    manager: &ChatManager<P>,
+    chat_id: i64,
     tool_call: &ToolCall,
     mcp_clients: &[(String, String, Arc<McpClient>)],
+    event_sender: &broadcast::Sender<ChatEvent>,
 ) -> (ToolResult, String) {
-    let (mcp_id, bare_tool_name) = split_tool_name(&tool_call.function.name);
+    let tool_name = &tool_call.function.name;
+
+    if tool_name == RHD_SET_ROLE_TOOL_NAME {
+        let result = handle_rhd_set_role(manager, chat_id, &tool_call.function.arguments, event_sender).await;
+        return (result, String::new());
+    }
+
+    let (mcp_id, bare_tool_name) = split_tool_name(tool_name);
     for (_project_name, client_mcp_id, client) in mcp_clients {
         if *client_mcp_id == mcp_id {
             match client.call_tool(&bare_tool_name, &tool_call.function.arguments).await {
@@ -407,6 +540,53 @@ pub fn build_chat_messages_for_tools(messages: &[Message]) -> Vec<ChatMessage> {
 mod tests {
     use super::*;
     use rhd_ai::client::FunctionCall;
+    use rhd_api::project::{McpRef, Role};
+    use crate::McpStatus;
+    use std::fs;
+
+    fn cleanup(path: &str) {
+        let _ = fs::remove_file(path);
+        let _ = fs::remove_file(format!("{}-wal", path));
+        let _ = fs::remove_file(format!("{}-shm", path));
+    }
+
+    struct MockProjectProvider {
+        roles: std::collections::HashMap<String, Vec<Role>>,
+        role_prompts: std::collections::HashMap<(String, String), String>,
+    }
+
+    #[async_trait::async_trait]
+    impl ProjectProvider for MockProjectProvider {
+        async fn get_mcp_status(&self, _project_name: &str) -> Vec<(String, McpStatus)> {
+            vec![]
+        }
+
+        fn get_project_system_prompt(&self, _project_name: &str) -> Option<String> {
+            None
+        }
+
+        fn get_project_mcp_refs(&self, _project_name: &str) -> Vec<McpRef> {
+            vec![]
+        }
+
+        async fn get_mcp_clients(&self, _project_name: &str) -> Vec<(String, Arc<McpClient>)> {
+            vec![]
+        }
+
+        async fn spawn_project_mcp(&self, _project_name: &str) -> Result<(), String> {
+            Ok(())
+        }
+
+        fn get_project_roles(&self, project_name: &str) -> Vec<Role> {
+            self.roles.get(project_name).cloned().unwrap_or_default()
+        }
+
+        fn get_role_system_prompt(&self, project_name: &str, role_name: &str) -> Option<String> {
+            self.role_prompts
+                .get(&(project_name.to_string(), role_name.to_string()))
+                .cloned()
+        }
+    }
 
     // Test helper functions
     
@@ -572,10 +752,21 @@ mod tests {
         };
 
         let mcp_clients: Vec<(String, String, Arc<McpClient>)> = vec![];
-        let (result, mcp_id) = execute_tool_call(&tool_call, &mcp_clients).await;
+        let db = Arc::new(ChatDb::new("test_execute_tool.db").unwrap());
+        let chat_id = db.create_chat("Test").unwrap();
+        let provider = MockProjectProvider {
+            roles: HashMap::new(),
+            role_prompts: HashMap::new(),
+        };
+        let manager = ChatManager::new(db.clone(), Arc::new(provider), None, false);
+        let (event_sender, _) = broadcast::channel(100);
+        
+        let (result, mcp_id) = execute_tool_call(&manager, chat_id, &tool_call, &mcp_clients, &event_sender).await;
         
         assert!(result.content.contains("Error: unknown tool"));
         assert_eq!(mcp_id, "");
+        
+        cleanup("test_execute_tool.db");
     }
 
     #[tokio::test]
@@ -593,10 +784,21 @@ mod tests {
         };
 
         let mcp_clients: Vec<(String, String, Arc<McpClient>)> = vec![];
-        let (result, mcp_id) = execute_tool_call(&tool_call, &mcp_clients).await;
+        let db = Arc::new(ChatDb::new("test_execute_tool_unknown.db").unwrap());
+        let chat_id = db.create_chat("Test").unwrap();
+        let provider = MockProjectProvider {
+            roles: HashMap::new(),
+            role_prompts: HashMap::new(),
+        };
+        let manager = ChatManager::new(db.clone(), Arc::new(provider), None, false);
+        let (event_sender, _) = broadcast::channel(100);
+        
+        let (result, mcp_id) = execute_tool_call(&manager, chat_id, &tool_call, &mcp_clients, &event_sender).await;
         
         assert!(result.content.contains("Error: unknown tool 'mock1/echo'"));
         assert_eq!(mcp_id, "");
+        
+        cleanup("test_execute_tool_unknown.db");
     }
 
     #[test]
@@ -804,5 +1006,150 @@ mod tests {
         let tools = client.list_tools().await.unwrap();
         assert_eq!(tools.len(), 1);
         assert_eq!(tools[0].name, "echo");
+    }
+
+    #[test]
+    fn test_rhd_set_role_tool_definition() {
+        let tool = rhd_set_role_tool_definition();
+        assert_eq!(tool.function.name, "rhd_set_role");
+        assert!(tool.function.description.contains("role"));
+        
+        let params = tool.function.parameters;
+        assert_eq!(params["type"], "object");
+        assert!(params["properties"]["role_name"].is_object());
+        assert_eq!(params["required"], serde_json::json!(["role_name"]));
+    }
+
+    #[test]
+    fn test_collect_builtin_tools_no_roles() {
+        let db = Arc::new(ChatDb::new("test_no_roles.db").unwrap());
+        let chat_id = db.create_chat("Test").unwrap();
+        
+        let provider = MockProjectProvider {
+            roles: std::collections::HashMap::new(),
+            role_prompts: std::collections::HashMap::new(),
+        };
+        
+        let tools = collect_builtin_tools(&db, &Arc::new(provider), chat_id);
+        assert!(tools.is_empty());
+        
+        cleanup("test_no_roles.db");
+    }
+
+    #[test]
+    fn test_collect_builtin_tools_with_roles() {
+        let db = Arc::new(ChatDb::new("test_with_roles.db").unwrap());
+        let chat_id = db.create_chat("Test").unwrap();
+        
+        let mut provider = MockProjectProvider {
+            roles: std::collections::HashMap::new(),
+            role_prompts: std::collections::HashMap::new(),
+        };
+        provider.roles.insert("project-a".to_string(), vec![
+            Role {
+                name: "developer".to_string(),
+                system_prompt: "Dev".to_string(),
+                when_to_use: "Coding".to_string(),
+            },
+        ]);
+        
+        db.attach_project(chat_id, "project-a").unwrap();
+        
+        let tools = collect_builtin_tools(&db, &Arc::new(provider), chat_id);
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0].function.name, "rhd_set_role");
+        
+        cleanup("test_with_roles.db");
+    }
+
+    #[tokio::test]
+    async fn test_handle_rhd_set_role_success() {
+        let db = Arc::new(ChatDb::new("test_set_role.db").unwrap());
+        let chat_id = db.create_chat("Test").unwrap();
+        
+        let mut provider = MockProjectProvider {
+            roles: std::collections::HashMap::new(),
+            role_prompts: std::collections::HashMap::new(),
+        };
+        provider.roles.insert("project-a".to_string(), vec![
+            Role {
+                name: "developer".to_string(),
+                system_prompt: "You are a developer.".to_string(),
+                when_to_use: "Use for coding.".to_string(),
+            },
+        ]);
+        provider.role_prompts.insert(
+            ("project-a".to_string(), "developer".to_string()),
+            "You are a developer.".to_string(),
+        );
+        
+        db.attach_project(chat_id, "project-a").unwrap();
+        
+        let provider = Arc::new(provider);
+        let manager = ChatManager::new(db.clone(), provider.clone(), None, false);
+        let (event_sender, _) = broadcast::channel(100);
+        
+        let args = r#"{"role_name": "developer"}"#;
+        let result = handle_rhd_set_role(&manager, chat_id, args, &event_sender).await;
+        
+        assert_eq!(result.is_error, Some(false));
+        assert!(result.content.contains("Successfully switched"));
+        
+        // Verify active role was set
+        let active_role = db.get_active_role(chat_id).unwrap().unwrap();
+        assert_eq!(active_role.0, "project-a");
+        assert_eq!(active_role.1, "developer");
+        
+        // Verify system message was injected
+        let messages = db.get_messages(chat_id).unwrap();
+        assert!(messages.iter().any(|m| m.role == "system" && m.content.contains("Your current role is now developer")));
+        
+        cleanup("test_set_role.db");
+    }
+
+    #[tokio::test]
+    async fn test_handle_rhd_set_role_not_found() {
+        let db = Arc::new(ChatDb::new("test_set_role_not_found.db").unwrap());
+        let chat_id = db.create_chat("Test").unwrap();
+        
+        let provider = MockProjectProvider {
+            roles: std::collections::HashMap::new(),
+            role_prompts: std::collections::HashMap::new(),
+        };
+        
+        let provider = Arc::new(provider);
+        let manager = ChatManager::new(db.clone(), provider.clone(), None, false);
+        let (event_sender, _) = broadcast::channel(100);
+        
+        let args = r#"{"role_name": "nonexistent"}"#;
+        let result = handle_rhd_set_role(&manager, chat_id, args, &event_sender).await;
+        
+        assert_eq!(result.is_error, Some(true));
+        assert!(result.content.contains("not found"));
+        
+        cleanup("test_set_role_not_found.db");
+    }
+
+    #[tokio::test]
+    async fn test_handle_rhd_set_role_invalid_args() {
+        let db = Arc::new(ChatDb::new("test_set_role_invalid.db").unwrap());
+        let chat_id = db.create_chat("Test").unwrap();
+        
+        let provider = MockProjectProvider {
+            roles: std::collections::HashMap::new(),
+            role_prompts: std::collections::HashMap::new(),
+        };
+        
+        let provider = Arc::new(provider);
+        let manager = ChatManager::new(db.clone(), provider.clone(), None, false);
+        let (event_sender, _) = broadcast::channel(100);
+        
+        let args = r#"{"invalid": "args"}"#;
+        let result = handle_rhd_set_role(&manager, chat_id, args, &event_sender).await;
+        
+        assert_eq!(result.is_error, Some(true));
+        assert!(result.content.contains("missing required parameter"));
+        
+        cleanup("test_set_role_invalid.db");
     }
 }
