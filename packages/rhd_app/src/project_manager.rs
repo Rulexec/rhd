@@ -194,6 +194,7 @@ mod tests {
             path: PathBuf::from(format!("/tmp/{}", name)),
             mcp_configs,
             system_prompt: Some("test prompt".to_string()),
+            roles: Vec::new(),
         }
     }
 

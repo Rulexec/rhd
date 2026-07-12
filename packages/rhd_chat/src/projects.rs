@@ -94,6 +94,8 @@ pub fn get_chat_projects<P: ProjectProvider>(
             name,
             has_mcp,
             has_system_prompt,
+            has_roles: false,
+            role_names: Vec::new(),
         });
     }
     Ok(infos)
