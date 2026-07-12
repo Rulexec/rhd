@@ -182,6 +182,41 @@ export const ChatResumedEventSchema = z.object({
   }),
 });
 
+export const RoleInfoSchema = z.object({
+  projectName: z.string(),
+  roleName: z.string(),
+  whenToUse: z.string(),
+});
+
+export const RoleChangedEventSchema = z.object({
+  type: z.literal('event'),
+  event: z.literal('roleChanged'),
+  data: z.object({
+    chatId: z.number(),
+    projectName: z.string(),
+    roleName: z.string(),
+  }),
+});
+
+export const RolesUpdatedEventSchema = z.object({
+  type: z.literal('event'),
+  event: z.literal('rolesUpdated'),
+  data: z.object({
+    chatId: z.number(),
+    roles: z.array(RoleInfoSchema),
+    activeRoleProject: z.string().optional(),
+    activeRoleName: z.string().optional(),
+  }),
+});
+
+export const ActiveRoleClearedEventSchema = z.object({
+  type: z.literal('event'),
+  event: z.literal('activeRoleCleared'),
+  data: z.object({
+    chatId: z.number(),
+  }),
+});
+
 export const WsEventSchema = z.discriminatedUnion('event', [
   ScenarioStartedEventSchema,
   StepStartedEventSchema,
@@ -202,6 +237,9 @@ export const WsEventSchema = z.discriminatedUnion('event', [
   ToolCallCompletedEventSchema,
   ChatPausedEventSchema,
   ChatResumedEventSchema,
+  RoleChangedEventSchema,
+  RolesUpdatedEventSchema,
+  ActiveRoleClearedEventSchema,
 ]);
 export type WsEvent = z.infer<typeof WsEventSchema>;
 
