@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use rhd_api::project::{McpRef, Project, ProjectInfo};
+use rhd_api::project::{McpRef, Project, ProjectInfo, Role};
 use rhd_chat::{McpStatus, ProjectProvider};
 use rhd_mcp_client::client::McpClient;
 use rhd_mcp_client::McpConfig;
@@ -144,6 +144,19 @@ impl ProjectManager {
         result.sort_by(|a, b| a.0.cmp(&b.0));
         result
     }
+    pub fn get_project_roles(&self, project_name: &str) -> Vec<Role> {
+        self.projects
+            .get(project_name)
+            .map(|p| p.roles.clone())
+            .unwrap_or_default()
+    }
+
+    pub fn get_role_system_prompt(&self, project_name: &str, role_name: &str) -> Option<String> {
+        self.projects
+            .get(project_name)
+            .and_then(|p| p.roles.iter().find(|r| r.name == role_name))
+            .map(|r| r.system_prompt.clone())
+    }
 }
 
 #[async_trait]
@@ -171,6 +184,14 @@ impl ProjectProvider for ProjectManager {
 
     async fn spawn_project_mcp(&self, project_name: &str) -> Result<(), String> {
         ProjectManager::spawn_project_mcp(self, project_name).await
+    }
+
+    fn get_project_roles(&self, project_name: &str) -> Vec<Role> {
+        ProjectManager::get_project_roles(self, project_name)
+    }
+
+    fn get_role_system_prompt(&self, project_name: &str, role_name: &str) -> Option<String> {
+        ProjectManager::get_role_system_prompt(self, project_name, role_name)
     }
 }
 
@@ -277,5 +298,62 @@ mod tests {
         assert!(McpStatus::Connected.is_connected());
         assert!(!McpStatus::Connecting.is_connected());
         assert!(!McpStatus::Failed("err".to_string()).is_connected());
+    }
+
+    #[test]
+    fn test_get_project_roles() {
+        let mut project = make_project("test", 0);
+        project.roles = vec![
+            Role {
+                name: "developer".to_string(),
+                system_prompt: "You are a developer.".to_string(),
+                when_to_use: "Use for coding tasks.".to_string(),
+            },
+            Role {
+                name: "reviewer".to_string(),
+                system_prompt: "You are a reviewer.".to_string(),
+                when_to_use: "Use for code review.".to_string(),
+            },
+        ];
+        let manager = make_manager(vec![project]);
+
+        let roles = manager.get_project_roles("test");
+        assert_eq!(roles.len(), 2);
+        assert_eq!(roles[0].name, "developer");
+        assert_eq!(roles[1].name, "reviewer");
+    }
+
+    #[test]
+    fn test_get_project_roles_empty() {
+        let project = make_project("test", 0);
+        let manager = make_manager(vec![project]);
+
+        let roles = manager.get_project_roles("test");
+        assert!(roles.is_empty());
+
+        let roles = manager.get_project_roles("nonexistent");
+        assert!(roles.is_empty());
+    }
+
+    #[test]
+    fn test_get_role_system_prompt() {
+        let mut project = make_project("test", 0);
+        project.roles = vec![
+            Role {
+                name: "developer".to_string(),
+                system_prompt: "Dev prompt".to_string(),
+                when_to_use: "When coding".to_string(),
+            },
+        ];
+        let manager = make_manager(vec![project]);
+
+        let prompt = manager.get_role_system_prompt("test", "developer");
+        assert_eq!(prompt, Some("Dev prompt".to_string()));
+
+        let prompt = manager.get_role_system_prompt("test", "nonexistent");
+        assert_eq!(prompt, None);
+
+        let prompt = manager.get_role_system_prompt("nonexistent", "developer");
+        assert_eq!(prompt, None);
     }
 }
