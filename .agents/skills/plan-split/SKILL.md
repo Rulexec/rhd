@@ -4,13 +4,6 @@
 
 This skill provides a systematic approach to splitting large implementation plans into manageable, phase-specific plans with detailed implementation guidance.
 
-## When to Use
-
-- When a milestone plan contains multiple phases that need detailed implementation guidance
-- When a plan needs to be broken down for parallel or sequential implementation
-- When implementation details need to be added to high-level phase descriptions
-- When creating actionable plans for developers to follow
-
 ## Process
 
 ### 1. Analyze the Source Plan
