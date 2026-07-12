@@ -114,7 +114,18 @@ pub fn detach_project<P: ProjectProvider>(
 ) -> Result<(), ChatError> {
     let had_roles = !project_provider.get_project_roles(project_name).is_empty();
 
+    let active_role = db.get_active_role(chat_id)?;
+    let should_clear_active_role = active_role
+        .as_ref()
+        .map(|(proj, _)| proj == project_name)
+        .unwrap_or(false);
+
     db.detach_project(chat_id, project_name)?;
+
+    if should_clear_active_role {
+        db.clear_active_role(chat_id)?;
+        let _ = event_sender.send(ChatEvent::ActiveRoleCleared { chat_id });
+    }
 
     if had_roles {
         db.reset_roles_list_injected(chat_id)?;
