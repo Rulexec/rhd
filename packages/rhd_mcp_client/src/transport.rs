@@ -34,7 +34,10 @@ impl StdioTransport {
         command.stderr(std::process::Stdio::inherit());
 
         let mut child = command.spawn().map_err(|e| {
-            McpError::Transport(format!("Failed to spawn MCP server '{}': {}", cmd, e))
+            McpError::Transport(format!(
+                "Failed to spawn MCP server '{}' (cmd: '{}', cwd: {:?}): {}",
+                cmd, cmd, cwd, e
+            ))
         })?;
 
         let stdin = child.stdin.take().ok_or_else(|| {
@@ -56,6 +59,9 @@ impl StdioTransport {
 
     pub async fn send_request(&self, request: &JsonRpcRequest) -> McpResult<JsonRpcResponse> {
         let request_json = serde_json::to_string(request)?;
+        if crate::DEBUG.load(std::sync::atomic::Ordering::Relaxed) {
+            eprintln!("[MCP] writing to stdin: {}", request_json);
+        }
         let mut stdin = self.stdin.lock().await;
         stdin.write_all(request_json.as_bytes()).await.map_err(|e| {
             McpError::Transport(format!("Failed to write to stdin: {}", e))
@@ -66,12 +72,16 @@ impl StdioTransport {
         stdin.flush().await.map_err(|e| {
             McpError::Transport(format!("Failed to flush stdin: {}", e))
         })?;
+        drop(stdin);
 
         let mut reader = self.reader.lock().await;
         let mut response_line = String::new();
         reader.read_line(&mut response_line).await.map_err(|e| {
             McpError::Transport(format!("Failed to read from stdout: {}", e))
         })?;
+        if crate::DEBUG.load(std::sync::atomic::Ordering::Relaxed) {
+            eprintln!("[MCP] read from stdout: {}", response_line.trim());
+        }
 
         if response_line.trim().is_empty() {
             return Err(McpError::Transport("Empty response from MCP server".to_string()));
@@ -81,12 +91,44 @@ impl StdioTransport {
         Ok(response)
     }
 
+    pub async fn send_notification(&self, method: &str, params: Option<serde_json::Value>) -> McpResult<()> {
+        let notification = if let Some(p) = params {
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": method,
+                "params": p,
+            })
+        } else {
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": method,
+            })
+        };
+        let notification_json = serde_json::to_string(&notification)?;
+        let mut stdin = self.stdin.lock().await;
+        stdin.write_all(notification_json.as_bytes()).await.map_err(|e| {
+            McpError::Transport(format!("Failed to write notification to stdin: {}", e))
+        })?;
+        stdin.write_all(b"\n").await.map_err(|e| {
+            McpError::Transport(format!("Failed to write newline: {}", e))
+        })?;
+        stdin.flush().await.map_err(|e| {
+            McpError::Transport(format!("Failed to flush stdin: {}", e))
+        })?;
+        Ok(())
+    }
+
     pub async fn kill(&self) -> McpResult<()> {
         let mut child = self.child.lock().await;
         child.kill().await.map_err(|e| {
             McpError::Transport(format!("Failed to kill MCP server: {}", e))
         })?;
         Ok(())
+    }
+
+    pub async fn pid(&self) -> Option<u32> {
+        let child = self.child.lock().await;
+        child.id()
     }
 }
 

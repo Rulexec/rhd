@@ -2,6 +2,21 @@
 
 Svelte-based web UI in `frontend/` directory for monitoring scenario execution and chat interactions. Written in TypeScript with Zod validation for WebSocket messages.
 
+## State Export/Import
+
+The frontend exposes `window.__exportState()` and `window.__importState(state)` for debugging and testing. These functions serialize and restore all Svelte stores plus the URL hash.
+
+- **`exportState()`**: Returns a JSON-serializable object containing every writable store value (scenarios, chat, projects) and the current `window.location.hash`.
+- **`importState(state)`**: Validates the state object (version check + basic shape validation), restores all stores, and updates the URL hash to trigger the router.
+- **`setupStateExportImport()`**: Called in `main.ts` after app mount; attaches the two functions to `window`.
+
+Implementation details:
+- Custom scenario stores (`activeScenarios`, `pausedScenarios`) expose `setAll(map)` methods to support restoration from serialized arrays.
+- Derived stores (`currentChat`, `isToolLoopRunning`, `activeScenariosList`) are not exported; they recompute from base stores.
+- WebSocket connection state (`wsConnected`) is captured but not actively managed during import; auto-reconnect logic in `ws.ts` handles connection.
+
+See `frontend/src/lib/stateExport.ts` for the full implementation and `frontend/src/lib/stateExport.test.ts` for usage examples.
+
 ## Setup
 
 - Requires Node.js v24.13.0 (specified in `.nvmrc`)
@@ -44,6 +59,7 @@ Svelte-based web UI in `frontend/` directory for monitoring scenario execution a
 - Error states with retry button
 - Model selector dropdown in message input (shows available models, persists per chat)
 - Model indicators in message list (visual dividers showing when model changes between messages)
+- MCP tool call display with collapsible details (ToolCallMessage component)
 
 ## Architecture
 
@@ -53,11 +69,79 @@ Svelte-based web UI in `frontend/` directory for monitoring scenario execution a
 - Svelte stores for state management:
   - Scenario stores: `activeScenarios`, `finishedScenarios`, `pausedScenarios`, `lastKnownId`, `wsConnected`
   - Chat stores: `chats`, `currentChatId`, `messages`, `streamingContent`, `isStreaming`, `streamError`, `streamingMessageId`, `currentChat` (derived)
+  - Project stores: `chatProjects`, `mcpStatuses` (in `projectStores.ts`)
 - CSS modules + utility classes (Tailwind-like approach)
 - Components:
   - Layout: `TabNav`, `App`
   - Scenarios: `ScenariosTab`, `ActiveScenario`, `FinishedScenario`, `PausedScenario`
-  - Chats: `ChatsTab`, `ChatList`, `ChatView`, `MessageList`, `Message`, `MessageInput`, `StreamingMessage`
+  - Chats: `ChatsTab`, `ChatList`, `ChatView`, `MessageList`, `Message`, `MessageInput`, `StreamingMessage`, `ToolCallMessage`
+
+## Actions Layer (`frontend/src/lib/actions/`)
+
+Components emit actions instead of calling `chatWs.ts` functions directly. ActionDispatcher routes actions to processors or test overrides.
+
+### Architecture
+
+```
+Component → dispatch(action) → ActionDispatcher
+                                    ↓
+                          Check override → If exists, call handler
+                                    ↓
+                          Call processor → Updates stores / calls external
+```
+
+### Key Files
+
+- `actions/types.ts` — Action type definitions (ChatAction union)
+- `actions/dispatcher.ts` — `dispatch()`, `_testOverrideAction()`, `_testClearOverrides()`
+- `actions/processors.ts` — `processAction()` wraps chatWs functions
+- `actions/index.ts` — Public exports
+
+### Usage
+
+Components import `dispatch` from `../lib/actions` and call it with action objects:
+
+```typescript
+import { dispatch } from '../lib/actions';
+
+// In component
+dispatch({ type: 'sendMessage', payload: { content: 'Hello', model: 'gpt4' } });
+```
+
+### Test Overrides
+
+Tests can intercept actions using `_testOverrideAction()`:
+
+```typescript
+import { _testOverrideAction, _testClearOverrides } from '../../lib/actions';
+
+beforeEach(() => {
+  _testClearOverrides();
+});
+
+it('intercepts sendMessage', async () => {
+  _testOverrideAction('sendMessage', async (action) => {
+    // Mock response instead of calling daemon
+    await dispatch({ type: 'chatStreamChunk', payload: { content: 'Mock response' } });
+    await dispatch({ type: 'chatStreamFinished' });
+  });
+});
+```
+
+### Action Types
+
+**User actions** (from UI):
+- `createChat`, `selectChat`, `deleteChat`
+- `sendMessage`, `editMessage`
+- `abortChat`, `pauseChat`, `resumeChat`
+- `selectModel`, `loadChats`, `loadAvailableModels`
+
+**System actions** (from WebSocket or tests):
+- `chatStreamChunk`, `chatThinkingChunk`, `chatStreamFinished`, `chatStreamError`
+- `chatMessageAdded`, `chatUpdated`
+- `chatToolCallStarted`, `chatToolCallCompleted`
+- `chatPaused`, `chatResumed`
+- `projectMcpStatusChanged`, `projectAttached`, `projectDetached`
 
 ## Type System
 
@@ -74,12 +158,17 @@ Invalid WebSocket messages are logged and ignored via `safeParse`.
 - `currentChatId`: writable ID of selected chat
 - `messages`: writable array of messages for current chat (supports both numeric IDs from backend and string temp IDs for optimistic messages)
 - `streamingContent`: writable string accumulating streamed text (legacy, kept for compatibility)
+- `streamingThinkingContent`: writable string accumulating thinking/reasoning content
 - `isStreaming`: writable boolean indicating active stream
 - `streamError`: writable error message (null when no error)
 - `streamingMessageId`: writable string|null, tracks the temp ID of the optimistic assistant message during streaming
 - `currentChat`: derived store returning current chat object
 - `availableModels`: writable array of available model names (fetched from backend)
 - `selectedModel`: writable string|null, currently selected model for the active chat
+- `isPaused`: writable boolean indicating chat paused during tool loop
+- `pendingToolCalls`: writable array of active tool calls
+- `isToolLoopRunning`: derived store (isStreaming && !isPaused)
+- `resetAllStores()`: resets all stores to initial state (for testing)
 
 ## Chat WebSocket Functions (`frontend/src/lib/chatWs.ts`)
 

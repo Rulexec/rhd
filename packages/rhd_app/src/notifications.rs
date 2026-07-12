@@ -34,11 +34,3 @@ fn fallback_osascript(title: &str, message: &str) {
         .output();
 }
 
-pub fn show_daemon_notification() {
-    send_notification("RHD Daemon", "Test notification from daemon", None);
-}
-
-pub fn show_frontend_notification(ws_port: u16) {
-    let url = format!("http://127.0.0.1:{}", ws_port);
-    send_notification("RHD Frontend", "Test notification from frontend", Some(&url));
-}

@@ -52,11 +52,6 @@ arguments: <json>
 ===== ABORTED =====
 ```
 
-- Step name prefix on all headers except `output` step and scenario-level headers
-- `[STDOUT]`/`[STDERR]` prefixes preserve line-by-line interleaving
-- AI request splits system prompt and message with sub-headers
-- Tool calls/results logged individually in tool loop
-
 ## Meta.json
 
 ### Location
@@ -80,12 +75,7 @@ Written to each log directory at scenario completion: `<logDir>/meta.json`
       "exitCode": 0,
       "started": "2026-06-26T15:00:00Z",
       "finished": "2026-06-26T15:00:10Z",
-      "durationMs": 10000,
-      "sections": [
-        { "kind": "runningCommand", "startLine": 5, "endLine": 6 },
-        { "kind": "commandOutput", "startLine": 8, "endLine": 12 },
-        { "kind": "exitCode", "startLine": 14, "endLine": 15 }
-      ]
+      "durationMs": 10000
     },
     {
       "name": "ai_review",
@@ -95,11 +85,7 @@ Written to each log directory at scenario completion: `<logDir>/meta.json`
       "finished": "2026-06-26T15:01:25Z",
       "durationMs": 75000,
       "tokens": { "prompt": 1500, "completion": 800, "total": 2300 },
-      "cost": 0.0235,
-      "sections": [
-        { "kind": "aiRequest", "startLine": 17, "endLine": 25 },
-        { "kind": "aiResponse", "startLine": 27, "endLine": 35 }
-      ]
+      "cost": 0.0235
     }
   ]
 }
@@ -111,17 +97,49 @@ Written to each log directory at scenario completion: `<logDir>/meta.json`
 - `error` — failed with error
 - `aborted` — user aborted
 
-### Step Types
-- `runCommand` — includes `exitCode` field
-- `aiChat` — includes `model` field, optional `tokens`/`cost`
-- `output` — no extra fields
+## Chat Logs
 
-### Log Sections
-Each step records line ranges for all log sections (from `=====` and `-----` delimiters). Section kinds:
-- `runningCommand`, `commandOutput`, `exitCode`, `commandSpawnError`
-- `aiRequest`, `systemPrompt`, `message`, `aiResponse`, `aiRequestFailed`
-- `toolCall`, `toolResult`
-- `outputStep`, `skipped`
+When `logChats` directory configured in `rhd.yaml`, each chat interaction creates:
+- Directory: `<logChats>/<chatTitle>-<YYYY-MM-DD-HH-MM-SS>[-N]/`
+- File: `log.txt` inside directory
+- Collision suffix `-2`, `-3`, etc. if directory exists
+
+### Chat Log Format
+Written to `log.txt` (when logChats configured):
+
+```
+===== Chat "<title>" (id=<id>): stream started =====
+model: <model>
+available tools: <tool1>, <tool2>, ...
+
+----- messages sent to API -----
+[system] <content>
+[user] <content>
+[assistant] <content>
+
+===== Assistant response =====
+----- reasoning -----
+<reasoning content>
+
+----- message -----
+<assistant message>
+
+finish_reason: <stop|tool_calls|...>
+tokens: prompt=X, completion=Y, total=Z
+
+===== Tool call: <tool_name> (id=<call_id>) =====
+<arguments JSON>
+
+===== Tool result: <tool_name> (id=<call_id>) =====
+<result content>
+
+===== Stream finished =====
+finish_reason: <reason>
+total duration: <Xms>
+
+===== Stream error =====
+error: <error message>
+```
 
 ## WebSocket Events
 
@@ -135,13 +153,12 @@ Each step records line ranges for all log sections (from `=====` and `-----` del
 ### Subscription
 - Client sends `subscribe` request
 - Server responds with snapshot of current active executions
-- Server pushes events as they happen via broadcast channel
+- Server pushes events as they happen
 - Multiple subscribers supported
 
 ### Finished Scenarios Query
 - Client sends `getFinishedScenarios` with optional `lastId` parameter
-- Server reads `meta.json` files from logs directory
-- Returns only scenarios with `id > lastId` (incremental fetch)
+- Server returns only scenarios with `id > lastId` (incremental fetch)
 - Sorted by start time (newest first)
 
 ## Notifications
@@ -162,11 +179,3 @@ Each step records line ranges for all log sections (from `=====` and `-----` del
 - Accumulated per scenario execution
 - Cost calculated from model config pricing (flat or tiered)
 - Stored in `meta.json` and broadcast via WebSocket events
-
-## Key Files
-- Log sink: `packages/rhd_app/src/log.rs`
-- Execution tracker: `packages/rhd_app/src/execution.rs`
-- Meta types: `packages/rhd_api/src/lib.rs`
-- WebSocket events: `packages/rhd_app/src/ws.rs`
-- Notifications: `packages/rhd_app/src/notifications.rs`
-- Frontend notifications: `frontend/src/lib/notifications.ts`

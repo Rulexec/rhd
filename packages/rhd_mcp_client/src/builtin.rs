@@ -71,6 +71,7 @@ impl McpClientTrait for BuiltinTools {
                 Ok(ToolResult {
                     content: format!("Flag '{}' set to {}", args.name, args.value),
                     is_error: None,
+                    raw_response: None,
                 })
             }
             _ => Err(crate::McpError::ToolNotFound(name.to_string())),

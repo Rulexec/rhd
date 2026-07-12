@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-RHD is a Rust-based automation tool for AI-assisted task execution. It uses a daemon/client architecture where a long-running daemon process executes scenarios (action chains) on behalf of client requests via Unix socket IPC. The system also includes a persistent chat feature for direct AI conversations with streaming responses.
+RHD is a Rust-based automation tool for AI-assisted task execution. It uses a daemon/client architecture where a long-running daemon process executes scenarios (action chains) on behalf of client requests via Unix socket IPC. The system also includes a persistent chat feature for direct AI conversations with streaming responses and MCP tool integration.
 
 ## Multi-Crate Workspace Structure
 
@@ -21,9 +21,29 @@ rhd/
 │   ├── rhd_api/      # Shared IPC types, protocol definitions, execution tracking types
 │   ├── rhd_db/       # SQLite database for scenario ID persistence
 │   ├── rhd_mcp_client/ # MCP protocol client for tool usage
+│   ├── rhd_chat/     # Chat manager, tool loop, MCP integration for chat
 │   ├── rhd_app/      # Main binary (daemon + client)
 │   └── rhd_test/     # E2E test runner with mock AI server
 ```
+
+## Documentation Structure
+
+### Product-View vs Implementation
+
+The knowledge base is organized into two layers:
+
+**Top-level files** (`chat.md`, `configuration.md`, `scenarios.md`, etc.):
+- **Implementation details**: crate APIs, database schemas, protocols, internal architecture
+- **When to read**: When implementing or modifying code in specific areas
+- **Contains**: Function signatures, struct definitions, database schemas, protocol messages, key file paths
+
+**Features files** (`features/chat.md`, `features/configuration.md`, etc.):
+- **Product-view only**: what the feature does, user interactions, behavior, configuration
+- **When to read**: When understanding what a feature does from a user perspective
+- **Contains**: User workflows, UI behavior, configuration options, error handling from user perspective
+- **Does NOT contain**: Database schemas, internal crate APIs, protocol details, key file paths
+
+**Pattern**: Features files describe "what it does" (product behavior), top-level files describe "how it's built" (implementation).
 
 ## Knowledge Base Index
 
@@ -53,9 +73,10 @@ Product-scoped feature documentation (what the feature does, not how it's implem
 | File | When to read |
 |------|-------------|
 | [features/scenario-execution.md](features/scenario-execution.md) | Understanding how scenarios run, action types, placeholders, abort, pause/resume |
-| [features/chat.md](features/chat.md) | Understanding chat feature, streaming, model selection, message editing |
-| [features/mcp-tools.md](features/mcp-tools.md) | Understanding MCP tool integration, built-in tools, flags, skip conditions |
+| [features/chat.md](features/chat.md) | Understanding chat feature, streaming, model selection, message editing, delete all chats, auto-scroll |
+| [features/mcp-tools.md](features/mcp-tools.md) | Understanding MCP tool integration, built-in tools, flags, skip conditions, tool call error UI |
 | [features/configuration.md](features/configuration.md) | Understanding config files, credentials, model aliases, CLI arguments |
-| [features/frontend-ui.md](features/frontend-ui.md) | Understanding web UI structure, tabs, routing, notifications |
+| [features/frontend-ui.md](features/frontend-ui.md) | Understanding web UI structure, tabs, routing, notifications, state export/import, markdown rendering, new chat dialog |
 | [features/testing.md](features/testing.md) | Understanding E2E test infrastructure, mock server, test utilities |
 | [features/logging-monitoring.md](features/logging-monitoring.md) | Understanding log files, meta.json, WebSocket events, notifications |
+| [features/projects.md](features/projects.md) | Understanding projects feature, project structure, attaching projects to chats, MCP server lifecycle, system prompt injection |

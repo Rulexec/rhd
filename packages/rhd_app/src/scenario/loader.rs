@@ -3,7 +3,7 @@ use std::path::Path;
 
 use thiserror::Error;
 
-use super::Scenario;
+use super::{Action, Scenario};
 
 #[derive(Debug, Error)]
 pub enum ScenarioLoadError {
@@ -63,6 +63,25 @@ fn validate_scenario(scenario: &Scenario, path: &str) -> Result<(), ScenarioLoad
                     path: path.to_string(),
                     message: format!("duplicate action name: '{name}'"),
                 });
+            }
+        }
+
+        if let Action::AiChat(chat) = action {
+            if let Some(mcp_refs) = &chat.mcp {
+                let mut seen_ids = std::collections::HashSet::new();
+                for mcp_ref in mcp_refs {
+                    let eid = mcp_ref.effective_id().to_string();
+                    if !seen_ids.insert(eid.clone()) {
+                        return Err(ScenarioLoadError::Validation {
+                            path: path.to_string(),
+                            message: format!(
+                                "duplicate MCP id '{}' in aiChat step '{}'",
+                                eid,
+                                chat.name.as_deref().unwrap_or("<unnamed>")
+                            ),
+                        });
+                    }
+                }
             }
         }
     }

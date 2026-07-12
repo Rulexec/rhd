@@ -14,6 +14,7 @@ pub enum Command {
     Daemon(DaemonArgs),
     Run(RunArgs),
     Dev(DevArgs),
+    Reload(ReloadArgs),
 }
 
 pub fn default_socket_path() -> PathBuf {
@@ -81,6 +82,10 @@ pub struct DaemonArgs {
     pub ws_port: Option<u16>,
     #[arg(long)]
     pub db_dir: Option<PathBuf>,
+    #[arg(long)]
+    pub projects_dir: Option<PathBuf>,
+    #[arg(long)]
+    pub debug: bool,
 }
 
 impl DaemonArgs {
@@ -105,4 +110,10 @@ impl DevArgs {
     pub fn validate(&self) -> Result<(), String> {
         Ok(())
     }
+}
+
+#[derive(Parser, Debug)]
+pub struct ReloadArgs {
+    #[arg(long)]
+    pub socket: Option<PathBuf>,
 }

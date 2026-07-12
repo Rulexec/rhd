@@ -3,16 +3,21 @@
 ## Purpose
 Persistent conversational interface for direct AI interaction. Users create chats, send messages, receive streaming responses, and can edit/resend previous messages. All conversations persist across daemon restarts.
 
+## Delete All Chats
+- "Delete all chats" button at the bottom of the chat list sidebar
+- Removes all chats and their messages at once
+- Shows confirmation dialog before deleting
+- Disabled when no chats exist
+
 ## How It Works
 
 ### Chat Lifecycle
 1. User creates a new chat with a title
 2. User selects a model from available models list
 3. User sends messages; AI responds with streaming text
-4. Messages persist in SQLite database (`rhd_db/chats.db`)
-5. User can edit previous messages — this truncates the conversation after that point and resends to AI
-6. User can abort streaming responses mid-generation
-7. Reopening a chat restores the same model selection
+4. User can edit previous messages — this truncates the conversation after that point and resends to AI
+5. User can abort streaming responses mid-generation
+6. Reopening a chat restores the same model selection
 
 ### Model Selection
 - Model selector dropdown appears under message input
@@ -22,12 +27,38 @@ Persistent conversational interface for direct AI interaction. Users create chat
 - Model indicators are visual-only, not sent to AI context
 
 ### Streaming Responses
-- AI responses stream token-by-token via Server-Sent Events (SSE)
+- AI responses stream token-by-token
 - Frontend shows animated dots indicator while streaming
 - First chunk hides loader and shows assistant message with content
 - Subsequent chunks append to content in real-time
 - Stream finish removes animated dots, shows final message
 - Empty chunks filtered on backend (not sent to frontend)
+
+### Smart Auto-Scrolling
+- Message list auto-scrolls to bottom when new content arrives **only if user is at bottom**
+- Tracks "at bottom" state with 30px threshold from bottom
+- If user scrolls up, auto-scroll stops (respects user's scroll position)
+- If user scrolls back to bottom, auto-scroll resumes
+- New streaming session resets auto-scroll to enabled
+
+### Thinking/Reasoning Content
+- AI models with reasoning support (e.g., Qwen) emit thinking content
+- Displayed in collapsible "Thinking" section (collapsed by default)
+- **Collapsed preview**: Shows last 3 visual lines (rendered/wrapped) so user sees live streaming progress
+- **Expanded state**: Auto-scrolls to bottom; continues auto-scroll while user stays at bottom; stops if user scrolls up; resumes if user scrolls back to bottom
+- Visible in message history for assistant messages
+
+### System Prompts
+- System prompts displayed in collapsible "System Prompt" section (collapsed by default)
+- Sent before user message in conversations
+
+### MCP Tool Calls
+- Tool calls displayed in `ToolCallMessage` component with MCP ID
+- Collapsed by default, showing header with status icon, MCP ID, tool name
+- Expanded view shows arguments and result sections
+- Tool names are namespaced: `{mcp_id}/{tool_name}` format (e.g., `fs1/read_file`)
+- Built-in tools (e.g., `rhd_set_flag`) are not namespaced
+- Failed tool calls show red X icon and red border styling
 
 ### Message Editing
 - User can edit their own messages
@@ -37,7 +68,6 @@ Persistent conversational interface for direct AI interaction. Users create chat
 
 ### Abort
 - User can abort streaming response mid-generation
-- Cancellation token stops the AI request
 - Partial content may be displayed
 - Error state shown with retry option
 
@@ -45,47 +75,3 @@ Persistent conversational interface for direct AI interaction. Users create chat
 - Network errors, API errors, and parse errors shown in UI
 - Retry button resends the last message
 - Error messages include context (model name, status code)
-
-## Data Model
-
-### Chats Table
-- `id` — auto-increment primary key
-- `title` — chat name
-- `active_model` — currently selected model (nullable)
-- `created_at`, `updated_at` — ISO 8601 UTC timestamps
-
-### Messages Table
-- `id` — auto-increment primary key
-- `chat_id` — foreign key to chats (cascade delete)
-- `role` — "user" or "assistant"
-- `content` — message text
-- `model` — model used for this message (nullable, for visual indicators)
-- `created_at` — ISO 8601 UTC timestamp
-
-## WebSocket Protocol
-
-### Requests
-- `createChat` — create new chat with title
-- `listChats` — get all chats
-- `getChat` — get chat with messages
-- `deleteChat` — delete chat and all messages
-- `sendMessage` — send user message, trigger AI response
-- `editMessage` — edit message, truncate, resend
-- `abortChat` — cancel active streaming
-- `getAvailableModels` — list real models (no aliases)
-
-### Events
-- `chatStreamChunk` — partial content from AI
-- `chatStreamFinished` — AI response complete
-- `chatStreamError` — AI request failed
-- `chatMessageAdded` — new message persisted (user or assistant)
-- `chatUpdated` — chat metadata changed
-
-## Key Files
-- Chat database: `packages/rhd_db/src/chat_db.rs`
-- Chat manager: `packages/rhd_app/src/chat.rs`
-- AI streaming client: `packages/rhd_ai/src/client.rs`
-- WebSocket handlers: `packages/rhd_app/src/ws.rs`
-- Frontend stores: `frontend/src/lib/chatStores.ts`
-- Frontend WebSocket: `frontend/src/lib/chatWs.ts`
-- Chat components: `frontend/src/components/Chat*.svelte`, `Message*.svelte`, `StreamingMessage.svelte`

@@ -14,13 +14,13 @@ modelsDir: models            # directory containing model YAML files
 mcpDir: mcp                  # directory containing MCP server configs
 defaultModel: null           # fallback model for aiChat steps without model field
 logs: null                   # directory for execution logs (null = no log files)
+logChats: null               # directory for chat interaction logs (null = no logging)
+logChatsRaw: false           # enable raw API request/response logging (requires logChats)
 dbDir: rhd_db                # directory for SQLite databases
 wsPort: null                 # WebSocket server port (null = disabled)
 credentialsConfig: null      # path to credentials file (relative to rhd.yaml)
 neverFail: false             # pause on AI errors instead of failing (requires wsPort)
 ```
-
-**Resolution order:** CLI arg → config file → built-in default
 
 ### `models/<name>.yaml` — Model Definitions
 Each file defines an AI model configuration. Filename = model name.
@@ -80,6 +80,13 @@ Referenced from `rhd.yaml` via `credentialsConfig: ../credentials.yaml` (path re
 --modelAlias ALIAS=TARGET  # override model names at runtime (repeatable)
 ```
 
+### `rhd reload`
+```
+--socket PATH          # Unix socket path (default: $HOME/rhd.sock)
+```
+
+Reloads all configuration files (scenarios, models, MCP servers, projects) without restarting the daemon. Waits for active executions to complete, then reloads configs and restarts MCP servers whose configuration has changed. Returns counts of reloaded items.
+
 ## Model Alias Resolution
 Two-stage resolution:
 1. **YAML aliases:** `models/medium.yaml` with `alias: gpt4` → `medium` resolves to `gpt4`
@@ -87,16 +94,14 @@ Two-stage resolution:
 
 CLI applies to any model, even YAML-alias-resolved ones. Logs and meta.json show final resolved model name.
 
+## MCP ID Field
+Project MCP configurations support an optional `id` field. If not specified, the `name` field is used as the ID. The ID is used for:
+- Tool namespacing: tools are exposed to AI as `{id}/{tool_name}`
+- Conflict detection: attaching projects with duplicate MCP IDs is rejected
+
 ## Startup Validation
 - All model configs validated at daemon startup
 - Invalid YAML → daemon exits with error (file path + line number)
 - Missing credentials file (when referenced) → daemon exits with error
 - Missing model directories → daemon exits with error
 - Socket path cleaned up on startup (stale socket removed)
-
-## Key Files
-- Config loading: `packages/rhd_app/src/config.rs`
-- Credentials: `packages/rhd_app/src/credentials.rs`
-- Model config: `packages/rhd_ai/src/config.rs`
-- CLI args: `packages/rhd_app/src/cli.rs`
-- Config merge: `packages/rhd_app/src/main.rs`

@@ -23,6 +23,7 @@ pub struct Message {
     pub content: String,
     pub created_at: String,
     pub model: Option<String>,
+    pub thinking_content: Option<String>,
 }
 
 pub struct ChatDb {
@@ -75,6 +76,18 @@ impl ChatDb {
             CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id);",
         )?;
 
+        // Create chat_projects table if not exists
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS chat_projects (
+                chat_id INTEGER NOT NULL,
+                project_name TEXT NOT NULL,
+                system_prompt_added BOOLEAN NOT NULL DEFAULT 0,
+                attached_at TEXT NOT NULL,
+                PRIMARY KEY (chat_id, project_name),
+                FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE
+            );",
+        )?;
+
         // Migrate existing tables to add new columns
         self.migrate(&conn)?;
 
@@ -100,6 +113,16 @@ impl ChatDb {
 
         if !has_model {
             conn.execute_batch("ALTER TABLE messages ADD COLUMN model TEXT")?;
+        }
+
+        // Check if thinking_content column exists in messages table
+        let has_thinking_content: bool = conn
+            .prepare("SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name='thinking_content'")?
+            .query_row([], |row| row.get::<_, i64>(0))?
+            > 0;
+
+        if !has_thinking_content {
+            conn.execute_batch("ALTER TABLE messages ADD COLUMN thinking_content TEXT")?;
         }
 
         Ok(())
@@ -174,6 +197,15 @@ impl ChatDb {
         Ok(())
     }
 
+    pub fn delete_all_chats(&self) -> DbResult<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| DbError::InitializationError(e.to_string()))?;
+        conn.execute("DELETE FROM chats", [])?;
+        Ok(())
+    }
+
     pub fn update_chat_title(&self, id: i64, title: &str) -> DbResult<()> {
         let conn = self
             .conn
@@ -213,7 +245,7 @@ impl ChatDb {
         Ok(())
     }
 
-    pub fn add_message(&self, chat_id: i64, role: &str, content: &str, model: Option<&str>) -> DbResult<i64> {
+    pub fn add_message(&self, chat_id: i64, role: &str, content: &str, model: Option<&str>, thinking_content: Option<&str>) -> DbResult<i64> {
         let conn = self
             .conn
             .lock()
@@ -221,8 +253,8 @@ impl ChatDb {
         let tx = conn.unchecked_transaction()?;
         let now = now_iso();
         tx.execute(
-            "INSERT INTO messages (chat_id, role, content, created_at, model) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![chat_id, role, content, now, model],
+            "INSERT INTO messages (chat_id, role, content, created_at, model, thinking_content) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![chat_id, role, content, now, model, thinking_content],
         )?;
         let message_id = tx.last_insert_rowid();
         tx.execute(
@@ -239,7 +271,7 @@ impl ChatDb {
             .lock()
             .map_err(|e| DbError::InitializationError(e.to_string()))?;
         let mut stmt = conn.prepare(
-            "SELECT id, chat_id, role, content, created_at, model FROM messages WHERE chat_id = ?1 ORDER BY id ASC",
+            "SELECT id, chat_id, role, content, created_at, model, thinking_content FROM messages WHERE chat_id = ?1 ORDER BY id ASC",
         )?;
         let rows = stmt.query_map(params![chat_id], |row| {
             Ok(Message {
@@ -249,6 +281,7 @@ impl ChatDb {
                 content: row.get(3)?,
                 created_at: row.get(4)?,
                 model: row.get(5)?,
+                thinking_content: row.get(6)?,
             })
         })?;
         let mut messages = Vec::new();
@@ -276,7 +309,7 @@ impl ChatDb {
             .lock()
             .map_err(|e| DbError::InitializationError(e.to_string()))?;
         let mut stmt = conn.prepare(
-            "SELECT id, chat_id, role, content, created_at, model FROM messages WHERE id = ?1",
+            "SELECT id, chat_id, role, content, created_at, model, thinking_content FROM messages WHERE id = ?1",
         )?;
         let mut rows = stmt.query_map(params![message_id], |row| {
             Ok(Message {
@@ -286,6 +319,7 @@ impl ChatDb {
                 content: row.get(3)?,
                 created_at: row.get(4)?,
                 model: row.get(5)?,
+                thinking_content: row.get(6)?,
             })
         })?;
         match rows.next() {
@@ -315,6 +349,61 @@ impl ChatDb {
             params![now, chat_id],
         )?;
         tx.commit()?;
+        Ok(())
+    }
+
+    pub fn attach_project(&self, chat_id: i64, project_name: &str) -> DbResult<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| DbError::InitializationError(e.to_string()))?;
+        let now = now_iso();
+        conn.execute(
+            "INSERT OR IGNORE INTO chat_projects (chat_id, project_name, system_prompt_added, attached_at) VALUES (?1, ?2, 0, ?3)",
+            params![chat_id, project_name, now],
+        )?;
+        Ok(())
+    }
+
+    pub fn detach_project(&self, chat_id: i64, project_name: &str) -> DbResult<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| DbError::InitializationError(e.to_string()))?;
+        conn.execute(
+            "DELETE FROM chat_projects WHERE chat_id = ?1 AND project_name = ?2",
+            params![chat_id, project_name],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_chat_projects(&self, chat_id: i64) -> DbResult<Vec<(String, bool)>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| DbError::InitializationError(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT project_name, system_prompt_added FROM chat_projects WHERE chat_id = ?1 ORDER BY attached_at ASC",
+        )?;
+        let rows = stmt.query_map(params![chat_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, bool>(1)?))
+        })?;
+        let mut projects = Vec::new();
+        for row in rows {
+            projects.push(row?);
+        }
+        Ok(projects)
+    }
+
+    pub fn mark_system_prompt_added(&self, chat_id: i64, project_name: &str) -> DbResult<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| DbError::InitializationError(e.to_string()))?;
+        conn.execute(
+            "UPDATE chat_projects SET system_prompt_added = 1 WHERE chat_id = ?1 AND project_name = ?2",
+            params![chat_id, project_name],
+        )?;
         Ok(())
     }
 }
@@ -384,6 +473,24 @@ mod tests {
     }
 
     #[test]
+    fn test_delete_all_chats() {
+        let path = "test_chat_delete_all.db";
+        cleanup(path);
+
+        let db = ChatDb::new(path).unwrap();
+        let id1 = db.create_chat("First").unwrap();
+        let id2 = db.create_chat("Second").unwrap();
+        assert_eq!(db.list_chats().unwrap().len(), 2);
+
+        db.delete_all_chats().unwrap();
+        assert!(db.list_chats().unwrap().is_empty());
+        assert!(db.get_chat(id1).unwrap().is_none());
+        assert!(db.get_chat(id2).unwrap().is_none());
+
+        cleanup(path);
+    }
+
+    #[test]
     fn test_update_chat_title() {
         let path = "test_chat_title.db";
         cleanup(path);
@@ -406,8 +513,8 @@ mod tests {
         let db = ChatDb::new(path).unwrap();
         let chat_id = db.create_chat("Chat").unwrap();
 
-        let msg1 = db.add_message(chat_id, "user", "Hello", Some("gpt4")).unwrap();
-        let msg2 = db.add_message(chat_id, "assistant", "Hi there", Some("gpt4")).unwrap();
+        let msg1 = db.add_message(chat_id, "user", "Hello", Some("gpt4"), None).unwrap();
+        let msg2 = db.add_message(chat_id, "assistant", "Hi there", Some("gpt4"), None).unwrap();
         assert_eq!(msg1, 1);
         assert_eq!(msg2, 2);
 
@@ -431,9 +538,9 @@ mod tests {
         let db = ChatDb::new(path).unwrap();
         let chat_id = db.create_chat("Chat").unwrap();
 
-        let msg1 = db.add_message(chat_id, "user", "First", None).unwrap();
-        let _msg2 = db.add_message(chat_id, "assistant", "Second", None).unwrap();
-        let _msg3 = db.add_message(chat_id, "user", "Third", None).unwrap();
+        let msg1 = db.add_message(chat_id, "user", "First", None, None).unwrap();
+        let _msg2 = db.add_message(chat_id, "assistant", "Second", None, None).unwrap();
+        let _msg3 = db.add_message(chat_id, "user", "Third", None, None).unwrap();
 
         db.truncate_messages(chat_id, msg1).unwrap();
 
@@ -451,7 +558,7 @@ mod tests {
 
         let db = ChatDb::new(path).unwrap();
         let chat_id = db.create_chat("Chat").unwrap();
-        let msg_id = db.add_message(chat_id, "user", "Original", None).unwrap();
+        let msg_id = db.add_message(chat_id, "user", "Original", None, None).unwrap();
 
         db.update_message(msg_id, "Updated").unwrap();
 
@@ -540,9 +647,102 @@ mod tests {
         let chat = db.get_chat(1).unwrap().unwrap();
         assert_eq!(chat.active_model, Some("gpt4".to_string()));
 
-        let msg_id = db.add_message(1, "assistant", "New message", Some("gpt4")).unwrap();
+        let msg_id = db.add_message(1, "assistant", "New message", Some("gpt4"), None).unwrap();
         let msg = db.get_message(msg_id).unwrap().unwrap();
         assert_eq!(msg.model, Some("gpt4".to_string()));
+
+        cleanup(path);
+    }
+
+    #[test]
+    fn test_attach_and_get_projects() {
+        let path = "test_chat_projects.db";
+        cleanup(path);
+
+        let db = ChatDb::new(path).unwrap();
+        let chat_id = db.create_chat("Test Chat").unwrap();
+
+        db.attach_project(chat_id, "project-a").unwrap();
+        db.attach_project(chat_id, "project-b").unwrap();
+
+        let projects = db.get_chat_projects(chat_id).unwrap();
+        assert_eq!(projects.len(), 2);
+        assert_eq!(projects[0].0, "project-a");
+        assert_eq!(projects[0].1, false);
+        assert_eq!(projects[1].0, "project-b");
+        assert_eq!(projects[1].1, false);
+
+        cleanup(path);
+    }
+
+    #[test]
+    fn test_detach_project() {
+        let path = "test_chat_projects_detach.db";
+        cleanup(path);
+
+        let db = ChatDb::new(path).unwrap();
+        let chat_id = db.create_chat("Test Chat").unwrap();
+
+        db.attach_project(chat_id, "project-a").unwrap();
+        db.attach_project(chat_id, "project-b").unwrap();
+        db.detach_project(chat_id, "project-a").unwrap();
+
+        let projects = db.get_chat_projects(chat_id).unwrap();
+        assert_eq!(projects.len(), 1);
+        assert_eq!(projects[0].0, "project-b");
+
+        cleanup(path);
+    }
+
+    #[test]
+    fn test_mark_system_prompt_added() {
+        let path = "test_chat_projects_prompt.db";
+        cleanup(path);
+
+        let db = ChatDb::new(path).unwrap();
+        let chat_id = db.create_chat("Test Chat").unwrap();
+
+        db.attach_project(chat_id, "project-a").unwrap();
+        let projects = db.get_chat_projects(chat_id).unwrap();
+        assert_eq!(projects[0].1, false);
+
+        db.mark_system_prompt_added(chat_id, "project-a").unwrap();
+        let projects = db.get_chat_projects(chat_id).unwrap();
+        assert_eq!(projects[0].1, true);
+
+        cleanup(path);
+    }
+
+    #[test]
+    fn test_attach_project_idempotent() {
+        let path = "test_chat_projects_idempotent.db";
+        cleanup(path);
+
+        let db = ChatDb::new(path).unwrap();
+        let chat_id = db.create_chat("Test Chat").unwrap();
+
+        db.attach_project(chat_id, "project-a").unwrap();
+        db.attach_project(chat_id, "project-a").unwrap();
+
+        let projects = db.get_chat_projects(chat_id).unwrap();
+        assert_eq!(projects.len(), 1);
+
+        cleanup(path);
+    }
+
+    #[test]
+    fn test_cascade_delete_projects() {
+        let path = "test_chat_projects_cascade.db";
+        cleanup(path);
+
+        let db = ChatDb::new(path).unwrap();
+        let chat_id = db.create_chat("Test Chat").unwrap();
+
+        db.attach_project(chat_id, "project-a").unwrap();
+        db.delete_chat(chat_id).unwrap();
+
+        let projects = db.get_chat_projects(chat_id).unwrap();
+        assert_eq!(projects.len(), 0);
 
         cleanup(path);
     }

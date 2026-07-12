@@ -1,4 +1,3 @@
-mod chat;
 mod cli;
 mod client;
 mod config;
@@ -10,6 +9,8 @@ mod log;
 mod mcp_cache;
 mod mcp_loader;
 mod notifications;
+mod project_loader;
+mod project_manager;
 mod scenario;
 mod ws;
 
@@ -29,6 +30,7 @@ async fn main() {
                 eprintln!("error: {err}");
                 std::process::exit(1);
             }
+            rhd_mcp_client::set_debug(args.debug);
             if let Err(err) = run_daemon_command(args).await {
                 eprintln!("error: {err}");
                 std::process::exit(1);
@@ -73,6 +75,13 @@ async fn main() {
                 }
             }
         }
+        Command::Reload(args) => {
+            let socket_path = args.socket.unwrap_or_else(cli::default_socket_path);
+            if let Err(err) = client::send_reload(&socket_path).await {
+                eprintln!("error: {err}");
+                std::process::exit(1);
+            }
+        }
     }
 }
 
@@ -94,9 +103,21 @@ async fn run_daemon_command(
     let models = rhd_ai::config::load_models(&merged.models_dir, &credentials)?;
     let scenarios = scenario::load_scenarios_dir(&merged.scenarios_dir)?;
     let mcp_configs = mcp_loader::load_mcp_dir(&merged.mcp_dir)?;
+    let projects = project_loader::load_projects(&merged.projects_dir)
+        .map_err(|e| format!("failed to load projects: {}", e))?;
+    let mcp_cache = std::sync::Arc::new(mcp_cache::McpServerCache::new());
+    let project_manager = std::sync::Arc::new(project_manager::ProjectManager::new(projects, mcp_configs.clone(), mcp_cache.clone()));
     let socket_path = args.socket.unwrap_or_else(cli::default_socket_path);
     let db_file = merged.db_dir.join("meta.db");
-    daemon::run_daemon(scenarios, models, mcp_configs, merged.default_model, merged.logs, &socket_path, merged.ws_port, db_file.to_str().unwrap_or("db/meta.db"), merged.never_fail).await?;
+    let config_paths = daemon::ResolvedConfigPaths {
+        config_file: args.config.clone(),
+        models_dir: merged.models_dir.clone(),
+        scenarios_dir: merged.scenarios_dir.clone(),
+        mcp_dir: merged.mcp_dir.clone(),
+        projects_dir: merged.projects_dir.clone(),
+        credentials_config: merged.credentials_config.clone(),
+    };
+    daemon::run_daemon(scenarios, models, mcp_configs, merged.default_model, merged.logs, merged.log_chats, merged.log_chats_raw, &socket_path, merged.ws_port, db_file.to_str().unwrap_or("db/meta.db"), merged.never_fail, project_manager, config_paths).await?;
     Ok(())
 }
 
@@ -117,8 +138,11 @@ fn merge_config(config: DaemonConfig, args: &cli::DaemonArgs) -> DaemonConfig {
         mcp_dir: args.mcp_dir.clone().unwrap_or(config.mcp_dir),
         default_model: args.default_model.clone().or(config.default_model),
         logs: args.logs.clone().or(config.logs),
+        log_chats: config.log_chats,
+        log_chats_raw: config.log_chats_raw,
         ws_port: args.ws_port.or(config.ws_port),
         db_dir: args.db_dir.clone().unwrap_or(config.db_dir),
+        projects_dir: args.projects_dir.clone().unwrap_or(config.projects_dir),
         credentials_config: config.credentials_config,
         never_fail: config.never_fail,
     }

@@ -5,6 +5,7 @@ members = [
     "packages/rhd_mcp_client",
     "packages/rhd_api",
     "packages/rhd_db",
+    "packages/rhd_chat",
     "packages/rhd_app",
     "packages/rhd_test",
 ]
@@ -24,3 +25,4 @@ tokio-tungstenite = "0.24"
 futures-util = "0.3"
 rusqlite = { version = "0.31", features = ["bundled"] }
 tokio-util = { version = "0.7", features = ["rt"] }
+async-trait = "0.1"

@@ -6,7 +6,7 @@ End-to-end testing for both backend (Rust) and frontend (Svelte). Tests validate
 ## Backend E2E Tests
 
 ### Test Runner: `rhd_test`
-Rust crate that orchestrates full integration tests:
+Orchestrates full integration tests:
 - Starts mock OpenAI-compatible HTTP server
 - Spawns `rhd daemon` with test configuration
 - Runs `rhd run <scenario>` against daemon
@@ -26,7 +26,7 @@ Rust crate that orchestrates full integration tests:
 ```
 
 ### Mock AI Server
-- Axum HTTP server on random port
+- HTTP server on random port
 - `POST /v1/chat/completions` endpoint
 - Records all requests for validation
 - Returns configurable responses
@@ -57,6 +57,7 @@ Located in `test_e2e/scenarios/`:
 
 ### Test Infrastructure
 - `rhd_test frontend` starts daemon with WebSocket + mock AI + control server
+- Daemon runs with `--db-dir` pointing to temp directory (no `rhd_db/` in project folder)
 - Tests connect to real daemon WebSocket (no mocking)
 - Control server configures mock AI responses
 - Test utilities in `frontend/src/tests/testUtils.ts`:
@@ -74,6 +75,7 @@ Located in `test_e2e/scenarios/`:
 - `chat.test.ts` — chat creation, model selection
 - `chat-messageflow.test.ts` — message send/receive, no duplication
 - `chat-streaming.test.ts` — streaming display, abort, retry
+- `chat-mcp-tools.test.ts` — chat with MCP tools, tool calls, streaming
 - `scenarios.test.ts` — scenario list, active/finished states
 
 ### Vitest Configs
@@ -105,13 +107,3 @@ npm run test:e2e
 cd frontend
 npm run test:unit
 ```
-
-## Key Files
-- Test runner: `packages/rhd_test/src/main.rs`
-- Mock server: `packages/rhd_test/src/mock_server.rs`
-- Control server: `packages/rhd_test/src/control_server.rs`
-- Frontend test orchestrator: `packages/rhd_test/src/frontend_test.rs`
-- Test utilities: `frontend/src/tests/testUtils.ts`
-- E2E tests: `frontend/src/tests/e2e/*.test.ts`
-- Test scenarios: `test_e2e/scenarios/`
-- Test models: `test_e2e/models/`

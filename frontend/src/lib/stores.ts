@@ -4,6 +4,7 @@ import type { ActiveScenario, FinishedScenario, PausedScenario } from './types/i
 
 interface ActiveScenarioStore extends Readable<Map<string, ActiveScenario>> {
   setFromList(list: Array<{ id: string; scenarioName: string; startedAt: string }>): void;
+  setAll(map: Map<string, ActiveScenario>): void;
   addScenario(data: { id: string; name: string; startedAt: string }): void;
   updateStep(executionId: string, stepName: string, stepStartedAt: string): void;
   removeScenario(id: string): void;
@@ -24,6 +25,9 @@ function createActiveScenariosStore(): ActiveScenarioStore {
         promptTokens: 0,
         completionTokens: 0,
       }])));
+    },
+    setAll(map) {
+      set(new Map(map));
     },
     addScenario(data) {
       update((map) => {
@@ -80,6 +84,7 @@ function createFinishedScenariosStore(): FinishedScenariosStore {
 }
 
 interface PausedScenariosStore extends Readable<Map<string, PausedScenario>> {
+  setAll(map: Map<string, PausedScenario>): void;
   addScenario(data: PausedScenario): void;
   removeScenario(executionId: string): void;
   updateSelectedModel(executionId: string, model: string | null): void;
@@ -90,6 +95,9 @@ function createPausedScenariosStore(): PausedScenariosStore {
 
   return {
     subscribe,
+    setAll(map) {
+      set(new Map(map));
+    },
     addScenario(data) {
       update((map) => {
         const next = new Map(map);

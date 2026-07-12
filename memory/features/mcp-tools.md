@@ -3,6 +3,15 @@
 ## Purpose
 Enable `aiChat` scenario steps to use external tools via MCP (Model Context Protocol) servers and built-in tool implementations. Tools allow AI to interact with external systems (filesystem, flags, etc.) during scenario execution.
 
+## MCP ID Namespacing
+All MCP tools are namespaced by their MCP ID when sent to the AI. Tool names use the format `{mcp_id}/{tool_name}`.
+
+- **MCP ID**: Each MCP configuration has an `id` field. If not specified, defaults to the `name` field.
+- **Tool prefixing**: All MCP tools are prefixed with `{mcp_id}/` before being sent to the AI.
+- **Built-in tools**: Internal tools like `rhd_set_flag` are NOT prefixed.
+- **Routing**: When the AI calls a tool, the system parses the prefix to route the call to the correct MCP server.
+- **Validation**: Within a single project or scenario step, duplicate MCP IDs are not allowed.
+
 ## How It Works
 
 ### Behavior Modes
@@ -12,9 +21,14 @@ Enable `aiChat` scenario steps to use external tools via MCP (Model Context Prot
 ### MCP Server Lifecycle
 - Spawned on first use (when step with given MCP config runs)
 - Cached at daemon level — reused across scenario executions
-- Keyed by `(mcp_name, scenario_id, step_id)`
-- Killed only on daemon shutdown
+- Keyed by `(cmd, args, cwd)` — same config reuses same server
+- Killed on daemon shutdown or during `rhd reload` when config changes
 - Uses stdio transport (JSON-RPC 2.0 over line-delimited JSON)
+
+**Reload behavior:** When `rhd reload` is executed:
+- MCP servers whose config (cmd/args/cwd) changed are stopped and will be respawned on next use
+- MCP servers removed from config are stopped (PID logged for manual kill if needed)
+- New MCP configs are loaded but servers are spawned lazily on first use
 
 ### Built-in Tools
 - `rhd_set_flag` — set a named flag with boolean value
@@ -48,6 +62,8 @@ Enable `aiChat` scenario steps to use external tools via MCP (Model Context Prot
 ### MCP Server Config
 MCP servers defined in `mcp/<name>/mcp.yaml`:
 ```yaml
+id: fs1  # optional, defaults to name if not specified
+name: "filesystem"
 cmd: "npx"
 args: ["-y", "@modelcontextprotocol/server-filesystem", "$AVAILABLE_ROOT"]
 cwd: null  # optional working directory
@@ -62,10 +78,11 @@ actions:
     maxToolIterations: 20  # optional, default 20, "inf" for unlimited
     mcp:
       - name: fs  # reference to mcp/fs/mcp.yaml
+        id: fs1  # optional, defaults to name
         env:
           AVAILABLE_ROOT: /home/user/project
         args: ["--extra-arg"]  # optional override
-      - name: flags  # built-in tools
+      - name: flags  # built-in tools (not prefixed)
     systemPrompt: "..."
     message: "..."
 
@@ -81,9 +98,11 @@ actions:
 - Max iterations exceeded → scenario fails with error
 - Tool name collisions → first match wins, warning logged
 
-## Key Files
-- MCP client crate: `packages/rhd_mcp_client/`
-- Built-in tools: `packages/rhd_mcp_client/src/builtin.rs`
-- MCP server cache: `packages/rhd_app/src/mcp_cache.rs`
-- Tool execution: `packages/rhd_app/src/scenario/ai_chat.rs`
-- MCP config loading: `packages/rhd_app/src/scenario/loader.rs`
+### Tool Call Error UI
+When a tool call fails (MCP returns `is_error: true`):
+- Frontend displays red X icon (✗) instead of green checkmark (✓)
+- Tool call card gets red border styling
+- Error message shown in result section
+- Status set to `'failed'` (vs `'completed'` for success)
+- Backend propagates `is_error` flag via `ToolCallCompleted` event
+- UI already has error state logic; backend now properly signals failures

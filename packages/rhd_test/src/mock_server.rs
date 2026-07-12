@@ -117,6 +117,28 @@ struct StreamChoice {
 struct StreamDelta {
     #[serde(skip_serializing_if = "Option::is_none")]
     content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_calls: Option<Vec<StreamToolCallDelta>>,
+}
+
+#[derive(Debug, Serialize)]
+struct StreamToolCallDelta {
+    index: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "type")]
+    call_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    function: Option<StreamFunctionCallDelta>,
+}
+
+#[derive(Debug, Serialize)]
+struct StreamFunctionCallDelta {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    arguments: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -154,9 +176,11 @@ pub async fn chat_completions(
         .unwrap_or_default();
 
     let has_tools = body.tools.is_some();
-    let has_tool_result = body.messages.iter().any(|m| m.role == "tool");
-    let should_call_tool = has_tools && system_content.contains("rhd_set_flag") && !has_tool_result;
-
+    // Check if the last message is a user message (not a tool result)
+    // This allows triggering tool calls for each new user message
+    let last_message_is_user = body.messages.last().map(|m| m.role == "user").unwrap_or(false);
+    let should_call_tool = has_tools && last_message_is_user;
+    
     requests.lock().unwrap().push(RecordedRequest {
         model: body.model.clone(),
         system_content,
@@ -168,9 +192,67 @@ pub async fn chat_completions(
     if body.stream {
         // Streaming response
         if should_call_tool {
-            // Tool calls not supported in streaming for simplicity, return empty content
+            // Check if MCP tools are present (tools with "/" in name like "mock1/echo")
+            let tools = body.tools.as_ref().unwrap();
+            let has_mcp_tools = tools.iter().any(|t| {
+                t.get("function")
+                    .and_then(|f| f.get("name"))
+                    .and_then(|n| n.as_str())
+                    .map(|n| n.contains('/'))
+                    .unwrap_or(false)
+            });
+
+            let (tool_name, arguments) = if has_mcp_tools {
+                ("mock1/echo".to_string(), r#"{"message":"Hello MCP"}"#.to_string())
+            } else {
+                let expected_flag = *flag_value.lock().unwrap();
+                ("rhd_set_flag".to_string(), format!(r#"{{"name":"test_flag","value":{}}}"#, expected_flag))
+            };
+
             let events: Vec<Result<Event, Infallible>> = vec![
-                Ok(Event::default().data(r#"{"choices":[{"delta":{"content":""},"finish_reason":null}]}"#)),
+                Ok(Event::default().data(serde_json::to_string(&StreamResponse {
+                    choices: vec![StreamChoice {
+                        delta: StreamDelta {
+                            content: None,
+                            tool_calls: Some(vec![StreamToolCallDelta {
+                                index: 0,
+                                id: Some("call_1".to_string()),
+                                call_type: Some("function".to_string()),
+                                function: Some(StreamFunctionCallDelta {
+                                    name: Some(tool_name),
+                                    arguments: Some(String::new()),
+                                }),
+                            }]),
+                        },
+                        finish_reason: None,
+                    }],
+                }).unwrap())),
+                Ok(Event::default().data(serde_json::to_string(&StreamResponse {
+                    choices: vec![StreamChoice {
+                        delta: StreamDelta {
+                            content: None,
+                            tool_calls: Some(vec![StreamToolCallDelta {
+                                index: 0,
+                                id: None,
+                                call_type: None,
+                                function: Some(StreamFunctionCallDelta {
+                                    name: None,
+                                    arguments: Some(arguments),
+                                }),
+                            }]),
+                        },
+                        finish_reason: None,
+                    }],
+                }).unwrap())),
+                Ok(Event::default().data(serde_json::to_string(&StreamResponse {
+                    choices: vec![StreamChoice {
+                        delta: StreamDelta {
+                            content: None,
+                            tool_calls: None,
+                        },
+                        finish_reason: Some("tool_calls".to_string()),
+                    }],
+                }).unwrap())),
                 Ok(Event::default().data("[DONE]")),
             ];
             let stream = futures_util::stream::iter(events.into_iter());
@@ -212,7 +294,7 @@ pub async fn chat_completions(
                                     Some(content) => {
                                         let stream_resp = StreamResponse {
                                             choices: vec![StreamChoice {
-                                                delta: StreamDelta { content: Some(content) },
+                                                delta: StreamDelta { content: Some(content), tool_calls: None },
                                                 finish_reason: None,
                                             }],
                                         };
@@ -225,7 +307,7 @@ pub async fn chat_completions(
                                         // Stream finished
                                         let final_resp = StreamResponse {
                                             choices: vec![StreamChoice {
-                                                delta: StreamDelta { content: None },
+                                                delta: StreamDelta { content: None, tool_calls: None },
                                                 finish_reason: Some("stop".to_string()),
                                             }],
                                         };
@@ -250,21 +332,46 @@ pub async fn chat_completions(
     } else {
         // Non-streaming response
         let chat_response = if should_call_tool {
-            let expected_flag = *flag_value.lock().unwrap();
-            let arguments = format!(r#"{{"name":"test_flag","value":{}}}"#, expected_flag);
+            // Check if MCP tools are present (tools with "/" in name like "mock1/echo")
+            let tools = body.tools.as_ref().unwrap();
+            let has_mcp_tools = tools.iter().any(|t| {
+                t.get("function")
+                    .and_then(|f| f.get("name"))
+                    .and_then(|n| n.as_str())
+                    .map(|n| n.contains('/'))
+                    .unwrap_or(false)
+            });
+
+            let tool_call = if has_mcp_tools {
+                // Return MCP tool call (mock1/echo)
+                ToolCallResponse {
+                    id: "call_1".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCallResponse {
+                        name: "mock1/echo".to_string(),
+                        arguments: r#"{"message":"Hello MCP"}"#.to_string(),
+                    },
+                }
+            } else {
+                // Return built-in tool call (rhd_set_flag)
+                let expected_flag = *flag_value.lock().unwrap();
+                let arguments = format!(r#"{{"name":"test_flag","value":{}}}"#, expected_flag);
+                ToolCallResponse {
+                    id: "call_1".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCallResponse {
+                        name: "rhd_set_flag".to_string(),
+                        arguments,
+                    },
+                }
+            };
+
             ChatResponse {
                 choices: vec![Choice {
                     message: ResponseMessage {
                         role: "assistant".to_string(),
                         content: None,
-                        tool_calls: Some(vec![ToolCallResponse {
-                            id: "call_1".to_string(),
-                            call_type: "function".to_string(),
-                            function: FunctionCallResponse {
-                                name: "rhd_set_flag".to_string(),
-                                arguments,
-                            },
-                        }]),
+                        tool_calls: Some(vec![tool_call]),
                     },
                     finish_reason: Some("tool_calls".to_string()),
                 }],

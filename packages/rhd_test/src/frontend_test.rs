@@ -11,6 +11,8 @@ pub async fn run_frontend_test(ws_port: Option<u16>, control_port: Option<u16>) 
     let rhd_bin = workspace_root.join("target/debug/rhd");
     let models_dir = workspace_root.join("test_e2e/models");
     let scenarios_dir = workspace_root.join("test_e2e/scenarios");
+    let projects_dir = workspace_root.join("test_e2e/projects");
+    let mcp_dir = workspace_root.join("test_e2e/mcp");
 
     let (ai_port, requests, response, _flag_value, stream_sender, auto_stream) = start_mock_server().await;
     println!("Mock AI server started on port {ai_port}");
@@ -28,20 +30,29 @@ pub async fn run_frontend_test(ws_port: Option<u16>, control_port: Option<u16>) 
     let ws_port = ws_port.unwrap_or_else(|| find_available_port());
     let _ = std::fs::remove_file(&socket_path);
 
+    let db_dir = daemon_dir.path().join("db");
+    std::fs::create_dir_all(&db_dir).unwrap();
+
     let mut daemon = Command::new(&rhd_bin)
         .arg("daemon")
         .arg("--models-dir")
         .arg(&models_dir)
         .arg("--scenarios-dir")
         .arg(&scenarios_dir)
+        .arg("--projects-dir")
+        .arg(&projects_dir)
+        .arg("--mcp-dir")
+        .arg(&mcp_dir)
         .arg("--socket")
         .arg(&socket_path)
         .arg("--logs")
         .arg(&logs_dir)
+        .arg("--db-dir")
+        .arg(&db_dir)
         .arg("--ws-port")
         .arg(ws_port.to_string())
         .env("E2E_MODEL_PORT", ai_port.to_string())
-        .current_dir(daemon_dir.path())
+        .current_dir(&workspace_root)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()

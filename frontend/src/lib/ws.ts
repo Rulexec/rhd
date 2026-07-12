@@ -1,7 +1,8 @@
 import { activeScenarios, finishedScenarios, pausedScenarios, lastKnownId, wsConnected } from './stores';
 import { WsMessageSchema } from './types/ws';
 import type { WsEvent, WsResponse } from './types/ws';
-import { handleChatEvent } from './chatWs';
+import { dispatch } from './actions';
+import type { ChatAction } from './actions';
 import { showNotification } from './notifications';
 
 let WS_PORT = import.meta.env.VITE_WS_PORT || 9876;
@@ -51,7 +52,8 @@ function connect(): void {
     const result = WsMessageSchema.safeParse(raw);
 
     if (!result.success) {
-      console.error('Invalid WebSocket message:', result.error);
+      console.error('Invalid WebSocket message:', JSON.stringify(raw, null, 2));
+      console.error('Validation errors:', JSON.stringify(result.error.issues, null, 2));
       return;
     }
 
@@ -91,8 +93,8 @@ export function sendRequest(request: Record<string, unknown>): Promise<WsRespons
 function handleEvent(message: WsEvent): void {
   const { event, data } = message;
 
-  if (event.startsWith('chat')) {
-    handleChatEvent(event, data);
+  if (event.startsWith('chat') || event.startsWith('project')) {
+    dispatch({ type: event, payload: data } as ChatAction);
     return;
   }
 

@@ -28,10 +28,11 @@ impl McpServerCache {
             config.cwd.as_deref().unwrap_or("")
         );
 
-        let mut cache = self.cache.lock().await;
-        
-        if let Some(client) = cache.get(&cache_key) {
-            return Ok(client.clone());
+        {
+            let cache = self.cache.lock().await;
+            if let Some(client) = cache.get(&cache_key) {
+                return Ok(client.clone());
+            }
         }
 
         let client = McpClient::connect(
@@ -43,7 +44,8 @@ impl McpServerCache {
         .await?;
 
         let client = Arc::new(client);
-        cache.insert(cache_key, client.clone());
+        let mut cache = self.cache.lock().await;
+        let client = cache.entry(cache_key).or_insert(client).clone();
         Ok(client)
     }
 
@@ -55,5 +57,28 @@ impl McpServerCache {
                 eprintln!("Failed to kill MCP server: {}", e);
             }
         }
+    }
+
+    pub async fn stop_specific(&self, keys_to_stop: &[String]) -> usize {
+        let mut cache = self.cache.lock().await;
+        let mut stopped = 0;
+        for key in keys_to_stop {
+            if let Some(client) = cache.remove(key) {
+                if let Some(pid) = client.pid().await {
+                    eprintln!("stopping MCP server '{}' (PID: {})", key, pid);
+                } else {
+                    eprintln!("stopping MCP server '{}'", key);
+                }
+                if let Err(e) = client.kill().await {
+                    eprintln!("failed to kill MCP server '{}': {}", key, e);
+                }
+                stopped += 1;
+            }
+        }
+        stopped
+    }
+
+    pub async fn restart_specific(&self, keys_to_restart: &[String]) -> usize {
+        self.stop_specific(keys_to_restart).await
     }
 }

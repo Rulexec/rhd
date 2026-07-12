@@ -21,6 +21,11 @@ rhd_util = { path = "../rhd_util" }
 rhd_mcp_client = { path = "../rhd_mcp_client" }
 rhd_api = { path = "../rhd_api" }
 rhd_db = { path = "../rhd_db" }
+rhd_chat = { path = "../rhd_chat" }
 tokio-tungstenite = { workspace = true }
 futures-util = { workspace = true }
 tokio-util = { workspace = true }
+async-trait = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
