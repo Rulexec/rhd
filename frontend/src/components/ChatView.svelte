@@ -5,6 +5,7 @@
   import MessageInput from './MessageInput.svelte';
   import McpStatusDrawer from './McpStatusDrawer.svelte';
   import ProjectsPanel from './ProjectsPanel.svelte';
+  import RoleSelector from '../lib/components/RoleSelector.svelte';
 
   let showMcpDrawer = $state(false);
   let showProjectsPanel = $state(false);
@@ -62,6 +63,7 @@
       </div>
     {/if}
   </div>
+  <RoleSelector />
   {#if showProjectsPanel}
     <div class="projects-panel-container">
       <ProjectsPanel />

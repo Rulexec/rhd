@@ -1,4 +1,4 @@
-import type { ChatMessage } from '../types/index';
+import type { ChatMessage, RoleInfo } from '../types/index';
 
 export type ChatAction =
   | { type: 'createChat'; payload: { title: string } }
@@ -25,4 +25,10 @@ export type ChatAction =
   | { type: 'chatResumed' }
   | { type: 'projectMcpStatusChanged'; payload: unknown }
   | { type: 'projectAttached'; payload: unknown }
-  | { type: 'projectDetached'; payload: unknown };
+  | { type: 'projectDetached'; payload: unknown }
+  | { type: 'loadAvailableRoles'; payload: { chatId: number } }
+  | { type: 'setRole'; payload: { chatId: number; projectName: string; roleName: string } }
+  | { type: 'clearActiveRole'; payload: { chatId: number } }
+  | { type: 'roleChanged'; payload: { chatId: number; projectName: string; roleName: string } }
+  | { type: 'rolesUpdated'; payload: { chatId: number; roles: RoleInfo[]; activeRoleProject?: string; activeRoleName?: string } }
+  | { type: 'activeRoleCleared'; payload: { chatId: number } };

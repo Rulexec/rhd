@@ -1,6 +1,6 @@
 import { writable, derived } from 'svelte/store';
 import type { Writable, Readable } from 'svelte/store';
-import type { Chat, ChatMessage, ToolCall } from './types/index';
+import type { Chat, ChatMessage, ToolCall, RoleInfo, ActiveRole } from './types/index';
 
 export const chats: Writable<Chat[]> = writable([]);
 export const currentChatId: Writable<number | null> = writable(null);
@@ -14,6 +14,8 @@ export const selectedModel: Writable<string | null> = writable(null);
 export const streamingMessageId: Writable<string | null> = writable(null);
 export const isPaused: Writable<boolean> = writable(false);
 export const pendingToolCalls: Writable<ToolCall[]> = writable([]);
+export const availableRoles: Writable<RoleInfo[]> = writable([]);
+export const activeRole: Writable<ActiveRole | null> = writable(null);
 
 export const currentChat: Readable<Chat | undefined> = derived(
   [chats, currentChatId],
@@ -23,6 +25,11 @@ export const currentChat: Readable<Chat | undefined> = derived(
 export const isToolLoopRunning: Readable<boolean> = derived(
   [isStreaming, isPaused],
   ([$isStreaming, $isPaused]) => $isStreaming && !$isPaused
+);
+
+export const hasRoles: Readable<boolean> = derived(
+  availableRoles,
+  ($availableRoles) => $availableRoles.length > 0
 );
 
 export function resetAllStores(): void {
@@ -38,4 +45,6 @@ export function resetAllStores(): void {
   streamingMessageId.set(null);
   isPaused.set(false);
   pendingToolCalls.set([]);
+  availableRoles.set([]);
+  activeRole.set(null);
 }

@@ -14,6 +14,8 @@ import {
   streamingMessageId,
   isPaused,
   pendingToolCalls,
+  availableRoles,
+  activeRole,
 } from './chatStores';
 import {
   chatProjects,
@@ -79,7 +81,10 @@ export async function selectChat(chatId: number): Promise<WsResponse> {
     selectedModel.set(response.data.chat.activeModel || null);
     chatProjects.set([]);
     mcpStatuses.set([]);
+    availableRoles.set([]);
+    activeRole.set(null);
     loadChatProjects(chatId);
+    loadAvailableRoles(chatId);
   }
   return response;
 }
@@ -182,6 +187,51 @@ export async function abortChat(): Promise<WsResponse> {
 
   const id = generateRequestId();
   const response = await sendRequest({ type: 'abortChat', id, chatId });
+  return response;
+}
+
+export async function loadAvailableRoles(chatId: number): Promise<WsResponse> {
+  const id = generateRequestId();
+  const response = await sendRequest({ type: 'getAvailableRoles', id, chatId });
+  if (response.success) {
+    availableRoles.set(response.data.roles || []);
+    if (response.data.activeRoleProject && response.data.activeRoleName) {
+      activeRole.set({
+        projectName: response.data.activeRoleProject,
+        roleName: response.data.activeRoleName,
+      });
+    } else {
+      activeRole.set(null);
+    }
+  }
+  return response;
+}
+
+export async function setRole(
+  chatId: number,
+  projectName: string,
+  roleName: string
+): Promise<WsResponse> {
+  const id = generateRequestId();
+  const response = await sendRequest({
+    type: 'setRole',
+    id,
+    chatId,
+    projectName,
+    roleName,
+  });
+  if (response.success) {
+    activeRole.set({ projectName, roleName });
+  }
+  return response;
+}
+
+export async function clearActiveRole(chatId: number): Promise<WsResponse> {
+  const id = generateRequestId();
+  const response = await sendRequest({ type: 'clearActiveRole', id, chatId });
+  if (response.success) {
+    activeRole.set(null);
+  }
   return response;
 }
 
@@ -545,6 +595,37 @@ export function handleChatEvent(event: string, data: unknown): void {
     case 'chatResumed': {
       isPaused.set(false);
       isStreaming.set(true);
+      break;
+    }
+    case 'roleChanged': {
+      const { projectName, roleName } = data as {
+        chatId: number;
+        projectName: string;
+        roleName: string;
+      };
+      activeRole.set({ projectName, roleName });
+      break;
+    }
+    case 'rolesUpdated': {
+      const { roles, activeRoleProject, activeRoleName } = data as {
+        chatId: number;
+        roles: import('./types/index').RoleInfo[];
+        activeRoleProject?: string;
+        activeRoleName?: string;
+      };
+      availableRoles.set(roles);
+      if (activeRoleProject && activeRoleName) {
+        activeRole.set({
+          projectName: activeRoleProject,
+          roleName: activeRoleName,
+        });
+      } else {
+        activeRole.set(null);
+      }
+      break;
+    }
+    case 'activeRoleCleared': {
+      activeRole.set(null);
       break;
     }
   }
