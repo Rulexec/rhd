@@ -12,6 +12,7 @@ mod notifications;
 mod project_loader;
 mod project_manager;
 mod scenario;
+mod template_loader;
 mod ws;
 
 use std::path::PathBuf;

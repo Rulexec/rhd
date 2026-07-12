@@ -12,6 +12,7 @@ use tokio::sync::{broadcast, RwLock};
 
 use rhd_chat::{ChatEvent, ChatManager};
 use crate::execution::ExecutionTracker;
+use crate::template_loader::TemplateLoader;
 use crate::ipc::protocol::{read_message, write_message, IpcRequest, IpcResponse};
 use crate::log::{create_log_dir, open_log_file, LogSink};
 use crate::mcp_cache::McpServerCache;
@@ -52,6 +53,7 @@ pub struct DaemonState {
     #[allow(dead_code)]
     pub ws_port: Option<u16>,
     pub reload_lock: RwLock<()>,
+    pub template_loader: Arc<TemplateLoader>,
 }
 
 impl DaemonState {
@@ -98,6 +100,9 @@ pub async fn run_daemon(
     let chat_manager = Arc::new(ChatManager::new(chat_db.clone(), project_manager.clone(), log_chats, log_chats_raw));
     let (chat_event_sender, _) = broadcast::channel(100);
 
+    let templates_dir = std::env::current_dir()?.join("templates");
+    let template_loader = Arc::new(TemplateLoader::new(&templates_dir).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?);
+
     let frontend_alive = Arc::new(AtomicBool::new(false));
     let inner = ReloadableInner {
         scenarios,
@@ -119,6 +124,7 @@ pub async fn run_daemon(
         never_fail,
         ws_port,
         reload_lock: RwLock::new(()),
+        template_loader,
     });
 
     let inner_guard = state.inner.read().await;
