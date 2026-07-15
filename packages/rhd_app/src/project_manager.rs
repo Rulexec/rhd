@@ -14,7 +14,7 @@ use crate::mcp_cache::McpServerCache;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[allow(dead_code)]
-pub enum McpStatusDto {
+pub enum McpStatusDto { // Part of public API for WebSocket/IPC communication
     Connecting,
     Connected,
     Failed { error: String },

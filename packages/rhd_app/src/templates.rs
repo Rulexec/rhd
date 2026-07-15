@@ -15,15 +15,4 @@ impl TemplateRegistry {
             _ => None,
         }
     }
-    
-    /// Get all available template names
-    pub fn list_templates() -> Vec<&'static str> {
-        vec![
-            "environment_details_no_role",
-            "environment_details_with_role",
-            "rhd_set_todo_list_contract",
-            "todo_list_empty",
-            "todo_list_with_items",
-        ]
-    }
 }

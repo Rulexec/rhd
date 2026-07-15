@@ -49,16 +49,6 @@ impl McpServerCache {
         Ok(client)
     }
 
-    #[allow(dead_code)]
-    pub async fn shutdown(&self) {
-        let mut cache = self.cache.lock().await;
-        for (_, client) in cache.drain() {
-            if let Err(e) = client.kill().await {
-                eprintln!("Failed to kill MCP server: {}", e);
-            }
-        }
-    }
-
     pub async fn stop_specific(&self, keys_to_stop: &[String]) -> usize {
         let mut cache = self.cache.lock().await;
         let mut stopped = 0;

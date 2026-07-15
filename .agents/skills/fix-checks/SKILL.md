@@ -4,6 +4,12 @@
 
 This skill documents how to run static analysis checks, identify warnings/errors, and fix them systematically.
 
+## IMPORTANT: Clean State Requirement
+
+**This skill MUST NOT be used during implementation of sub-plans.**
+
+The fix-checks skill should only be run when the codebase is in a clean, stable state. Dead code analysis assumes that unused code is truly unnecessary. During active development, functions may appear unused but are intended for upcoming features.
+
 ## Running Checks
 
 ### All Checks
@@ -111,37 +117,83 @@ Same as unused variables — prefix with underscore or remove if not needed for 
 
 **Warning pattern:** `warning: function \`name\` is never used`
 
-**Fix options:**
-1. Remove the function if truly unnecessary
-2. Add `#[allow(dead_code)]` if intentionally kept for future use
-3. Make the function public if it should be part of the API
+**Investigation process:**
 
-Example:
+1. **Search for existing `#[allow(dead_code)]` attributes:**
+   ```bash
+   grep -r "#\[allow(dead_code)\]" packages/ --include="*.rs" -B 2 -A 5
+   ```
+   Review each existing suppression to determine if the code is still needed.
+
+2. **Check if the function is called anywhere:**
+   - Search for the function name across the codebase
+   - Check if it's used in tests (may be in `#[cfg(test)]` blocks)
+   - Verify it's not part of a public API that external crates might use
+
+3. **Determine if the code is truly dead:**
+   - If the function is never called and not part of a planned feature → **remove it**
+   - If the function is part of an incomplete feature being actively developed → this violates the clean state requirement; do not run fix-checks
+   - If the function is a public API method → make it public or remove it
+
+4. **Remove dead code:**
+   - Delete the function entirely
+   - Remove any associated tests
+   - Update documentation if the function was documented
+
+**Example:**
 ```rust
-// Option 1: Remove
-// (delete the function entirely)
-
-// Option 2: Suppress warning
-#[allow(dead_code)]
-pub async fn active_stream_count(&self) -> usize {
-    self.active_streams.lock().await.len()
+// Before: Function is never used
+pub fn render_template(&self, name: &str) -> Option<String> {
+    // implementation
 }
+
+// After: Remove the dead code
+// (delete the function entirely)
 ```
+
+**Avoid adding `#[allow(dead_code)]`** unless there's a compelling reason (e.g., trait implementation requirement, FFI boundary).
 
 ### Dead Code (Unused Struct Fields)
 
 **Warning pattern:** `warning: field \`name\` is never read`
 
-**Fix:** Add `#[allow(dead_code)]` attribute to the field.
+**Investigation process:**
 
-Example:
+1. **Check existing `#[allow(dead_code)]` on struct fields:**
+   Review all fields with this attribute. Ask:
+   - Is this field populated but never read? → Likely dead code
+   - Is this field required for serialization/deserialization? → Keep it
+   - Is this field part of a public API struct? → May be needed for API compatibility
+
+2. **Determine if the field is truly dead:**
+   - If the field is never read and not required for serialization → **remove it**
+   - If the field is required for serde but never read in code → keep with `#[allow(dead_code)]` and add a comment explaining why
+   - If the field is part of a public API → document why it's kept
+
+3. **Remove dead fields:**
+   - Remove the field from the struct definition
+   - Remove any code that populates the field
+   - Update tests that reference the field
+
+**Example:**
 ```rust
+// Before: Field is never read
 pub struct DaemonState {
     #[allow(dead_code)]
-    pub chat_db: Arc<ChatDb>,
-    // other fields...
+    pub chat_db: Arc<ChatDb>,  // Never used
+}
+
+// After: Remove the dead field
+pub struct DaemonState {
+    // chat_db removed - was never used
 }
 ```
+
+**Keep `#[allow(dead_code)]` only when:**
+- Required for serde serialization/deserialization
+- Required by a trait implementation
+- Part of FFI boundaries
+- Documented with a clear reason for keeping
 
 ### Unused Re-exports
 

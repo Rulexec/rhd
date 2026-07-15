@@ -1059,14 +1059,12 @@ mod tests {
     use std::future::Future;
 
     // Mock MCP client for testing
-    #[allow(dead_code)]
     struct MockMcpClient {
         tools: Vec<McpToolDefinition>,
         call_results: HashMap<String, String>,
     }
 
     impl MockMcpClient {
-        #[allow(dead_code)]
         fn new() -> Self {
             Self {
                 tools: vec![],
@@ -1074,7 +1072,6 @@ mod tests {
             }
         }
 
-        #[allow(dead_code)]
         fn with_tool(mut self, name: &str, description: &str) -> Self {
             self.tools.push(McpToolDefinition {
                 name: name.to_string(),
@@ -1084,7 +1081,6 @@ mod tests {
             self
         }
 
-        #[allow(dead_code)]
         fn with_call_result(mut self, tool_name: &str, result: &str) -> Self {
             self.call_results.insert(tool_name.to_string(), result.to_string());
             self

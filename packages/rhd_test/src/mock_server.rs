@@ -33,15 +33,15 @@ pub struct ChatMessage {
     pub content: Option<String>,
     #[serde(default)]
     #[allow(dead_code)]
-    pub tool_calls: Option<Vec<ToolCall>>,
+    pub tool_calls: Option<Vec<ToolCall>>, // For test data deserialization
     #[serde(default)]
     #[allow(dead_code)]
-    pub tool_call_id: Option<String>,
+    pub tool_call_id: Option<String>, // For test data deserialization
 }
 
 #[derive(Debug, Deserialize, Clone)]
 #[allow(dead_code)]
-pub struct ToolCall {
+pub struct ToolCall { // For test data deserialization
     pub id: String,
     #[serde(rename = "type")]
     pub call_type: String,
@@ -50,7 +50,7 @@ pub struct ToolCall {
 
 #[derive(Debug, Deserialize, Clone)]
 #[allow(dead_code)]
-pub struct FunctionCall {
+pub struct FunctionCall { // For test data deserialization
     pub name: String,
     pub arguments: String,
 }

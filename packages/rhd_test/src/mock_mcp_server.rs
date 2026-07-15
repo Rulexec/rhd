@@ -4,7 +4,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
 struct JsonRpcRequest {
-    jsonrpc: String,
+    #[allow(dead_code)]
+    jsonrpc: String, // Required for deserialization
     #[serde(default)]
     id: Option<serde_json::Value>,
     method: String,

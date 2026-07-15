@@ -141,7 +141,7 @@ pub struct OutputAction {
 pub struct Scenario {
     #[serde(default)]
     #[allow(dead_code)]
-    pub description: Option<String>,
+    pub description: Option<String>, // Part of scenario schema, available for future use
     pub actions: Vec<Action>,
 }
 
