@@ -6,6 +6,7 @@
   import McpStatusDrawer from './McpStatusDrawer.svelte';
   import ProjectsPanel from './ProjectsPanel.svelte';
   import RoleSelector from '../lib/components/RoleSelector.svelte';
+  import TodoListButton from '../lib/components/TodoListButton.svelte';
 
   let showMcpDrawer = $state(false);
   let showProjectsPanel = $state(false);
@@ -63,7 +64,10 @@
       </div>
     {/if}
   </div>
-  <RoleSelector />
+  <div class="role-and-todo-row">
+    <RoleSelector />
+    <TodoListButton />
+  </div>
   {#if showProjectsPanel}
     <div class="projects-panel-container">
       <ProjectsPanel />
@@ -146,6 +150,14 @@
   }
 
   .projects-panel-container {
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .role-and-todo-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 0.5rem;
     border-bottom: 1px solid var(--color-border);
   }
 </style>
