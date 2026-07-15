@@ -44,6 +44,10 @@
   - `chatToolCallCompleted`: Contains `chatId`, `toolCallId`, `result`
   - `chatPaused`: Contains `chatId` (chat paused during tool loop)
   - `chatResumed`: Contains `chatId` (chat resumed from pause)
+  - `todoListUpdated`: Contains `chatId` and `items` array (todo list updated by AI tool call)
+  - `roleChanged`: Contains `chatId`, `projectName`, `roleName` (active role changed)
+  - `rolesUpdated`: Contains `chatId` (roles list updated when project attached/detached)
+  - `activeRoleCleared`: Contains `chatId` (active role cleared)
 - Multiple subscribers supported via broadcast channels (separate for execution events and chat events)
 
 ## CWD Propagation

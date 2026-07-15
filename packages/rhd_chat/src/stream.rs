@@ -181,6 +181,7 @@ pub async fn send_message<P: ProjectProvider>(
             mcp_clients,
             event_sender,
             loggers,
+            template_loader,
         )
         .await;
     }
@@ -277,6 +278,7 @@ async fn send_message_with_tools<P: ProjectProvider>(
     )>,
     event_sender: broadcast::Sender<ChatEvent>,
     loggers: Option<chat_log::ChatLoggers>,
+    template_loader: &TemplateLoaderRef,
 ) -> Result<i64, ChatError> {
     const MAX_ITERATIONS: u32 = 20;
 
@@ -300,6 +302,7 @@ async fn send_message_with_tools<P: ProjectProvider>(
         &mut current_content,
         MAX_ITERATIONS,
         loggers,
+        template_loader,
     )
     .await;
 

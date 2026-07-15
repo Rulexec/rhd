@@ -31,4 +31,7 @@ pub enum ChatError {
 
     #[error("role not found: {0}")]
     RoleNotFound(String),
+
+    #[error("internal error: {0}")]
+    Internal(String),
 }

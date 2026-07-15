@@ -29,6 +29,67 @@ The `tool_loop()` in `packages/rhd_chat/src/tools.rs` streams the **final agent 
 
 Tool calls visible via `ToolCallStarted`/`ToolCallCompleted` events, with content streamed separately.
 
+## Todo List Injection
+
+After each tool loop iteration, the current todo list is injected as a system message into the conversation context. This ensures the AI is aware of its task progress during multi-step operations.
+
+**Implementation** (`packages/rhd_chat/src/tools.rs`):
+- `inject_todo_list_message()`: Injects todo list as system message after tool results
+- `render_environment_details_for_injection()`: Renders environment details with todo list and role
+- Called at the end of each tool loop iteration (after tool results are processed)
+- Uses `TemplateLoaderRef` to load templates from `templates/` directory
+- Returns error if required templates are missing (no fallback values)
+
+**Injection flow**:
+1. Tool loop iteration completes (all tool results processed)
+2. `inject_todo_list_message()` is called
+3. Gets current todo list from database
+4. Parses todo list into `TodoItem` structs
+5. Renders environment details using templates
+6. Adds as system message to database (persisted for AI context)
+7. Next iteration starts with updated context
+
+**Templates used**:
+- `todo_list_empty.md`: Prompt when no todo list exists
+- `todo_list_with_items.md`: Table format for todo items
+- `environment_details_with_role.md`: Environment details with active role
+- `environment_details_no_role.md`: Environment details without role
+
+## Built-in Tools
+
+### rhd_set_todo_list
+- **Purpose**: Allows AI to manage a task tracking list during multi-step operations
+- **Tool name**: `rhd_set_todo_list` (not namespaced)
+- **Parameters**: `todos` (string) - Full markdown checklist
+- **Behavior**: Replaces entire todo list with new one (no merge)
+- **Storage**: Saved to database, persists across tool calls
+- **Event**: Emits `TodoListUpdated` event for frontend updates
+- **Injection**: After each tool loop iteration, current todo list is injected as system message
+- **Contract**: Tool contract injected as system message on first message in chat
+- **Checkbox syntax**: `[ ]` (pending), `[-]` (in progress), `[x]` (completed), `[!]` (discarded)
+
+### rhd_set_role
+- **Purpose**: Switch the current active role for a chat
+- **Tool name**: `rhd_set_role` (not namespaced)
+- **Parameters**: `role_name` (string) - Name of the role to switch to
+- **Behavior**: Sets active role, marks role prompt as pending injection
+- **Event**: Emits `RoleChanged` event
+- **Availability**: Only available when chat has attached projects with roles
+
+## Template System
+
+- Templates stored in `templates/` directory at project root
+- Loaded at daemon startup by `TemplateLoader` in `packages/rhd_app/src/template_loader.rs`
+- `TemplateLoaderRef` wrapper in `packages/rhd_chat/src/stream.rs` for use in chat operations
+- Template files: `.md` extension, loaded by filename without extension
+- Placeholder syntax: `{placeholderName}`
+- Key templates:
+  - `rhd_set_todo_list_contract.md`: Tool contract injected on first message
+  - `todo_list_empty.md`: Prompt when no todo list exists
+  - `todo_list_with_items.md`: Table format for todo items
+  - `environment_details_with_role.md`: Environment details with active role
+  - `environment_details_no_role.md`: Environment details without role
+
 ## Chat Backend (`ChatManager`)
 
 The `ChatManager` in `packages/rhd_chat/src/manager.rs` handles all chat operations:
@@ -68,12 +129,16 @@ The `ChatManager` in `packages/rhd_chat/src/manager.rs` handles all chat operati
 - `DevNotification { title, message }`: Developer notification
 - `ProjectAttached { chat_id, project_name }`: Project attached to chat
 - `ProjectDetached { chat_id, project_name }`: Project detached from chat
+- `TodoListUpdated { chat_id, items }`: Todo list was updated by AI tool call
+- `RoleChanged { chat_id, project_name, role_name }`: Active role changed
+- `RolesUpdated { chat_id }`: Roles list updated (project attached/detached)
+- `ActiveRoleCleared { chat_id }`: Active role cleared
 
 ## Chat Database
 
 - Chat data persisted in SQLite database at `<dbDir>/chats.db` (default: `rhd_db/chats.db`)
 - Two tables: `chats` and `messages` with foreign key relationship
-- `chats` table: `id` (INTEGER PRIMARY KEY), `title` (TEXT), `created_at` (TEXT), `updated_at` (TEXT), `active_model` (TEXT, nullable)
+- `chats` table: `id` (INTEGER PRIMARY KEY), `title` (TEXT), `created_at` (TEXT), `updated_at` (TEXT), `active_model` (TEXT, nullable), `active_role_project` (TEXT, nullable), `active_role_name` (TEXT, nullable), `roles_list_injected` (BOOLEAN), `role_prompt_pending` (BOOLEAN), `todo_list` (TEXT, nullable)
 - `messages` table: `id` (INTEGER PRIMARY KEY), `chat_id` (INTEGER FK), `role` (TEXT), `content` (TEXT), `created_at` (TEXT), `model` (TEXT, nullable), `thinking_content` (TEXT, nullable)
 - Index on `messages.chat_id` for faster retrieval
 - CASCADE DELETE: deleting a chat removes all its messages
@@ -81,6 +146,13 @@ The `ChatManager` in `packages/rhd_chat/src/manager.rs` handles all chat operati
 - `truncate_messages(chat_id, after_message_id)`: deletes messages with id > after_message_id (for edit-and-resend)
 - WAL mode and foreign keys enabled
 - Thread-safe via `Mutex<Connection>`
+
+### Todo List Storage
+- Todo list stored as raw markdown string in `chats.todo_list` column
+- `set_todo_list(chat_id, todo_list)`: Updates todo list for a chat
+- `get_todo_list(chat_id)`: Retrieves todo list for a chat
+- Parsed into `TodoItem` structs with `TodoStatus` enum (Pending, InProgress, Completed, Discarded)
+- Checkbox syntax: `[ ]` (pending), `[-]` (in progress), `[x]` (completed), `[!]` (discarded)
 
 ### Model Tracking
 
@@ -91,9 +163,8 @@ The `ChatManager` in `packages/rhd_chat/src/manager.rs` handles all chat operati
 
 ### Database Migration
 
-- On initialization, `ChatDb` checks if the `active_model` column exists in the `chats` table
-- If missing, it adds the column using `ALTER TABLE chats ADD COLUMN active_model TEXT`
-- Similarly checks and adds the `model` column to the `messages` table if missing
+- On initialization, `ChatDb` checks if columns exist and adds them if missing
+- Migrated columns: `active_model`, `model`, `thinking_content`, `active_role_project`, `active_role_name`, `roles_list_injected`, `role_prompt_pending`, `todo_list`
 - Migration is automatic and transparent to the application
 - Existing data is preserved; new columns default to NULL for old records
 

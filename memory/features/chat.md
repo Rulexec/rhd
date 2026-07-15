@@ -57,8 +57,22 @@ Persistent conversational interface for direct AI interaction. Users create chat
 - Collapsed by default, showing header with status icon, MCP ID, tool name
 - Expanded view shows arguments and result sections
 - Tool names are namespaced: `{mcp_id}/{tool_name}` format (e.g., `fs1/read_file`)
-- Built-in tools (e.g., `rhd_set_flag`) are not namespaced
+- Built-in tools (e.g., `rhd_set_flag`, `rhd_set_todo_list`) are not namespaced
 - Failed tool calls show red X icon and red border styling
+
+### Todo List
+- AI can create and manage a task tracking list during multi-step operations
+- Button appears near the role selector showing completed/total count (e.g., "3/5")
+- Clicking the button expands a dropdown showing the full todo list
+- Each item shows status icon and content:
+  - ✓ (green) - Completed tasks (strikethrough text)
+  - ◐ (blue) - In progress tasks (bold text)
+  - ○ (gray) - Pending tasks
+  - ✗ (red) - Discarded tasks (strikethrough, faded text)
+- Real-time updates as the AI modifies the list
+- Button only visible when a todo list exists
+- Dropdown shows header with "Task List" title and completion stats
+- Auto-updates via WebSocket events when AI calls `rhd_set_todo_list` tool
 
 ### Message Editing
 - User can edit their own messages

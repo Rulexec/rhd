@@ -216,6 +216,107 @@ pub fn parse_todo_list(input: &str) -> Result<Vec<crate::TodoItem>, String> {
     Ok(items)
 }
 
+/// Injects todo list status as a system message after tool loop iteration.
+/// This message is NOT persisted to the frontend, only added to AI context.
+/// Returns an error if required templates are missing.
+pub fn inject_todo_list_message<P: ProjectProvider>(
+    manager: &ChatManager<P>,
+    chat_id: i64,
+    template_loader: &crate::stream::TemplateLoaderRef,
+) -> Result<(), ChatError> {
+    // Get current todo list from database
+    let todo_list_str = match manager.db().get_todo_list(chat_id)? {
+        Some(list) => list,
+        None => {
+            // No todo list exists, inject prompt to create one
+            let empty_prompt = template_loader
+                .get_template("todo_list_empty")
+                .ok_or_else(|| ChatError::Internal("Missing template: todo_list_empty".to_string()))?;
+            
+            // Add as system message (will be included in AI context)
+            manager.db().add_message(chat_id, "system", &empty_prompt, None, None)?;
+            return Ok(());
+        }
+    };
+    
+    // Parse todo list
+    let todo_items = match parse_todo_list(&todo_list_str) {
+        Ok(items) => items,
+        Err(_) => {
+            // Failed to parse, skip injection
+            return Ok(());
+        }
+    };
+    
+    // Get active role if any
+    let active_role = manager.db().get_active_role(chat_id)?;
+    
+    // Render environment details with todo list
+    let environment_content = render_environment_details_for_injection(
+        template_loader,
+        &todo_items,
+        active_role.as_ref(),
+    )?;
+    
+    // Add as system message
+    manager.db().add_message(chat_id, "system", &environment_content, None, None)?;
+    
+    Ok(())
+}
+
+/// Helper function to render environment details for injection.
+/// This is a wrapper that uses TemplateLoaderRef instead of TemplateLoader.
+/// Returns an error if required templates are missing.
+fn render_environment_details_for_injection(
+    template_loader: &crate::stream::TemplateLoaderRef,
+    todo_items: &[crate::TodoItem],
+    active_role: Option<&(String, String)>,
+) -> Result<String, ChatError> {
+    // Render todo items
+    let todo_items_str = if todo_items.is_empty() {
+        template_loader
+            .get_template("todo_list_empty")
+            .ok_or_else(|| ChatError::Internal("Missing template: todo_list_empty".to_string()))?
+    } else {
+        let mut items_output = String::new();
+        for (idx, item) in todo_items.iter().enumerate() {
+            let status_str = match item.status {
+                crate::TodoStatus::Pending => "Pending",
+                crate::TodoStatus::InProgress => "In Progress",
+                crate::TodoStatus::Completed => "Completed",
+                crate::TodoStatus::Discarded => "Discarded",
+            };
+            items_output.push_str(&format!("| {} | {} | {} |\n", idx + 1, item.content, status_str));
+        }
+        
+        let template = template_loader
+            .get_template("todo_list_with_items")
+            .ok_or_else(|| ChatError::Internal("Missing template: todo_list_with_items".to_string()))?;
+        
+        template.replace("{todoItems}", &items_output)
+    };
+    
+    // Select template based on role
+    let template_name = if active_role.is_some() {
+        "environment_details_with_role"
+    } else {
+        "environment_details_no_role"
+    };
+    
+    let template = template_loader
+        .get_template(template_name)
+        .ok_or_else(|| ChatError::Internal(format!("Missing template: {}", template_name)))?;
+    
+    let mut result = template.replace("{todoItems}", &todo_items_str);
+    
+    // Replace role placeholder if present
+    if let Some((project_name, role_name)) = active_role {
+        result = result.replace("{currentRoleName}", &format!("{} ({})", role_name, project_name));
+    }
+    
+    Ok(result)
+}
+
 pub async fn handle_rhd_set_role<P: ProjectProvider>(
     manager: &ChatManager<P>,
     chat_id: i64,
@@ -306,6 +407,7 @@ pub async fn tool_loop<P: ProjectProvider>(
     current_content: &mut String,
     max_iterations: u32,
     mut loggers: Option<ChatLoggers>,
+    template_loader: &crate::stream::TemplateLoaderRef,
 ) -> Result<i64, ChatError> {
     loop {
         if cancel_token.is_cancelled() {
@@ -555,6 +657,9 @@ pub async fn tool_loop<P: ProjectProvider>(
                 message: tool_message,
             });
         }
+        
+        // Inject todo list message for next iteration
+        inject_todo_list_message(manager, chat_id, template_loader)?;
         
         if let Some(content) = result.content {
             *current_content = content;
@@ -1412,5 +1517,160 @@ mod tests {
         }
         
         cleanup("test_todo_event.db");
+    }
+
+    #[tokio::test]
+    async fn test_inject_todo_list_message_with_items() {
+        let db = Arc::new(ChatDb::new("test_inject_todo.db").unwrap());
+        let chat_id = db.create_chat("Test").unwrap();
+        
+        // Set up todo list
+        db.set_todo_list(chat_id, "[x] Task 1\n[-] Task 2\n[ ] Task 3").unwrap();
+        
+        let provider = MockProjectProvider {
+            roles: std::collections::HashMap::new(),
+            role_prompts: std::collections::HashMap::new(),
+        };
+        
+        let provider = Arc::new(provider);
+        let manager = ChatManager::new(db.clone(), provider.clone(), None, false);
+        
+        // Create template loader with test templates
+        let template_loader = crate::stream::TemplateLoaderRef::new(|name| {
+            match name {
+                "environment_details_no_role" => Some("<environment_details>\n# TODO list\n{todoItems}\n</environment_details>".to_string()),
+                "todo_list_with_items" => Some("| # | Content | Status |\n|---|---------|--------|\n{todoItems}".to_string()),
+                "todo_list_empty" => Some("You have not created a todo list yet.".to_string()),
+                _ => None,
+            }
+        });
+        
+        // Inject todo list
+        inject_todo_list_message(&manager, chat_id, &template_loader).unwrap();
+        
+        // Verify system message was added
+        let messages = db.get_messages(chat_id).unwrap();
+        let system_msg = messages.iter().find(|m| m.role == "system").unwrap();
+        
+        assert!(system_msg.content.contains("TODO list"));
+        assert!(system_msg.content.contains("Task 1"));
+        assert!(system_msg.content.contains("Task 2"));
+        assert!(system_msg.content.contains("Task 3"));
+        
+        cleanup("test_inject_todo.db");
+    }
+
+    #[tokio::test]
+    async fn test_inject_todo_list_message_empty() {
+        let db = Arc::new(ChatDb::new("test_inject_todo_empty.db").unwrap());
+        let chat_id = db.create_chat("Test").unwrap();
+        
+        // No todo list set
+        
+        let provider = MockProjectProvider {
+            roles: std::collections::HashMap::new(),
+            role_prompts: std::collections::HashMap::new(),
+        };
+        
+        let provider = Arc::new(provider);
+        let manager = ChatManager::new(db.clone(), provider.clone(), None, false);
+        
+        let template_loader = crate::stream::TemplateLoaderRef::new(|name| {
+            if name == "todo_list_empty" {
+                Some("You have not created a todo list yet.".to_string())
+            } else {
+                None
+            }
+        });
+        
+        // Inject todo list
+        inject_todo_list_message(&manager, chat_id, &template_loader).unwrap();
+        
+        // Verify system message was added with empty prompt
+        let messages = db.get_messages(chat_id).unwrap();
+        let system_msg = messages.iter().find(|m| m.role == "system").unwrap();
+        
+        assert!(system_msg.content.contains("not created a todo list"));
+        
+        cleanup("test_inject_todo_empty.db");
+    }
+
+    #[tokio::test]
+    async fn test_inject_todo_list_with_role() {
+        let db = Arc::new(ChatDb::new("test_inject_todo_role.db").unwrap());
+        let chat_id = db.create_chat("Test").unwrap();
+        
+        // Set up todo list
+        db.set_todo_list(chat_id, "[x] Task 1").unwrap();
+        
+        // Set active role
+        db.set_active_role(chat_id, "project-a", "developer").unwrap();
+        
+        let mut provider = MockProjectProvider {
+            roles: std::collections::HashMap::new(),
+            role_prompts: std::collections::HashMap::new(),
+        };
+        provider.roles.insert("project-a".to_string(), vec![
+            rhd_api::project::Role {
+                name: "developer".to_string(),
+                system_prompt: "Dev".to_string(),
+                when_to_use: "Coding".to_string(),
+            },
+        ]);
+        
+        let provider = Arc::new(provider);
+        let manager = ChatManager::new(db.clone(), provider.clone(), None, false);
+        
+        let template_loader = crate::stream::TemplateLoaderRef::new(|name| {
+            match name {
+                "environment_details_with_role" => Some("<environment_details>\n# Current role\n<name>{currentRoleName}</name>\n# TODO list\n{todoItems}\n</environment_details>".to_string()),
+                "todo_list_with_items" => Some("| # | Content | Status |\n|---|---------|--------|\n{todoItems}".to_string()),
+                _ => None,
+            }
+        });
+        
+        // Inject todo list
+        inject_todo_list_message(&manager, chat_id, &template_loader).unwrap();
+        
+        // Verify system message includes role
+        let messages = db.get_messages(chat_id).unwrap();
+        let system_msg = messages.iter().find(|m| m.role == "system").unwrap();
+        
+        assert!(system_msg.content.contains("developer (project-a)"));
+        
+        cleanup("test_inject_todo_role.db");
+    }
+
+    #[tokio::test]
+    async fn test_inject_todo_list_missing_template() {
+        let db = Arc::new(ChatDb::new("test_inject_todo_missing.db").unwrap());
+        let chat_id = db.create_chat("Test").unwrap();
+        
+        // Set up todo list
+        db.set_todo_list(chat_id, "[x] Task 1").unwrap();
+        
+        let provider = MockProjectProvider {
+            roles: std::collections::HashMap::new(),
+            role_prompts: std::collections::HashMap::new(),
+        };
+        
+        let provider = Arc::new(provider);
+        let manager = ChatManager::new(db.clone(), provider.clone(), None, false);
+        
+        // Create template loader that returns None for all templates
+        let template_loader = crate::stream::TemplateLoaderRef::new(|_name| None);
+        
+        // Inject todo list should fail with missing template error
+        let result = inject_todo_list_message(&manager, chat_id, &template_loader);
+        assert!(result.is_err());
+        
+        match result {
+            Err(ChatError::Internal(msg)) => {
+                assert!(msg.contains("Missing template"));
+            }
+            _ => panic!("Expected Internal error with missing template message"),
+        }
+        
+        cleanup("test_inject_todo_missing.db");
     }
 }
