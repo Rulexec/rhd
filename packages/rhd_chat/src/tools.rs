@@ -218,7 +218,7 @@ pub fn parse_todo_list(input: &str) -> Result<Vec<crate::TodoItem>, String> {
 
 /// Injects todo list status as a system message after tool loop iteration.
 /// This message is NOT persisted to the frontend, only added to AI context.
-/// Returns an error if required templates are missing.
+/// Silently skips injection if required templates are missing.
 pub fn inject_todo_list_message<P: ProjectProvider>(
     manager: &ChatManager<P>,
     chat_id: i64,
@@ -229,9 +229,13 @@ pub fn inject_todo_list_message<P: ProjectProvider>(
         Some(list) => list,
         None => {
             // No todo list exists, inject prompt to create one
-            let empty_prompt = template_loader
-                .get_template("todo_list_empty")
-                .ok_or_else(|| ChatError::Internal("Missing template: todo_list_empty".to_string()))?;
+            let empty_prompt = match template_loader.get_template("todo_list_empty") {
+                Some(template) => template,
+                None => {
+                    // Template missing, skip injection silently
+                    return Ok(());
+                }
+            };
             
             // Add as system message (will be included in AI context)
             manager.db().add_message(chat_id, "system", &empty_prompt, None, None)?;
@@ -252,11 +256,17 @@ pub fn inject_todo_list_message<P: ProjectProvider>(
     let active_role = manager.db().get_active_role(chat_id)?;
     
     // Render environment details with todo list
-    let environment_content = render_environment_details_for_injection(
+    let environment_content = match render_environment_details_for_injection(
         template_loader,
         &todo_items,
         active_role.as_ref(),
-    )?;
+    ) {
+        Some(content) => content,
+        None => {
+            // Failed to render, skip injection silently
+            return Ok(());
+        }
+    };
     
     // Add as system message
     manager.db().add_message(chat_id, "system", &environment_content, None, None)?;
@@ -266,17 +276,15 @@ pub fn inject_todo_list_message<P: ProjectProvider>(
 
 /// Helper function to render environment details for injection.
 /// This is a wrapper that uses TemplateLoaderRef instead of TemplateLoader.
-/// Returns an error if required templates are missing.
+/// Returns None if required templates are missing.
 fn render_environment_details_for_injection(
     template_loader: &crate::stream::TemplateLoaderRef,
     todo_items: &[crate::TodoItem],
     active_role: Option<&(String, String)>,
-) -> Result<String, ChatError> {
+) -> Option<String> {
     // Render todo items
     let todo_items_str = if todo_items.is_empty() {
-        template_loader
-            .get_template("todo_list_empty")
-            .ok_or_else(|| ChatError::Internal("Missing template: todo_list_empty".to_string()))?
+        template_loader.get_template("todo_list_empty")?
     } else {
         let mut items_output = String::new();
         for (idx, item) in todo_items.iter().enumerate() {
@@ -289,10 +297,7 @@ fn render_environment_details_for_injection(
             items_output.push_str(&format!("| {} | {} | {} |\n", idx + 1, item.content, status_str));
         }
         
-        let template = template_loader
-            .get_template("todo_list_with_items")
-            .ok_or_else(|| ChatError::Internal("Missing template: todo_list_with_items".to_string()))?;
-        
+        let template = template_loader.get_template("todo_list_with_items")?;
         template.replace("{todoItems}", &items_output)
     };
     
@@ -303,9 +308,7 @@ fn render_environment_details_for_injection(
         "environment_details_no_role"
     };
     
-    let template = template_loader
-        .get_template(template_name)
-        .ok_or_else(|| ChatError::Internal(format!("Missing template: {}", template_name)))?;
+    let template = template_loader.get_template(template_name)?;
     
     let mut result = template.replace("{todoItems}", &todo_items_str);
     
@@ -314,7 +317,7 @@ fn render_environment_details_for_injection(
         result = result.replace("{currentRoleName}", &format!("{} ({})", role_name, project_name));
     }
     
-    Ok(result)
+    Some(result)
 }
 
 pub async fn handle_rhd_set_role<P: ProjectProvider>(
@@ -659,7 +662,9 @@ pub async fn tool_loop<P: ProjectProvider>(
         }
         
         // Inject todo list message for next iteration
-        inject_todo_list_message(manager, chat_id, template_loader)?;
+        if let Err(e) = inject_todo_list_message(manager, chat_id, template_loader) {
+            eprintln!("Failed to inject todo list message: {}", e);
+        }
         
         if let Some(content) = result.content {
             *current_content = content;
@@ -1660,16 +1665,14 @@ mod tests {
         // Create template loader that returns None for all templates
         let template_loader = crate::stream::TemplateLoaderRef::new(|_name| None);
         
-        // Inject todo list should fail with missing template error
+        // Inject todo list should succeed but skip injection when templates are missing
         let result = inject_todo_list_message(&manager, chat_id, &template_loader);
-        assert!(result.is_err());
+        assert!(result.is_ok());
         
-        match result {
-            Err(ChatError::Internal(msg)) => {
-                assert!(msg.contains("Missing template"));
-            }
-            _ => panic!("Expected Internal error with missing template message"),
-        }
+        // Verify no system message was added (injection was skipped)
+        let messages = db.get_messages(chat_id).unwrap();
+        let system_messages: Vec<_> = messages.iter().filter(|m| m.role == "system").collect();
+        assert_eq!(system_messages.len(), 0);
         
         cleanup("test_inject_todo_missing.db");
     }

@@ -37,11 +37,16 @@ pub fn inject_todo_tool_contract<P: ProjectProvider>(
     manager: &ChatManager<P>,
     chat_id: i64,
     template_loader: &TemplateLoaderRef,
+    event_sender: &broadcast::Sender<ChatEvent>,
 ) -> Result<(), ChatError> {
     let messages = manager.db().get_messages(chat_id)?;
 
-    let has_user_messages = messages.iter().any(|m| m.role == "user");
-    if has_user_messages {
+    let user_message_count = messages.iter().filter(|m| m.role == "user").count();
+    
+    eprintln!("[DEBUG] inject_todo_tool_contract: chat_id={}, user_message_count={}", chat_id, user_message_count);
+    
+    if user_message_count > 0 {
+        eprintln!("[DEBUG] inject_todo_tool_contract: skipping, already have user messages");
         return Ok(());
     }
 
@@ -49,16 +54,24 @@ pub fn inject_todo_tool_contract<P: ProjectProvider>(
         m.role == "system" && m.content.contains("rhd_set_todo_list Tool Contract")
     });
     if has_contract {
+        eprintln!("[DEBUG] inject_todo_tool_contract: skipping, contract already exists");
         return Ok(());
     }
 
     let contract_content = match template_loader.get_template("rhd_set_todo_list_contract") {
         Some(content) => content,
         None => {
+            let error_msg = "Template 'rhd_set_todo_list_contract' not found, cannot inject todo contract".to_string();
+            eprintln!("[ERROR] {}", error_msg);
+            let _ = event_sender.send(ChatEvent::DevNotification {
+                title: "Todo Contract Injection Failed".to_string(),
+                message: error_msg,
+            });
             return Ok(());
         }
     };
 
+    eprintln!("[DEBUG] inject_todo_tool_contract: injecting contract, content length={}", contract_content.len());
     manager.db().add_message(chat_id, "system", &contract_content, None, None)?;
 
     Ok(())
@@ -78,7 +91,7 @@ pub async fn send_message<P: ProjectProvider>(
     let chat_info = manager.db().get_chat(chat_id)?.ok_or(ChatError::ChatNotFound)?;
     let chat_title = chat_info.title.clone();
 
-    inject_todo_tool_contract(manager, chat_id, template_loader)?;
+    inject_todo_tool_contract(manager, chat_id, template_loader, &event_sender)?;
 
     let pause_notify = manager.get_paused_notify(chat_id).await;
 
@@ -334,7 +347,7 @@ pub async fn edit_and_resend<P: ProjectProvider>(
     manager.db().update_message(message_id, &new_content)?;
     manager.db().truncate_messages(chat_id, message_id)?;
 
-    inject_todo_tool_contract(manager, chat_id, template_loader)?;
+    inject_todo_tool_contract(manager, chat_id, template_loader, &event_sender)?;
 
     projects::inject_system_prompts(
         manager.db(),
@@ -649,7 +662,8 @@ mod tests {
             }
         });
 
-        inject_todo_tool_contract(&manager, chat_id, &template_loader).unwrap();
+        let (event_sender, _event_receiver) = broadcast::channel(100);
+        inject_todo_tool_contract(&manager, chat_id, &template_loader, &event_sender).unwrap();
 
         let messages = db.get_messages(chat_id).unwrap();
         let system_msg = messages.iter().find(|m| m.role == "system").unwrap();
@@ -682,7 +696,8 @@ mod tests {
             }
         });
 
-        inject_todo_tool_contract(&manager, chat_id, &template_loader).unwrap();
+        let (event_sender, _event_receiver) = broadcast::channel(100);
+        inject_todo_tool_contract(&manager, chat_id, &template_loader, &event_sender).unwrap();
 
         let messages = db.get_messages(chat_id).unwrap();
         assert_eq!(messages.len(), 1);
@@ -721,7 +736,8 @@ mod tests {
             }
         });
 
-        inject_todo_tool_contract(&manager, chat_id, &template_loader).unwrap();
+        let (event_sender, _event_receiver) = broadcast::channel(100);
+        inject_todo_tool_contract(&manager, chat_id, &template_loader, &event_sender).unwrap();
 
         let messages = db.get_messages(chat_id).unwrap();
         let system_msgs: Vec<_> = messages.iter().filter(|m| m.role == "system").collect();
@@ -746,7 +762,8 @@ mod tests {
 
         let template_loader = TemplateLoaderRef::new(|_name| None);
 
-        let result = inject_todo_tool_contract(&manager, chat_id, &template_loader);
+        let (event_sender, _event_receiver) = broadcast::channel(100);
+        let result = inject_todo_tool_contract(&manager, chat_id, &template_loader, &event_sender);
         assert!(result.is_ok());
 
         let messages = db.get_messages(chat_id).unwrap();
