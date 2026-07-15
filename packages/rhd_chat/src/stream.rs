@@ -14,6 +14,56 @@ use crate::projects;
 use crate::tools;
 use crate::ProjectProvider;
 
+pub struct TemplateLoaderRef {
+    get_template: Arc<dyn Fn(&str) -> Option<String> + Send + Sync>,
+}
+
+impl TemplateLoaderRef {
+    pub fn new<F>(get_template: F) -> Self
+    where
+        F: Fn(&str) -> Option<String> + Send + Sync + 'static,
+    {
+        Self {
+            get_template: Arc::new(get_template),
+        }
+    }
+
+    pub fn get_template(&self, name: &str) -> Option<String> {
+        (self.get_template)(name)
+    }
+}
+
+pub fn inject_todo_tool_contract<P: ProjectProvider>(
+    manager: &ChatManager<P>,
+    chat_id: i64,
+    template_loader: &TemplateLoaderRef,
+) -> Result<(), ChatError> {
+    let messages = manager.db().get_messages(chat_id)?;
+
+    let has_user_messages = messages.iter().any(|m| m.role == "user");
+    if has_user_messages {
+        return Ok(());
+    }
+
+    let has_contract = messages.iter().any(|m| {
+        m.role == "system" && m.content.contains("rhd_set_todo_list Tool Contract")
+    });
+    if has_contract {
+        return Ok(());
+    }
+
+    let contract_content = match template_loader.get_template("rhd_set_todo_list_contract") {
+        Some(content) => content,
+        None => {
+            return Ok(());
+        }
+    };
+
+    manager.db().add_message(chat_id, "system", &contract_content, None, None)?;
+
+    Ok(())
+}
+
 pub async fn send_message<P: ProjectProvider>(
     manager: &ChatManager<P>,
     chat_id: i64,
@@ -22,10 +72,13 @@ pub async fn send_message<P: ProjectProvider>(
     models: &HashMap<String, ModelConfig>,
     event_sender: broadcast::Sender<ChatEvent>,
     reload_lock: &tokio::sync::RwLock<()>,
+    template_loader: &TemplateLoaderRef,
 ) -> Result<i64, ChatError> {
     let _reload_guard = reload_lock.read().await;
     let chat_info = manager.db().get_chat(chat_id)?.ok_or(ChatError::ChatNotFound)?;
     let chat_title = chat_info.title.clone();
+
+    inject_todo_tool_contract(manager, chat_id, template_loader)?;
 
     let pause_notify = manager.get_paused_notify(chat_id).await;
 
@@ -263,6 +316,7 @@ pub async fn edit_and_resend<P: ProjectProvider>(
     models: &HashMap<String, ModelConfig>,
     event_sender: broadcast::Sender<ChatEvent>,
     reload_lock: &tokio::sync::RwLock<()>,
+    template_loader: &TemplateLoaderRef,
 ) -> Result<i64, ChatError> {
     let _reload_guard = reload_lock.read().await;
     let original_message = manager
@@ -276,6 +330,8 @@ pub async fn edit_and_resend<P: ProjectProvider>(
 
     manager.db().update_message(message_id, &new_content)?;
     manager.db().truncate_messages(chat_id, message_id)?;
+
+    inject_todo_tool_contract(manager, chat_id, template_loader)?;
 
     projects::inject_system_prompts(
         manager.db(),
@@ -516,5 +572,183 @@ async fn handle_stream_result<P: ProjectProvider>(
             });
             Err(ChatError::Ai(err))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rhd_db::ChatDb;
+    use std::fs;
+
+    fn cleanup(path: &str) {
+        let _ = fs::remove_file(path);
+        let _ = fs::remove_file(format!("{}-wal", path));
+        let _ = fs::remove_file(format!("{}-shm", path));
+    }
+
+    struct MockProjectProvider {
+        roles: std::collections::HashMap<String, Vec<rhd_api::project::Role>>,
+        role_prompts: std::collections::HashMap<(String, String), String>,
+    }
+
+    #[async_trait::async_trait]
+    impl ProjectProvider for MockProjectProvider {
+        async fn get_mcp_status(&self, _project_name: &str) -> Vec<(String, crate::McpStatus)> {
+            vec![]
+        }
+
+        fn get_project_system_prompt(&self, _project_name: &str) -> Option<String> {
+            None
+        }
+
+        fn get_project_mcp_refs(&self, _project_name: &str) -> Vec<rhd_api::project::McpRef> {
+            vec![]
+        }
+
+        async fn get_mcp_clients(&self, _project_name: &str) -> Vec<(String, Arc<rhd_mcp_client::client::McpClient>)> {
+            vec![]
+        }
+
+        async fn spawn_project_mcp(&self, _project_name: &str) -> Result<(), String> {
+            Ok(())
+        }
+
+        fn get_project_roles(&self, project_name: &str) -> Vec<rhd_api::project::Role> {
+            self.roles.get(project_name).cloned().unwrap_or_default()
+        }
+
+        fn get_role_system_prompt(&self, project_name: &str, role_name: &str) -> Option<String> {
+            self.role_prompts
+                .get(&(project_name.to_string(), role_name.to_string()))
+                .cloned()
+        }
+    }
+
+    #[tokio::test]
+    async fn test_inject_todo_tool_contract_first_message() {
+        let db = Arc::new(ChatDb::new("test_contract_inject.db").unwrap());
+        let chat_id = db.create_chat("Test").unwrap();
+
+        let provider = MockProjectProvider {
+            roles: std::collections::HashMap::new(),
+            role_prompts: std::collections::HashMap::new(),
+        };
+
+        let provider = Arc::new(provider);
+        let manager = ChatManager::new(db.clone(), provider.clone(), None, false);
+
+        let template_loader = TemplateLoaderRef::new(|name| {
+            if name == "rhd_set_todo_list_contract" {
+                Some("# rhd_set_todo_list Tool Contract\n\nThis is the contract.".to_string())
+            } else {
+                None
+            }
+        });
+
+        inject_todo_tool_contract(&manager, chat_id, &template_loader).unwrap();
+
+        let messages = db.get_messages(chat_id).unwrap();
+        let system_msg = messages.iter().find(|m| m.role == "system").unwrap();
+
+        assert!(system_msg.content.contains("rhd_set_todo_list Tool Contract"));
+
+        cleanup("test_contract_inject.db");
+    }
+
+    #[tokio::test]
+    async fn test_inject_todo_tool_contract_not_first_message() {
+        let db = Arc::new(ChatDb::new("test_contract_not_first.db").unwrap());
+        let chat_id = db.create_chat("Test").unwrap();
+
+        db.add_message(chat_id, "user", "Hello", None, None).unwrap();
+
+        let provider = MockProjectProvider {
+            roles: std::collections::HashMap::new(),
+            role_prompts: std::collections::HashMap::new(),
+        };
+
+        let provider = Arc::new(provider);
+        let manager = ChatManager::new(db.clone(), provider.clone(), None, false);
+
+        let template_loader = TemplateLoaderRef::new(|name| {
+            if name == "rhd_set_todo_list_contract" {
+                Some("# Contract".to_string())
+            } else {
+                None
+            }
+        });
+
+        inject_todo_tool_contract(&manager, chat_id, &template_loader).unwrap();
+
+        let messages = db.get_messages(chat_id).unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].role, "user");
+
+        cleanup("test_contract_not_first.db");
+    }
+
+    #[tokio::test]
+    async fn test_inject_todo_tool_contract_already_injected() {
+        let db = Arc::new(ChatDb::new("test_contract_already.db").unwrap());
+        let chat_id = db.create_chat("Test").unwrap();
+
+        db.add_message(
+            chat_id,
+            "system",
+            "# rhd_set_todo_list Tool Contract\n\nExisting contract.",
+            None,
+            None,
+        )
+        .unwrap();
+
+        let provider = MockProjectProvider {
+            roles: std::collections::HashMap::new(),
+            role_prompts: std::collections::HashMap::new(),
+        };
+
+        let provider = Arc::new(provider);
+        let manager = ChatManager::new(db.clone(), provider.clone(), None, false);
+
+        let template_loader = TemplateLoaderRef::new(|name| {
+            if name == "rhd_set_todo_list_contract" {
+                Some("# New Contract".to_string())
+            } else {
+                None
+            }
+        });
+
+        inject_todo_tool_contract(&manager, chat_id, &template_loader).unwrap();
+
+        let messages = db.get_messages(chat_id).unwrap();
+        let system_msgs: Vec<_> = messages.iter().filter(|m| m.role == "system").collect();
+        assert_eq!(system_msgs.len(), 1);
+        assert!(system_msgs[0].content.contains("Existing contract"));
+
+        cleanup("test_contract_already.db");
+    }
+
+    #[tokio::test]
+    async fn test_inject_todo_tool_contract_missing_template() {
+        let db = Arc::new(ChatDb::new("test_contract_missing.db").unwrap());
+        let chat_id = db.create_chat("Test").unwrap();
+
+        let provider = MockProjectProvider {
+            roles: std::collections::HashMap::new(),
+            role_prompts: std::collections::HashMap::new(),
+        };
+
+        let provider = Arc::new(provider);
+        let manager = ChatManager::new(db.clone(), provider.clone(), None, false);
+
+        let template_loader = TemplateLoaderRef::new(|_name| None);
+
+        let result = inject_todo_tool_contract(&manager, chat_id, &template_loader);
+        assert!(result.is_ok());
+
+        let messages = db.get_messages(chat_id).unwrap();
+        assert_eq!(messages.len(), 0);
+
+        cleanup("test_contract_missing.db");
     }
 }

@@ -172,8 +172,9 @@ impl<P: ProjectProvider> ChatManager<P> {
         models: &HashMap<String, ModelConfig>,
         event_sender: broadcast::Sender<ChatEvent>,
         reload_lock: &tokio::sync::RwLock<()>,
+        template_loader: &stream::TemplateLoaderRef,
     ) -> Result<i64, ChatError> {
-        stream::send_message(self, chat_id, content, model, models, event_sender, reload_lock)
+        stream::send_message(self, chat_id, content, model, models, event_sender, reload_lock, template_loader)
             .await
     }
 
@@ -185,6 +186,7 @@ impl<P: ProjectProvider> ChatManager<P> {
         models: &HashMap<String, ModelConfig>,
         event_sender: broadcast::Sender<ChatEvent>,
         reload_lock: &tokio::sync::RwLock<()>,
+        template_loader: &stream::TemplateLoaderRef,
     ) -> Result<i64, ChatError> {
         stream::edit_and_resend(
             self,
@@ -194,6 +196,7 @@ impl<P: ProjectProvider> ChatManager<P> {
             models,
             event_sender,
             reload_lock,
+            template_loader,
         )
         .await
     }
