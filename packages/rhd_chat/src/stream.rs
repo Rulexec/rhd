@@ -72,7 +72,7 @@ pub fn inject_todo_tool_contract<P: ProjectProvider>(
     };
 
     eprintln!("[DEBUG] inject_todo_tool_contract: injecting contract, content length={}", contract_content.len());
-    manager.db().add_message(chat_id, "system", &contract_content, None, None)?;
+    manager.add_message_and_notify(chat_id, "system", &contract_content, None, None, event_sender)?;
 
     Ok(())
 }
@@ -96,21 +96,8 @@ pub async fn send_message<P: ProjectProvider>(
     let pause_notify = manager.get_paused_notify(chat_id).await;
 
     if let Some(notify) = pause_notify {
-        let user_message_id =
-            manager.db().add_message(chat_id, "user", &content, Some(model), None)?;
-        let user_message = Message {
-            id: user_message_id,
-            chat_id,
-            role: "user".to_string(),
-            content,
-            created_at: chrono::Utc::now().to_rfc3339(),
-            model: Some(model.to_string()),
-            thinking_content: None,
-        };
-        let _ = event_sender.send(ChatEvent::MessageAdded {
-            chat_id,
-            message: user_message,
-        });
+        let user_message = manager.add_message_and_notify(chat_id, "user", &content, Some(model), None, &event_sender)?;
+        let user_message_id = user_message.id;
 
         notify.notify_one();
 
@@ -121,46 +108,14 @@ pub async fn send_message<P: ProjectProvider>(
         .get(model)
         .ok_or_else(|| ChatError::ModelNotFound(model.to_string()))?;
 
-    projects::inject_system_prompts(
-        manager.db(),
-        manager.project_provider(),
-        chat_id,
-        &event_sender,
-    )
-    .await?;
-
-    projects::inject_roles_prompt(
-        manager.db(),
-        manager.project_provider(),
-        chat_id,
-        &event_sender,
-    )
-    .await?;
-
-    projects::inject_pending_role_prompt(
-        manager.db(),
-        manager.project_provider(),
-        chat_id,
-        &event_sender,
-    )?;
+    projects::inject_system_prompts(manager, chat_id, &event_sender).await?;
+    projects::inject_roles_prompt(manager, chat_id, &event_sender).await?;
+    projects::inject_pending_role_prompt(manager, chat_id, &event_sender)?;
 
     manager.db().update_chat_active_model(chat_id, model)?;
 
-    let user_message_id =
-        manager.db().add_message(chat_id, "user", &content, Some(model), None)?;
-    let user_message = Message {
-        id: user_message_id,
-        chat_id,
-        role: "user".to_string(),
-        content: content.clone(),
-        created_at: chrono::Utc::now().to_rfc3339(),
-        model: Some(model.to_string()),
-        thinking_content: None,
-    };
-    let _ = event_sender.send(ChatEvent::MessageAdded {
-        chat_id,
-        message: user_message,
-    });
+    let user_message = manager.add_message_and_notify(chat_id, "user", &content, Some(model), None, &event_sender)?;
+    let _user_message_id = user_message.id;
 
     let messages = manager.db().get_messages(chat_id)?;
     
@@ -349,28 +304,9 @@ pub async fn edit_and_resend<P: ProjectProvider>(
 
     inject_todo_tool_contract(manager, chat_id, template_loader, &event_sender)?;
 
-    projects::inject_system_prompts(
-        manager.db(),
-        manager.project_provider(),
-        chat_id,
-        &event_sender,
-    )
-    .await?;
-
-    projects::inject_roles_prompt(
-        manager.db(),
-        manager.project_provider(),
-        chat_id,
-        &event_sender,
-    )
-    .await?;
-
-    projects::inject_pending_role_prompt(
-        manager.db(),
-        manager.project_provider(),
-        chat_id,
-        &event_sender,
-    )?;
+    projects::inject_system_prompts(manager, chat_id, &event_sender).await?;
+    projects::inject_roles_prompt(manager, chat_id, &event_sender).await?;
+    projects::inject_pending_role_prompt(manager, chat_id, &event_sender)?;
 
     manager.db().update_chat_active_model(chat_id, model)?;
 
@@ -534,30 +470,15 @@ async fn handle_stream_result<P: ProjectProvider>(
             } else {
                 Some(full_thinking.as_str())
             };
-            let assistant_message_id = manager.db().add_message(
+            let assistant_message = manager.add_message_and_notify(
                 chat_id,
                 "assistant",
                 &full_content,
                 Some(model),
                 thinking_option,
+                event_sender,
             )?;
-            let assistant_message = Message {
-                id: assistant_message_id,
-                chat_id,
-                role: "assistant".to_string(),
-                content: full_content,
-                created_at: chrono::Utc::now().to_rfc3339(),
-                model: Some(model.to_string()),
-                thinking_content: if full_thinking.is_empty() {
-                    None
-                } else {
-                    Some(full_thinking)
-                },
-            };
-            let _ = event_sender.send(ChatEvent::MessageAdded {
-                chat_id,
-                message: assistant_message,
-            });
+            let assistant_message_id = assistant_message.id;
             
             let _ = event_sender.send(ChatEvent::StreamFinished {
                 chat_id,

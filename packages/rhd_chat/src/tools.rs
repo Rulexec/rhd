@@ -223,6 +223,7 @@ pub fn inject_todo_list_message<P: ProjectProvider>(
     manager: &ChatManager<P>,
     chat_id: i64,
     template_loader: &crate::stream::TemplateLoaderRef,
+    event_sender: &broadcast::Sender<ChatEvent>,
 ) -> Result<(), ChatError> {
     // Get current todo list from database
     let todo_list_str = match manager.db().get_todo_list(chat_id)? {
@@ -238,7 +239,7 @@ pub fn inject_todo_list_message<P: ProjectProvider>(
             };
             
             // Add as system message (will be included in AI context)
-            manager.db().add_message(chat_id, "system", &empty_prompt, None, None)?;
+            manager.add_message_and_notify(chat_id, "system", &empty_prompt, None, None, event_sender)?;
             return Ok(());
         }
     };
@@ -269,7 +270,7 @@ pub fn inject_todo_list_message<P: ProjectProvider>(
     };
     
     // Add as system message
-    manager.db().add_message(chat_id, "system", &environment_content, None, None)?;
+    manager.add_message_and_notify(chat_id, "system", &environment_content, None, None, event_sender)?;
     
     Ok(())
 }
@@ -436,12 +437,7 @@ pub async fn tool_loop<P: ProjectProvider>(
 
         manager.check_pause_state(chat_id, event_sender).await;
 
-        crate::projects::inject_pending_role_prompt(
-            manager.db(),
-            manager.project_provider(),
-            chat_id,
-            event_sender,
-        )?;
+        crate::projects::inject_pending_role_prompt(manager, chat_id, event_sender)?;
 
         let db_messages = manager.db().get_messages(chat_id)?;
         let chat_messages = build_chat_messages_for_tools(&db_messages);
@@ -512,21 +508,15 @@ pub async fn tool_loop<P: ProjectProvider>(
                 Some(full_thinking.clone())
             };
             
-            let assistant_message_id =
-                manager.db().add_message(chat_id, "assistant", &final_content, Some(model), thinking_option.as_deref())?;
-            let assistant_message = Message {
-                id: assistant_message_id,
+            let assistant_message = manager.add_message_and_notify(
                 chat_id,
-                role: "assistant".to_string(),
-                content: final_content,
-                created_at: chrono::Utc::now().to_rfc3339(),
-                model: Some(model.to_string()),
-                thinking_content: thinking_option,
-            };
-            let _ = event_sender.send(ChatEvent::MessageAdded {
-                chat_id,
-                message: assistant_message,
-            });
+                "assistant",
+                &final_content,
+                Some(model),
+                thinking_option.as_deref(),
+                event_sender,
+            )?;
+            let assistant_message_id = assistant_message.id;
             let _ = event_sender.send(ChatEvent::StreamFinished {
                 chat_id,
                 message_id: assistant_message_id,
@@ -580,26 +570,15 @@ pub async fn tool_loop<P: ProjectProvider>(
         }
         
         // Save intermediate assistant message (frontend will replace temp message created by ToolCallStarted)
-        let intermediate_msg_id = manager.db().add_message(
+        let intermediate_message = manager.add_message_and_notify(
             chat_id,
             "assistant",
             &assistant_msg_content,
             Some(model),
             thinking_option,
+            event_sender,
         )?;
-        let intermediate_message = Message {
-            id: intermediate_msg_id,
-            chat_id,
-            role: "assistant".to_string(),
-            content: assistant_msg_content,
-            created_at: chrono::Utc::now().to_rfc3339(),
-            model: Some(model.to_string()),
-            thinking_content: thinking_option.map(|s| s.to_string()),
-        };
-        let _ = event_sender.send(ChatEvent::MessageAdded {
-            chat_id,
-            message: intermediate_message,
-        });
+        let _intermediate_msg_id = intermediate_message.id;
         
         // Execute tools and send completion events
         for tool_call in &tool_calls_with_unique_ids {
@@ -645,24 +624,19 @@ pub async fn tool_loop<P: ProjectProvider>(
                 "isError": tool_result.is_error.unwrap_or(false),
             })
             .to_string();
-            let tool_msg_id = manager.db().add_message(chat_id, "tool", &tool_result_json, None, None)?;
-            let tool_message = Message {
-                id: tool_msg_id,
+            let tool_message = manager.add_message_and_notify(
                 chat_id,
-                role: "tool".to_string(),
-                content: tool_result_json,
-                created_at: chrono::Utc::now().to_rfc3339(),
-                model: None,
-                thinking_content: None,
-            };
-            let _ = event_sender.send(ChatEvent::MessageAdded {
-                chat_id,
-                message: tool_message,
-            });
+                "tool",
+                &tool_result_json,
+                None,
+                None,
+                event_sender,
+            )?;
+            let _tool_msg_id = tool_message.id;
         }
         
         // Inject todo list message for next iteration
-        if let Err(e) = inject_todo_list_message(manager, chat_id, template_loader) {
+        if let Err(e) = inject_todo_list_message(manager, chat_id, template_loader, event_sender) {
             eprintln!("Failed to inject todo list message: {}", e);
         }
         
@@ -1551,7 +1525,8 @@ mod tests {
         });
         
         // Inject todo list
-        inject_todo_list_message(&manager, chat_id, &template_loader).unwrap();
+        let (event_sender, _event_receiver) = broadcast::channel(100);
+        inject_todo_list_message(&manager, chat_id, &template_loader, &event_sender).unwrap();
         
         // Verify system message was added
         let messages = db.get_messages(chat_id).unwrap();
@@ -1589,7 +1564,8 @@ mod tests {
         });
         
         // Inject todo list
-        inject_todo_list_message(&manager, chat_id, &template_loader).unwrap();
+        let (event_sender, _event_receiver) = broadcast::channel(100);
+        inject_todo_list_message(&manager, chat_id, &template_loader, &event_sender).unwrap();
         
         // Verify system message was added with empty prompt
         let messages = db.get_messages(chat_id).unwrap();
@@ -1635,7 +1611,8 @@ mod tests {
         });
         
         // Inject todo list
-        inject_todo_list_message(&manager, chat_id, &template_loader).unwrap();
+        let (event_sender, _event_receiver) = broadcast::channel(100);
+        inject_todo_list_message(&manager, chat_id, &template_loader, &event_sender).unwrap();
         
         // Verify system message includes role
         let messages = db.get_messages(chat_id).unwrap();
@@ -1666,7 +1643,8 @@ mod tests {
         let template_loader = crate::stream::TemplateLoaderRef::new(|_name| None);
         
         // Inject todo list should succeed but skip injection when templates are missing
-        let result = inject_todo_list_message(&manager, chat_id, &template_loader);
+        let (event_sender, _event_receiver) = broadcast::channel(100);
+        let result = inject_todo_list_message(&manager, chat_id, &template_loader, &event_sender);
         assert!(result.is_ok());
         
         // Verify no system message was added (injection was skipped)

@@ -55,6 +55,34 @@ impl<P: ProjectProvider> ChatManager<P> {
         self.log_chats_raw
     }
 
+    /// Adds a message to the database and emits a MessageAdded event.
+    /// This is the single point of message addition to ensure consistency.
+    pub fn add_message_and_notify(
+        &self,
+        chat_id: i64,
+        role: &str,
+        content: &str,
+        model: Option<&str>,
+        thinking_content: Option<&str>,
+        event_sender: &broadcast::Sender<ChatEvent>,
+    ) -> Result<Message, ChatError> {
+        let message_id = self.db.add_message(chat_id, role, content, model, thinking_content)?;
+        let message = Message {
+            id: message_id,
+            chat_id,
+            role: role.to_string(),
+            content: content.to_string(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+            model: model.map(|s| s.to_string()),
+            thinking_content: thinking_content.map(|s| s.to_string()),
+        };
+        let _ = event_sender.send(ChatEvent::MessageAdded {
+            chat_id,
+            message: message.clone(),
+        });
+        Ok(message)
+    }
+
     pub fn create_chat(&self, title: &str) -> Result<i64, ChatError> {
         Ok(self.db.create_chat(title)?)
     }

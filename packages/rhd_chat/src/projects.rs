@@ -7,6 +7,7 @@ use tokio::sync::broadcast;
 
 use crate::error::ChatError;
 use crate::event::ChatEvent;
+use crate::manager::ChatManager;
 use crate::ProjectProvider;
 
 pub fn check_role_conflicts<P: ProjectProvider>(
@@ -165,11 +166,12 @@ pub fn get_chat_projects<P: ProjectProvider>(
 }
 
 pub async fn inject_system_prompts<P: ProjectProvider>(
-    db: &Arc<ChatDb>,
-    project_provider: &Arc<P>,
+    manager: &ChatManager<P>,
     chat_id: i64,
     event_sender: &broadcast::Sender<ChatEvent>,
 ) -> Result<(), ChatError> {
+    let db = manager.db();
+    let project_provider = manager.project_provider();
     let attached_projects = db.get_chat_projects(chat_id)?;
     for (project_name, system_prompt_added) in &attached_projects {
         let mcp_status = project_provider.get_mcp_status(project_name).await;
@@ -184,21 +186,7 @@ pub async fn inject_system_prompts<P: ProjectProvider>(
 
         if !system_prompt_added {
             if let Some(system_prompt) = project_provider.get_project_system_prompt(project_name) {
-                let system_message_id =
-                    db.add_message(chat_id, "system", &system_prompt, None, None)?;
-                let system_message = rhd_db::Message {
-                    id: system_message_id,
-                    chat_id,
-                    role: "system".to_string(),
-                    content: system_prompt.clone(),
-                    created_at: chrono::Utc::now().to_rfc3339(),
-                    model: None,
-                    thinking_content: None,
-                };
-                let _ = event_sender.send(ChatEvent::MessageAdded {
-                    chat_id,
-                    message: system_message,
-                });
+                manager.add_message_and_notify(chat_id, "system", &system_prompt, None, None, event_sender)?;
                 db.mark_system_prompt_added(chat_id, project_name)?;
             }
         }
@@ -207,11 +195,12 @@ pub async fn inject_system_prompts<P: ProjectProvider>(
 }
 
 pub async fn inject_roles_prompt<P: ProjectProvider>(
-    db: &Arc<ChatDb>,
-    project_provider: &Arc<P>,
+    manager: &ChatManager<P>,
     chat_id: i64,
     event_sender: &broadcast::Sender<ChatEvent>,
 ) -> Result<(), ChatError> {
+    let db = manager.db();
+    let project_provider = manager.project_provider();
     if db.has_roles_list_been_injected(chat_id)? {
         return Ok(());
     }
@@ -249,20 +238,7 @@ pub async fn inject_roles_prompt<P: ProjectProvider>(
         prompt.push('\n');
     }
 
-    let system_message_id = db.add_message(chat_id, "system", &prompt, None, None)?;
-    let system_message = rhd_db::Message {
-        id: system_message_id,
-        chat_id,
-        role: "system".to_string(),
-        content: prompt,
-        created_at: chrono::Utc::now().to_rfc3339(),
-        model: None,
-        thinking_content: None,
-    };
-    let _ = event_sender.send(ChatEvent::MessageAdded {
-        chat_id,
-        message: system_message,
-    });
+    manager.add_message_and_notify(chat_id, "system", &prompt, None, None, event_sender)?;
 
     db.mark_roles_list_injected(chat_id)?;
 
@@ -270,13 +246,13 @@ pub async fn inject_roles_prompt<P: ProjectProvider>(
 }
 
 pub fn inject_role_system_prompt<P: ProjectProvider>(
-    db: &Arc<ChatDb>,
-    project_provider: &Arc<P>,
+    manager: &ChatManager<P>,
     chat_id: i64,
     project_name: &str,
     role_name: &str,
     event_sender: &broadcast::Sender<ChatEvent>,
 ) -> Result<(), ChatError> {
+    let project_provider = manager.project_provider();
     let system_prompt = project_provider
         .get_role_system_prompt(project_name, role_name)
         .ok_or_else(|| {
@@ -288,30 +264,17 @@ pub fn inject_role_system_prompt<P: ProjectProvider>(
     prompt.push_str("-----\n\n");
     prompt.push_str(&system_prompt);
 
-    let system_message_id = db.add_message(chat_id, "system", &prompt, None, None)?;
-    let system_message = rhd_db::Message {
-        id: system_message_id,
-        chat_id,
-        role: "system".to_string(),
-        content: prompt,
-        created_at: chrono::Utc::now().to_rfc3339(),
-        model: None,
-        thinking_content: None,
-    };
-    let _ = event_sender.send(ChatEvent::MessageAdded {
-        chat_id,
-        message: system_message,
-    });
+    manager.add_message_and_notify(chat_id, "system", &prompt, None, None, event_sender)?;
 
     Ok(())
 }
 
 pub fn inject_pending_role_prompt<P: ProjectProvider>(
-    db: &Arc<ChatDb>,
-    project_provider: &Arc<P>,
+    manager: &ChatManager<P>,
     chat_id: i64,
     event_sender: &broadcast::Sender<ChatEvent>,
 ) -> Result<(), ChatError> {
+    let db = manager.db();
     if !db.has_role_prompt_pending(chat_id)? {
         return Ok(());
     }
@@ -319,8 +282,7 @@ pub fn inject_pending_role_prompt<P: ProjectProvider>(
     let active_role = db.get_active_role(chat_id)?;
     if let Some((project_name, role_name)) = active_role {
         inject_role_system_prompt(
-            db,
-            project_provider,
+            manager,
             chat_id,
             &project_name,
             &role_name,
@@ -495,8 +457,9 @@ mod tests {
 
         let (event_sender, _) = broadcast::channel(100);
         let provider = Arc::new(provider);
+        let manager = ChatManager::new(db.clone(), provider, None, false);
 
-        inject_roles_prompt(&db, &provider, chat_id, &event_sender)
+        inject_roles_prompt(&manager, chat_id, &event_sender)
             .await
             .unwrap();
 
@@ -507,7 +470,7 @@ mod tests {
         assert!(messages[0].content.contains("reviewer"));
         assert!(messages[0].content.contains("Current active role is \"none\""));
 
-        inject_roles_prompt(&db, &provider, chat_id, &event_sender)
+        inject_roles_prompt(&manager, chat_id, &event_sender)
             .await
             .unwrap();
         let messages = db.get_messages(chat_id).unwrap();
@@ -535,10 +498,10 @@ mod tests {
 
         let (event_sender, _) = broadcast::channel(100);
         let provider = Arc::new(provider);
+        let manager = ChatManager::new(db.clone(), provider, None, false);
 
         inject_role_system_prompt(
-            &db,
-            &provider,
+            &manager,
             chat_id,
             "project-a",
             "developer",
