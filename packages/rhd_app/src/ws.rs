@@ -575,7 +575,7 @@ async fn handle_send_message(
     let state_clone = Arc::clone(state);
     tokio::spawn(async move {
         let template_loader_ref = rhd_chat::stream::TemplateLoaderRef::new(move |name| {
-            template_loader.get_template(name).cloned()
+            template_loader.get_template(name).map(|s| s.to_string())
         });
         let _ = chat_manager
             .send_message(chat_id, content, &model, &models, event_sender, &state_clone.reload_lock, &template_loader_ref)
@@ -598,7 +598,7 @@ async fn handle_edit_message(
     drop(inner);
     let template_loader = Arc::clone(&state.template_loader);
     let template_loader_ref = rhd_chat::stream::TemplateLoaderRef::new(move |name| {
-        template_loader.get_template(name).cloned()
+        template_loader.get_template(name).map(|s| s.to_string())
     });
     match state
         .chat_manager

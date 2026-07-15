@@ -100,8 +100,7 @@ pub async fn run_daemon(
     let chat_manager = Arc::new(ChatManager::new(chat_db.clone(), project_manager.clone(), log_chats, log_chats_raw));
     let (chat_event_sender, _) = broadcast::channel(100);
 
-    let templates_dir = std::env::current_dir()?.join("templates");
-    let template_loader = Arc::new(TemplateLoader::new(&templates_dir).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?);
+    let template_loader = Arc::new(TemplateLoader::new());
 
     let frontend_alive = Arc::new(AtomicBool::new(false));
     let inner = ReloadableInner {

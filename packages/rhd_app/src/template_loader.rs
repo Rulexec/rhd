@@ -1,69 +1,15 @@
 use std::collections::HashMap;
-use std::path::Path;
-use thiserror::Error;
+use crate::templates::TemplateRegistry;
 
-#[derive(Debug, Error)]
-pub enum TemplateLoadError {
-    #[error("failed to read template file '{path}': {source}")]
-    Io {
-        path: String,
-        source: std::io::Error,
-    },
-}
-
-pub struct TemplateLoader {
-    templates: HashMap<String, String>,
-}
+pub struct TemplateLoader;
 
 impl TemplateLoader {
-    pub fn new(templates_dir: &Path) -> Result<Self, TemplateLoadError> {
-        let mut templates = HashMap::new();
-
-        if !templates_dir.exists() {
-            return Ok(Self { templates });
-        }
-
-        let entries = templates_dir.read_dir().map_err(|source| TemplateLoadError::Io {
-            path: templates_dir.display().to_string(),
-            source,
-        })?;
-
-        for entry in entries {
-            let entry = entry.map_err(|source| TemplateLoadError::Io {
-                path: templates_dir.display().to_string(),
-                source,
-            })?;
-            let path = entry.path();
-
-            if !path.is_file() {
-                continue;
-            }
-
-            if let Some(ext) = path.extension() {
-                if ext == "md" {
-                    let template_name = path
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("")
-                        .to_string();
-
-                    let content = std::fs::read_to_string(&path).map_err(|source| {
-                        TemplateLoadError::Io {
-                            path: path.display().to_string(),
-                            source,
-                        }
-                    })?;
-
-                    templates.insert(template_name, content);
-                }
-            }
-        }
-
-        Ok(Self { templates })
+    pub fn new() -> Self {
+        Self
     }
 
-    pub fn get_template(&self, name: &str) -> Option<&String> {
-        self.templates.get(name)
+    pub fn get_template(&self, name: &str) -> Option<&'static str> {
+        TemplateRegistry::get(name)
     }
 
     pub fn render_template(
@@ -71,8 +17,8 @@ impl TemplateLoader {
         name: &str,
         replacements: &HashMap<String, String>,
     ) -> Option<String> {
-        self.templates.get(name).map(|template| {
-            let mut result = template.clone();
+        TemplateRegistry::get(name).map(|template| {
+            let mut result = template.to_string();
             for (key, value) in replacements {
                 result = result.replace(&format!("{{{}}}", key), value);
             }
@@ -106,7 +52,6 @@ pub fn render_environment_details(
     let todo_items_str = if todo_items.is_empty() {
         template_loader
             .get_template("todo_list_empty")
-            .map(|s| s.as_str())
             .unwrap_or("No todo list created yet.")
             .to_string()
     } else {
@@ -143,77 +88,54 @@ pub fn render_environment_details(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
-    use tempfile::tempdir;
 
     #[test]
-    fn test_load_templates_from_directory() {
-        let dir = tempdir().unwrap();
-        let templates_dir = dir.path();
+    fn test_get_existing_template() {
+        let loader = TemplateLoader::new();
+        assert!(loader.get_template("todo_list_empty").is_some());
+        assert!(loader.get_template("todo_list_with_items").is_some());
+        assert!(loader.get_template("environment_details_no_role").is_some());
+        assert!(loader.get_template("environment_details_with_role").is_some());
+        assert!(loader.get_template("rhd_set_todo_list_contract").is_some());
+    }
 
-        fs::write(templates_dir.join("test_template.md"), "Hello {name}!").unwrap();
+    #[test]
+    fn test_get_nonexistent_template() {
+        let loader = TemplateLoader::new();
+        assert!(loader.get_template("nonexistent_template").is_none());
+    }
 
-        let loader = TemplateLoader::new(templates_dir).unwrap();
-        assert!(loader.get_template("test_template").is_some());
-        assert_eq!(loader.get_template("test_template").unwrap(), "Hello {name}!");
+    #[test]
+    fn test_list_templates() {
+        let templates = TemplateRegistry::list_templates();
+        assert_eq!(templates.len(), 5);
+        assert!(templates.contains(&"todo_list_empty"));
+        assert!(templates.contains(&"todo_list_with_items"));
+        assert!(templates.contains(&"environment_details_no_role"));
+        assert!(templates.contains(&"environment_details_with_role"));
+        assert!(templates.contains(&"rhd_set_todo_list_contract"));
     }
 
     #[test]
     fn test_render_template_with_replacements() {
-        let dir = tempdir().unwrap();
-        let templates_dir = dir.path();
-
-        fs::write(
-            templates_dir.join("greeting.md"),
-            "Hello {name}, welcome to {place}!",
-        )
-        .unwrap();
-
-        let loader = TemplateLoader::new(templates_dir).unwrap();
-
+        let loader = TemplateLoader::new();
         let mut replacements = HashMap::new();
-        replacements.insert("name".to_string(), "Alice".to_string());
-        replacements.insert("place".to_string(), "Wonderland".to_string());
+        replacements.insert("todoItems".to_string(), "| 1 | Test task | Pending |\n".to_string());
 
-        let rendered = loader.render_template("greeting", &replacements).unwrap();
-        assert_eq!(rendered, "Hello Alice, welcome to Wonderland!");
+        let rendered = loader.render_template("todo_list_with_items", &replacements);
+        assert!(rendered.is_some());
+        let rendered_str = rendered.unwrap();
+        assert!(rendered_str.contains("| 1 | Test task | Pending |"));
     }
 
     #[test]
     fn test_render_template_missing_placeholder() {
-        let dir = tempdir().unwrap();
-        let templates_dir = dir.path();
-
-        fs::write(templates_dir.join("partial.md"), "Hello {name}!").unwrap();
-
-        let loader = TemplateLoader::new(templates_dir).unwrap();
-
+        let loader = TemplateLoader::new();
         let mut replacements = HashMap::new();
-        replacements.insert("name".to_string(), "Bob".to_string());
+        replacements.insert("todoItems".to_string(), "Test content".to_string());
 
-        let rendered = loader.render_template("partial", &replacements).unwrap();
-        assert_eq!(rendered, "Hello Bob!");
-    }
-
-    #[test]
-    fn test_load_templates_nonexistent_directory() {
-        let loader = TemplateLoader::new(Path::new("/nonexistent/path")).unwrap();
-        assert!(loader.get_template("any_template").is_none());
-    }
-
-    #[test]
-    fn test_load_templates_skips_non_md_files() {
-        let dir = tempdir().unwrap();
-        let templates_dir = dir.path();
-
-        fs::write(templates_dir.join("valid.md"), "Valid template").unwrap();
-        fs::write(templates_dir.join("invalid.txt"), "Invalid file").unwrap();
-        fs::write(templates_dir.join("also_invalid.json"), "{}").unwrap();
-
-        let loader = TemplateLoader::new(templates_dir).unwrap();
-        assert!(loader.get_template("valid").is_some());
-        assert!(loader.get_template("invalid").is_none());
-        assert!(loader.get_template("also_invalid").is_none());
+        let rendered = loader.render_template("todo_list_with_items", &replacements);
+        assert!(rendered.is_some());
     }
 
     #[test]
