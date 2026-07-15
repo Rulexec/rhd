@@ -31,28 +31,6 @@ pub struct ChatMessage {
     pub role: String,
     #[serde(default)]
     pub content: Option<String>,
-    #[serde(default)]
-    #[allow(dead_code)]
-    pub tool_calls: Option<Vec<ToolCall>>, // For test data deserialization
-    #[serde(default)]
-    #[allow(dead_code)]
-    pub tool_call_id: Option<String>, // For test data deserialization
-}
-
-#[derive(Debug, Deserialize, Clone)]
-#[allow(dead_code)]
-pub struct ToolCall { // For test data deserialization
-    pub id: String,
-    #[serde(rename = "type")]
-    pub call_type: String,
-    pub function: FunctionCall,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-#[allow(dead_code)]
-pub struct FunctionCall { // For test data deserialization
-    pub name: String,
-    pub arguments: String,
 }
 
 #[derive(Debug, Serialize)]

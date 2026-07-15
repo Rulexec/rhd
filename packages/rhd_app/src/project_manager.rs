@@ -6,19 +6,10 @@ use rhd_api::project::{McpRef, Project, ProjectInfo, Role};
 use rhd_chat::{McpStatus, ProjectProvider};
 use rhd_mcp_client::client::McpClient;
 use rhd_mcp_client::McpConfig;
-use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
 use crate::mcp_cache::McpServerCache;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
-pub enum McpStatusDto { // Part of public API for WebSocket/IPC communication
-    Connecting,
-    Connected,
-    Failed { error: String },
-}
 
 pub struct ProjectManager {
     projects: HashMap<String, Project>,
