@@ -1378,4 +1378,39 @@ mod tests {
         
         cleanup("test_todo_list_invalid.db");
     }
+
+    #[tokio::test]
+    async fn test_handle_rhd_set_todo_list_emits_event() {
+        let db = Arc::new(ChatDb::new("test_todo_event.db").unwrap());
+        let chat_id = db.create_chat("Test").unwrap();
+        
+        let provider = MockProjectProvider {
+            roles: std::collections::HashMap::new(),
+            role_prompts: std::collections::HashMap::new(),
+        };
+        
+        let provider = Arc::new(provider);
+        let manager = ChatManager::new(db.clone(), provider.clone(), None, false);
+        let (event_sender, mut event_receiver) = broadcast::channel(100);
+        
+        let args = r#"{"todos": "[x] Task 1\n[-] Task 2"}"#;
+        let result = handle_rhd_set_todo_list(&manager, chat_id, args, &event_sender).await;
+        
+        assert_eq!(result.is_error, Some(false));
+        
+        let event = event_receiver.recv().await.unwrap();
+        match event {
+            ChatEvent::TodoListUpdated { chat_id: id, items } => {
+                assert_eq!(id, chat_id);
+                assert_eq!(items.len(), 2);
+                assert_eq!(items[0].content, "Task 1");
+                assert_eq!(items[0].status, crate::TodoStatus::Completed);
+                assert_eq!(items[1].content, "Task 2");
+                assert_eq!(items[1].status, crate::TodoStatus::InProgress);
+            }
+            _ => panic!("Expected TodoListUpdated event"),
+        }
+        
+        cleanup("test_todo_event.db");
+    }
 }

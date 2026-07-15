@@ -896,4 +896,84 @@ mod tests {
         assert!(json.contains(r#""activeRoleProject":"project-a""#));
         assert!(json.contains(r#""activeRoleName":"developer""#));
     }
+
+    #[test]
+    fn test_todo_item_dto_serialization() {
+        let item = TodoItemDto {
+            content: "Test task".to_string(),
+            status: "completed".to_string(),
+        };
+        let json = serde_json::to_string(&item).unwrap();
+        assert!(json.contains(r#""content":"Test task""#));
+        assert!(json.contains(r#""status":"completed""#));
+    }
+
+    #[test]
+    fn test_todo_list_updated_event_serialization() {
+        let event = TodoListUpdatedEvent {
+            chat_id: 42,
+            items: vec![
+                TodoItemDto {
+                    content: "Task 1".to_string(),
+                    status: "completed".to_string(),
+                },
+                TodoItemDto {
+                    content: "Task 2".to_string(),
+                    status: "in_progress".to_string(),
+                },
+            ],
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains(r#""chatId":42"#));
+        assert!(json.contains(r#""items":["#));
+        assert!(json.contains(r#""content":"Task 1""#));
+        assert!(json.contains(r#""status":"completed""#));
+    }
+
+    #[test]
+    fn test_todo_list_updated_event_format() {
+        let event = TodoListUpdatedEvent {
+            chat_id: 42,
+            items: vec![
+                TodoItemDto {
+                    content: "Task 1".to_string(),
+                    status: "completed".to_string(),
+                },
+                TodoItemDto {
+                    content: "Task 2".to_string(),
+                    status: "in_progress".to_string(),
+                },
+                TodoItemDto {
+                    content: "Task 3".to_string(),
+                    status: "pending".to_string(),
+                },
+                TodoItemDto {
+                    content: "Task 4".to_string(),
+                    status: "discarded".to_string(),
+                },
+            ],
+        };
+        
+        let json = serde_json::to_value(&event).unwrap();
+        
+        assert_eq!(json["chatId"], 42);
+        assert_eq!(json["items"].as_array().unwrap().len(), 4);
+        assert_eq!(json["items"][0]["content"], "Task 1");
+        assert_eq!(json["items"][0]["status"], "completed");
+        assert_eq!(json["items"][1]["status"], "in_progress");
+        assert_eq!(json["items"][2]["status"], "pending");
+        assert_eq!(json["items"][3]["status"], "discarded");
+    }
+
+    #[test]
+    fn test_todo_list_updated_event_empty_items() {
+        let event = TodoListUpdatedEvent {
+            chat_id: 1,
+            items: vec![],
+        };
+        
+        let json = serde_json::to_value(&event).unwrap();
+        assert_eq!(json["chatId"], 1);
+        assert_eq!(json["items"].as_array().unwrap().len(), 0);
+    }
 }
