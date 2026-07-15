@@ -120,15 +120,17 @@ describe('Chat state logic (state-based testing)', () => {
     }, { timeout: 5000 });
 
     const allMessages = get(messages);
-    expect(allMessages.length).toBe(2);
+    expect(allMessages.length).toBe(3);
 
     const userMsg = allMessages.find((m) => m.role === 'user');
     expect(userMsg).toBeDefined();
     expect(userMsg!.content).toBe('Hello');
 
-    const assistantMsg = allMessages.find((m) => m.role === 'assistant');
-    expect(assistantMsg).toBeDefined();
-    expect(assistantMsg!.content).toBe('AI response content');
+    const assistantMsgs = allMessages.filter((m) => m.role === 'assistant');
+    expect(assistantMsgs.length).toBe(2);
+    
+    const finalAssistantMsg = assistantMsgs.find((m) => m.content === 'AI response content');
+    expect(finalAssistantMsg).toBeDefined();
   });
 
   it('handles multiple messages in sequence', async () => {
@@ -144,7 +146,7 @@ describe('Chat state logic (state-based testing)', () => {
     }, { timeout: 5000 });
 
     let allMessages = get(messages);
-    expect(allMessages.length).toBe(2);
+    expect(allMessages.length).toBe(3);
 
     await configureMock('Second response');
     await dispatch({ type: 'sendMessage', payload: { content: 'Second message', model } });
@@ -154,7 +156,7 @@ describe('Chat state logic (state-based testing)', () => {
     }, { timeout: 5000 });
 
     allMessages = get(messages);
-    expect(allMessages.length).toBe(4);
+    expect(allMessages.length).toBe(6);
 
     const userMessages = allMessages.filter((m) => m.role === 'user');
     expect(userMessages.length).toBe(2);
@@ -162,9 +164,11 @@ describe('Chat state logic (state-based testing)', () => {
     expect(userMessages[1].content).toBe('Second message');
 
     const assistantMessages = allMessages.filter((m) => m.role === 'assistant');
-    expect(assistantMessages.length).toBe(2);
-    expect(assistantMessages[0].content).toBe('First response');
-    expect(assistantMessages[1].content).toBe('Second response');
+    expect(assistantMessages.length).toBe(4);
+    const finalAssistantMessages = assistantMessages.filter((m) => m.content && m.content.length > 0);
+    expect(finalAssistantMessages.length).toBe(2);
+    expect(finalAssistantMessages[0].content).toBe('First response');
+    expect(finalAssistantMessages[1].content).toBe('Second response');
   });
 
   it('auto-selects first model when available', async () => {

@@ -28,6 +28,94 @@ import {
 } from './projectStores';
 import type { WsEvent } from './types/ws';
 
+function parseAssistantMessage(msg: any): any {
+  if (msg.role !== 'assistant') return msg;
+  
+  try {
+    const json = JSON.parse(msg.content);
+    if (json.content !== undefined && json.toolCalls) {
+      const toolCalls = json.toolCalls.length > 0 ? json.toolCalls.map((tc: any) => ({
+        id: tc.id,
+        name: tc.function?.name || tc.name,
+        arguments: tc.function?.arguments || tc.arguments,
+        status: tc.status || 'pending',
+        mcpId: tc.mcpId || (tc.function?.name || tc.name || '').split('/')[0],
+        result: tc.result,
+      })) : undefined;
+      
+      return {
+        ...msg,
+        content: json.content,
+        toolCalls,
+      };
+    }
+  } catch {
+    // Not JSON, use as-is
+  }
+  
+  return msg;
+}
+
+function parseToolResult(content: string): { toolCallId: string; result: string; isError: boolean } | null {
+  try {
+    const toolResult = JSON.parse(content);
+    if (toolResult.toolCallId) {
+      return {
+        toolCallId: toolResult.toolCallId,
+        result: toolResult.result,
+        isError: toolResult.isError || false,
+      };
+    }
+  } catch {
+    // Not JSON
+  }
+  return null;
+}
+
+function mergeToolResults(messages: any[]): any[] {
+  const toolResults = new Map<string, { result: string; isError: boolean }>();
+  
+  for (const msg of messages) {
+    if (msg.role === 'tool') {
+      const parsed = parseToolResult(msg.content);
+      if (parsed) {
+        toolResults.set(parsed.toolCallId, { result: parsed.result, isError: parsed.isError });
+      }
+    }
+  }
+  
+  const result: any[] = [];
+  for (const msg of messages) {
+    if (msg.role === 'tool') {
+      const parsed = parseToolResult(msg.content);
+      if (parsed) {
+        continue;
+      }
+    }
+    
+    let processed = parseAssistantMessage(msg);
+    
+    if (processed.toolCalls && processed.toolCalls.length > 0) {
+      const updatedToolCalls = processed.toolCalls.map((tc: any) => {
+        const toolResult = toolResults.get(tc.id);
+        if (toolResult) {
+          return {
+            ...tc,
+            result: toolResult.result,
+            status: toolResult.isError ? 'failed' as const : 'completed' as const,
+          };
+        }
+        return tc;
+      });
+      processed = { ...processed, toolCalls: updatedToolCalls };
+    }
+    
+    result.push(processed);
+  }
+  
+  return result;
+}
+
 export async function loadChats(): Promise<WsResponse> {
   const id = generateRequestId();
   const response = await sendRequest({ type: 'listChats', id });
@@ -73,7 +161,7 @@ export async function selectChat(chatId: number): Promise<WsResponse> {
   const response = await sendRequest({ type: 'getChat', id, chatId });
   if (response.success) {
     currentChatId.set(chatId);
-    messages.set(response.data.messages || []);
+    messages.set(mergeToolResults(response.data.messages || []));
     streamingContent.set('');
     streamingThinkingContent.set('');
     isStreaming.set(false);
@@ -349,11 +437,11 @@ export function handleChatEvent(event: string, data: unknown): void {
 
         // Handle tool result messages: merge result into assistant message, don't add separate tool message
         if (added.message.role === 'tool') {
-          try {
-            const toolResult = JSON.parse(added.message.content);
-            const toolCallId = toolResult.toolCallId;
-            const result = toolResult.result;
-            const isError = toolResult.isError || false;
+          const parsed = parseToolResult(added.message.content);
+          if (parsed) {
+            const toolCallId = parsed.toolCallId;
+            const result = parsed.result;
+            const isError = parsed.isError;
             const toolStatus = isError ? 'failed' as const : 'completed' as const;
             
             // Find the assistant message with this toolCallId and update it
@@ -375,7 +463,7 @@ export function handleChatEvent(event: string, data: unknown): void {
               return m;
             });
             return updated;
-          } catch {
+          } else {
             // Not JSON, add as regular message
             return [...list, added.message as any];
           }
@@ -388,26 +476,9 @@ export function handleChatEvent(event: string, data: unknown): void {
             const tempMsg = list[tempIdx];
             
             // Parse JSON content to extract toolCalls if present
-            let parsedContent = added.message.content;
-            let toolCalls: any[] | undefined;
-            
-            try {
-              const json = JSON.parse(added.message.content);
-              if (json.content !== undefined && json.toolCalls) {
-                // Intermediate message with toolCalls - map to frontend format
-                parsedContent = json.content;
-                toolCalls = json.toolCalls.length > 0 ? json.toolCalls.map((tc: any) => ({
-                  id: tc.id,
-                  name: tc.function?.name || tc.name,
-                  arguments: tc.function?.arguments || tc.arguments,
-                  status: tc.status || 'completed',
-                  mcpId: tc.mcpId || (tc.function?.name || tc.name || '').split('/')[0],
-                  result: tc.result,
-                })) : undefined;
-              }
-            } catch {
-              // Not JSON, use as-is (final message)
-            }
+            const parsed = parseAssistantMessage(added.message);
+            const parsedContent = parsed.content;
+            const toolCalls = parsed.toolCalls;
             
             // Only include toolCalls if message content is JSON with toolCalls (intermediate message)
             // Don't inherit toolCalls from tempMsg for final message
@@ -438,27 +509,9 @@ export function handleChatEvent(event: string, data: unknown): void {
         }
         
         // Parse JSON content for assistant messages to extract toolCalls
-        let parsedContent = added.message.content;
-        let toolCalls: any[] | undefined;
-        
-        if (added.message.role === 'assistant') {
-          try {
-            const json = JSON.parse(added.message.content);
-            if (json.content !== undefined && json.toolCalls) {
-              parsedContent = json.content;
-              toolCalls = json.toolCalls.map((tc: any) => ({
-                id: tc.id,
-                name: tc.function?.name || tc.name,
-                arguments: tc.function?.arguments || tc.arguments,
-                status: tc.status || 'completed',
-                mcpId: tc.mcpId || (tc.function?.name || tc.name || '').split('/')[0],
-                result: tc.result,
-              }));
-            }
-          } catch {
-            // Not JSON, use as-is
-          }
-        }
+        const parsed = parseAssistantMessage(added.message);
+        const parsedContent = parsed.content;
+        const toolCalls = parsed.toolCalls;
         
         const messageToAdd = {
           ...added.message,
