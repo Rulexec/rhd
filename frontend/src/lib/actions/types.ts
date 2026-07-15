@@ -31,4 +31,5 @@ export type ChatAction =
   | { type: 'clearActiveRole'; payload: { chatId: number } }
   | { type: 'roleChanged'; payload: { chatId: number; projectName: string; roleName: string } }
   | { type: 'rolesUpdated'; payload: { chatId: number; roles: RoleInfo[]; activeRoleProject?: string; activeRoleName?: string } }
-  | { type: 'activeRoleCleared'; payload: { chatId: number } };
+  | { type: 'activeRoleCleared'; payload: { chatId: number } }
+  | { type: 'todoListUpdated'; payload: { chatId: number; items: import('../types/index').TodoItem[] } };

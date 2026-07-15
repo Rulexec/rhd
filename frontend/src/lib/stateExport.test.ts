@@ -130,6 +130,8 @@ function buildSampleState(): ExportedState {
           mcpId: 'mcp-1',
         },
       ],
+      availableRoles: [],
+      activeRole: null,
     },
     projects: {
       projects: [

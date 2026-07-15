@@ -16,6 +16,7 @@ import {
   pendingToolCalls,
   availableRoles,
   activeRole,
+  todoList,
 } from './chatStores';
 import {
   chatProjects,
@@ -83,6 +84,7 @@ export async function selectChat(chatId: number): Promise<WsResponse> {
     mcpStatuses.set([]);
     availableRoles.set([]);
     activeRole.set(null);
+    todoList.set([]);
     loadChatProjects(chatId);
     loadAvailableRoles(chatId);
   }
@@ -118,6 +120,7 @@ export async function deleteAllChats(): Promise<WsResponse> {
     selectedModel.set(null);
     chatProjects.set([]);
     mcpStatuses.set([]);
+    todoList.set([]);
   }
   return response;
 }
@@ -626,6 +629,14 @@ export function handleChatEvent(event: string, data: unknown): void {
     }
     case 'activeRoleCleared': {
       activeRole.set(null);
+      break;
+    }
+    case 'todoListUpdated': {
+      const { items } = data as {
+        chatId: number;
+        items: import('./types/index').TodoItem[];
+      };
+      todoList.set(items);
       break;
     }
   }

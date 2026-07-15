@@ -128,5 +128,8 @@ export async function processAction(action: ChatAction): Promise<void> {
     case 'activeRoleCleared':
       activeRole.set(null);
       break;
+    case 'todoListUpdated':
+      handleChatEvent('todoListUpdated', action.payload);
+      break;
   }
 }

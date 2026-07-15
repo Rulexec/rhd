@@ -100,3 +100,8 @@ export const ActiveRoleSchema = z.object({
   roleName: z.string(),
 });
 export type ActiveRole = z.infer<typeof ActiveRoleSchema>;
+
+export interface TodoItem {
+  content: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'discarded';
+}
