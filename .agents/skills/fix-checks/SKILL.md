@@ -117,30 +117,49 @@ Same as unused variables — prefix with underscore or remove if not needed for 
 
 **Warning pattern:** `warning: function \`name\` is never used`
 
-**Investigation process:**
+**Validation strategy:**
 
-1. **Search for existing `#[allow(dead_code)]` attributes:**
+1. **Remove all `#[allow(dead_code)]` attributes:**
    ```bash
-   grep -r "#\[allow(dead_code)\]" packages/ --include="*.rs" -B 2 -A 5
+   # Find all suppressions
+   grep -r "#\[allow(dead_code)\]" packages/ --include="*.rs" -l
    ```
-   Review each existing suppression to determine if the code is still needed.
+   Remove all `#[allow(dead_code)]` attributes from the codebase.
 
-2. **Check if the function is called anywhere:**
-   - Search for the function name across the codebase
-   - Check if it's used in tests (may be in `#[cfg(test)]` blocks)
-   - Verify it's not part of a public API that external crates might use
+2. **Run cargo check to identify actual warnings:**
+   ```bash
+   mise run check-cargo 2>&1 | grep -E "warning:|-->"
+   ```
+   This reveals which code is truly unused vs. which was unnecessarily suppressed.
 
-3. **Determine if the code is truly dead:**
-   - If the function is never called and not part of a planned feature → **remove it**
-   - If the function is part of an incomplete feature being actively developed → this violates the clean state requirement; do not run fix-checks
-   - If the function is a public API method → make it public or remove it
+3. **For each warning, determine the appropriate action:**
+   - **If the code is not used anywhere** → Remove it entirely
+   - **If the code is only used in tests** → Mark with `#[cfg(test)]` instead of `#[allow(dead_code)]`
+   - **If the code is required for serde/trait/FFI** → Keep with `#[allow(dead_code)]` and add a comment
 
-4. **Remove dead code:**
-   - Delete the function entirely
-   - Remove any associated tests
-   - Update documentation if the function was documented
+4. **Check if code is used in tests:**
+   ```bash
+   # Search for usage in test files
+   grep -r "function_name" packages/ --include="*.rs" | grep -E "test|Test"
+   ```
+   If only found in test contexts, use `#[cfg(test)]`.
 
-**Example:**
+**Example - Test-only code:**
+```rust
+// Before: Suppressed with allow(dead_code)
+#[allow(dead_code)]
+pub fn test_helper() -> String {
+    "test data".to_string()
+}
+
+// After: Marked as test-only
+#[cfg(test)]
+pub fn test_helper() -> String {
+    "test data".to_string()
+}
+```
+
+**Example - Truly dead code:**
 ```rust
 // Before: Function is never used
 pub fn render_template(&self, name: &str) -> Option<String> {
@@ -151,41 +170,58 @@ pub fn render_template(&self, name: &str) -> Option<String> {
 // (delete the function entirely)
 ```
 
-**Avoid adding `#[allow(dead_code)]`** unless there's a compelling reason (e.g., trait implementation requirement, FFI boundary).
+**Avoid adding `#[allow(dead_code)]`** unless there's a compelling reason (e.g., trait implementation requirement, FFI boundary, serde deserialization).
 
 ### Dead Code (Unused Struct Fields)
 
 **Warning pattern:** `warning: field \`name\` is never read`
 
-**Investigation process:**
+**Validation strategy:**
 
-1. **Check existing `#[allow(dead_code)]` on struct fields:**
-   Review all fields with this attribute. Ask:
-   - Is this field populated but never read? → Likely dead code
-   - Is this field required for serialization/deserialization? → Keep it
-   - Is this field part of a public API struct? → May be needed for API compatibility
+1. **Remove all `#[allow(dead_code)]` attributes** from struct fields.
 
-2. **Determine if the field is truly dead:**
-   - If the field is never read and not required for serialization → **remove it**
-   - If the field is required for serde but never read in code → keep with `#[allow(dead_code)]` and add a comment explaining why
-   - If the field is part of a public API → document why it's kept
+2. **Run cargo check** to identify which fields actually generate warnings.
 
-3. **Remove dead fields:**
-   - Remove the field from the struct definition
-   - Remove any code that populates the field
-   - Update tests that reference the field
+3. **For each warning, determine the appropriate action:**
+   - **If the field is not used anywhere** → Remove it from the struct
+   - **If the field is only used in tests** → Mark the struct with `#[cfg(test)]` or move to a test module
+   - **If the field is required for serde** → Keep with `#[allow(dead_code)]` and add a comment
 
-**Example:**
+4. **Check if field is used in tests:**
+   ```bash
+   # Search for field usage
+   grep -r "field_name" packages/ --include="*.rs"
+   ```
+
+**Example - Serde-required field:**
 ```rust
-// Before: Field is never read
-pub struct DaemonState {
+// Before: Field is never read but required for deserialization
+pub struct JsonRpcRequest {
     #[allow(dead_code)]
-    pub chat_db: Arc<ChatDb>,  // Never used
+    jsonrpc: String, // Required for deserialization
 }
 
-// After: Remove the dead field
-pub struct DaemonState {
-    // chat_db removed - was never used
+// After: Keep with clear comment
+pub struct JsonRpcRequest {
+    #[allow(dead_code)]
+    jsonrpc: String, // Required for deserialization
+}
+```
+
+**Example - Test-only struct:**
+```rust
+// Before: Entire struct only used in tests
+#[allow(dead_code)]
+pub struct ToolCall {
+    pub id: String,
+    pub call_type: String,
+}
+
+// After: Mark as test-only
+#[cfg(test)]
+pub struct ToolCall {
+    pub id: String,
+    pub call_type: String,
 }
 ```
 
