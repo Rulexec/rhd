@@ -15,6 +15,7 @@ use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tokio::time::{interval, Duration};
 use tokio_tungstenite::tungstenite::Message;
+use tracing::{info, error, instrument};
 
 use rhd_chat::ChatEvent;
 use crate::daemon::DaemonState;
@@ -23,24 +24,26 @@ use crate::log::read_finished_scenarios;
 const PING_INTERVAL_SECS: u64 = 2;
 const PONG_TIMEOUT_SECS: u64 = 5;
 
+#[instrument(level = "info", skip(state), fields(addr = %addr))]
 pub async fn run_ws_server(
     addr: std::net::SocketAddr,
     state: Arc<DaemonState>,
 ) -> std::io::Result<()> {
     let listener = TcpListener::bind(addr).await?;
-    println!("WebSocket listening on {}", addr);
+    info!("WebSocket listening");
 
     loop {
         let (stream, peer_addr) = listener.accept().await?;
         let state = state.clone();
         tokio::spawn(async move {
             if let Err(err) = handle_ws_connection(stream, state).await {
-                eprintln!("WebSocket connection error from {}: {}", peer_addr, err);
+                error!(%peer_addr, %err, "WebSocket connection error");
             }
         });
     }
 }
 
+#[instrument(level = "debug", skip(state))]
 async fn handle_ws_connection(
     stream: tokio::net::TcpStream,
     state: Arc<DaemonState>,

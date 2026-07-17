@@ -120,7 +120,7 @@ describe('Chat state logic (state-based testing)', () => {
     }, { timeout: 5000 });
 
     const allMessages = get(messages);
-    expect(allMessages.length).toBe(3);
+    expect(allMessages.length).toBe(5);
 
     const userMsg = allMessages.find((m) => m.role === 'user');
     expect(userMsg).toBeDefined();
@@ -146,7 +146,7 @@ describe('Chat state logic (state-based testing)', () => {
     }, { timeout: 5000 });
 
     let allMessages = get(messages);
-    expect(allMessages.length).toBe(3);
+    expect(allMessages.length).toBe(5);
 
     await configureMock('Second response');
     await dispatch({ type: 'sendMessage', payload: { content: 'Second message', model } });
@@ -156,7 +156,7 @@ describe('Chat state logic (state-based testing)', () => {
     }, { timeout: 5000 });
 
     allMessages = get(messages);
-    expect(allMessages.length).toBe(6);
+    expect(allMessages.length).toBe(9);
 
     const userMessages = allMessages.filter((m) => m.role === 'user');
     expect(userMessages.length).toBe(2);

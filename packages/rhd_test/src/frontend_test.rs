@@ -76,17 +76,21 @@ pub async fn run_frontend_test(ws_port: Option<u16>, control_port: Option<u16>) 
         {
             Ok(0) => break,
             Ok(_) => {
-                if line.contains("listening on") {
+                println!("[DEBUG] Daemon stdout: {}", line.trim());
+                if line.contains("WebSocket listening") {
                     found_listening = true;
                     break;
                 }
             }
-            Err(_) => break,
+            Err(err) => {
+                println!("[DEBUG] Error reading daemon stdout: {}", err);
+                break;
+            }
         }
     }
 
     if !found_listening {
-        println!("FAIL: Daemon did not start in time");
+        println!("FAIL: Daemon did not print 'WebSocket listening' message");
         daemon.kill().await.ok();
         return false;
     }

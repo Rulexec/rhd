@@ -80,7 +80,7 @@ pub async fn run_single_test(
             Ok(0) => break,
             Ok(_) => {
                 stdout_buf.push_str(&line);
-                if line.contains("listening on") {
+                if line.contains("WebSocket listening") {
                     found_listening = true;
                     break;
                 }
@@ -90,7 +90,7 @@ pub async fn run_single_test(
     }
 
     if !found_listening {
-        log.push_str("  FAIL: Daemon did not print 'listening on' message\n");
+        log.push_str("  FAIL: Daemon did not print 'WebSocket listening' message\n");
         log.push_str(&format!("  stdout so far: {stdout_buf}\n"));
         daemon.kill().await.ok();
         return (true, log);

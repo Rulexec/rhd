@@ -20,11 +20,20 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use cli::{Cli, Command};
+use tracing_subscriber::{fmt, EnvFilter};
 
 use crate::config::DaemonConfig;
 
 #[tokio::main]
 async fn main() {
+    fmt()
+        .with_writer(std::io::stdout)
+        .with_env_filter(
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new("info"))
+        )
+        .init();
+
     let cli = Cli::parse();
     match cli.command {
         Command::Daemon(args) => {

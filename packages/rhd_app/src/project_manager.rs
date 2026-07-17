@@ -7,6 +7,7 @@ use rhd_chat::{McpStatus, ProjectProvider};
 use rhd_mcp_client::client::McpClient;
 use rhd_mcp_client::McpConfig;
 use tokio::sync::Mutex;
+use tracing::{info, error};
 
 use crate::mcp_cache::McpServerCache;
 
@@ -59,6 +60,7 @@ impl ProjectManager {
         result
     }
 
+    #[tracing::instrument(level = "info", skip(self), fields(project_name = %project_name))]
     pub async fn spawn_project_mcp(
         &self,
         project_name: &str,
@@ -101,8 +103,15 @@ impl ProjectManager {
             match self.mcp_cache.get_or_spawn(&mcp_config).await {
                 Ok(client) => {
                     let pid = client.pid().await;
-                    eprintln!("MCP '{}' spawned (id: '{}', name: '{}', cmd: '{}', cwd: {:?}, PID: {:?})", 
-                        mcp_ref.name, mcp_id, mcp_name, cmd_for_log, cwd_for_log, pid);
+                    info!(
+                        mcp_ref = %mcp_ref.name,
+                        mcp_id = %mcp_id,
+                        mcp_name = %mcp_name,
+                        cmd = %cmd_for_log,
+                        ?cwd_for_log,
+                        ?pid,
+                        "MCP server spawned"
+                    );
                     let mut clients = self.mcp_clients.lock().await;
                     clients.insert(status_key.clone(), client);
                     let mut status_map = self.mcp_status.lock().await;
@@ -110,8 +119,15 @@ impl ProjectManager {
                 }
                 Err(err) => {
                     let error_msg = err.to_string();
-                    eprintln!("MCP '{}' spawn failed (id: '{}', name: '{}', cmd: '{}', cwd: {:?}): {}", 
-                        mcp_ref.name, mcp_id, mcp_name, cmd_for_log, cwd_for_log, error_msg);
+                    error!(
+                        mcp_ref = %mcp_ref.name,
+                        mcp_id = %mcp_id,
+                        mcp_name = %mcp_name,
+                        cmd = %cmd_for_log,
+                        ?cwd_for_log,
+                        error = %error_msg,
+                        "MCP server spawn failed"
+                    );
                     let mut status_map = self.mcp_status.lock().await;
                     status_map.insert(status_key, McpStatus::Failed(error_msg));
                 }

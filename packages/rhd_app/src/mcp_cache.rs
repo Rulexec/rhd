@@ -4,6 +4,7 @@ use std::sync::Arc;
 use rhd_mcp_client::client::McpClient;
 use rhd_mcp_client::McpConfig;
 use tokio::sync::Mutex;
+use tracing::{info, error};
 
 #[derive(Clone)]
 pub struct McpServerCache {
@@ -17,6 +18,7 @@ impl McpServerCache {
         }
     }
 
+    #[tracing::instrument(level = "debug", skip(self, config), fields(cmd = ?config.cmd, args = ?config.args, cwd = ?config.cwd))]
     pub async fn get_or_spawn(
         &self,
         config: &McpConfig,
@@ -49,18 +51,19 @@ impl McpServerCache {
         Ok(client)
     }
 
+    #[tracing::instrument(level = "info", skip(self, keys_to_stop), fields(keys = ?keys_to_stop))]
     pub async fn stop_specific(&self, keys_to_stop: &[String]) -> usize {
         let mut cache = self.cache.lock().await;
         let mut stopped = 0;
         for key in keys_to_stop {
             if let Some(client) = cache.remove(key) {
                 if let Some(pid) = client.pid().await {
-                    eprintln!("stopping MCP server '{}' (PID: {})", key, pid);
+                    info!(%key, ?pid, "stopping MCP server");
                 } else {
-                    eprintln!("stopping MCP server '{}'", key);
+                    info!(%key, "stopping MCP server");
                 }
                 if let Err(e) = client.kill().await {
-                    eprintln!("failed to kill MCP server '{}': {}", key, e);
+                    error!(%key, %e, "failed to kill MCP server");
                 }
                 stopped += 1;
             }
@@ -68,6 +71,7 @@ impl McpServerCache {
         stopped
     }
 
+    #[tracing::instrument(level = "info", skip(self, keys_to_restart), fields(keys = ?keys_to_restart))]
     pub async fn restart_specific(&self, keys_to_restart: &[String]) -> usize {
         self.stop_specific(keys_to_restart).await
     }

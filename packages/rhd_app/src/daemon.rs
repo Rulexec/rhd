@@ -9,6 +9,7 @@ use rhd_mcp_client::McpConfig;
 use tokio::net::UnixListener;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::{broadcast, RwLock};
+use tracing::{info, warn, error, instrument};
 
 use rhd_chat::{ChatEvent, ChatManager};
 use crate::execution::ExecutionTracker;
@@ -56,6 +57,7 @@ impl DaemonState {
     }
 }
 
+#[instrument(level = "info", skip(scenarios, models, mcp_configs, logs, log_chats, project_manager, config_paths), fields(socket_path = %socket_path.display(), ws_port = ws_port, db_path = %db_path))]
 pub async fn run_daemon(
     scenarios: HashMap<String, Scenario>,
     models: HashMap<String, ModelConfig>,
@@ -121,32 +123,26 @@ pub async fn run_daemon(
     let inner_guard = state.inner.read().await;
     let scenario_names: Vec<&String> = inner_guard.scenarios.keys().collect();
     if scenario_names.is_empty() {
-        eprintln!("no scenarios loaded");
+        warn!("no scenarios loaded");
     } else {
-        eprintln!(
-            "loaded {} scenario{}: {}",
-            scenario_names.len(),
-            if scenario_names.len() == 1 { "" } else { "s" },
-            scenario_names.into_iter().cloned().collect::<Vec<_>>().join(", ")
-        );
+        let count = scenario_names.len();
+        let names = scenario_names.into_iter().cloned().collect::<Vec<_>>().join(", ");
+        info!(count, %names, "loaded scenarios");
     }
     let mcp_names: Vec<&String> = inner_guard.mcp_configs.keys().collect();
     if mcp_names.is_empty() {
-        eprintln!("no MCP configs loaded");
+        warn!("no MCP configs loaded");
     } else {
-        eprintln!(
-            "loaded {} MCP config{}: {}",
-            mcp_names.len(),
-            if mcp_names.len() == 1 { "" } else { "s" },
-            mcp_names.into_iter().cloned().collect::<Vec<_>>().join(", ")
-        );
+        let count = mcp_names.len();
+        let names = mcp_names.into_iter().cloned().collect::<Vec<_>>().join(", ");
+        info!(count, %names, "loaded MCP configs");
     }
     drop(inner_guard);
 
     let mut sigterm = signal(SignalKind::terminate())?;
     let mut sigint = signal(SignalKind::interrupt())?;
 
-    println!("listening on {}", sock_path.display());
+    println!("daemon listening on {}", sock_path.display());
 
     if let Some(port) = ws_port {
         let ws_state = state.clone();
@@ -154,7 +150,7 @@ pub async fn run_daemon(
         println!("WebSocket server started on port {}", port);
         tokio::spawn(async move {
             if let Err(err) = crate::ws::run_ws_server(ws_addr, ws_state).await {
-                eprintln!("WebSocket server error: {}", err);
+                error!(%err, "WebSocket server error");
             }
         });
     }
@@ -170,16 +166,16 @@ pub async fn run_daemon(
                         });
                     }
                     Err(err) => {
-                        eprintln!("accept error: {err}");
+                        error!(%err, "accept error");
                     }
                 }
             }
             _ = sigterm.recv() => {
-                eprintln!("received SIGTERM, shutting down");
+                info!("received SIGTERM, shutting down");
                 break;
             }
             _ = sigint.recv() => {
-                eprintln!("received SIGINT, shutting down");
+                info!("received SIGINT, shutting down");
                 break;
             }
         }
@@ -189,16 +185,17 @@ pub async fn run_daemon(
     Ok(())
 }
 
+#[instrument(level = "debug", skip(state))]
 async fn handle_connection(stream: tokio::net::UnixStream, state: Arc<DaemonState>) {
     let std_stream = match stream.into_std() {
         Ok(s) => s,
         Err(err) => {
-            eprintln!("failed to convert stream: {err}");
+            error!(%err, "failed to convert stream");
             return;
         }
     };
     if let Err(err) = std_stream.set_nonblocking(false) {
-        eprintln!("failed to set stream to blocking: {err}");
+        error!(%err, "failed to set stream to blocking");
         return;
     }
     
@@ -208,7 +205,7 @@ async fn handle_connection(stream: tokio::net::UnixStream, state: Arc<DaemonStat
     
     tokio::task::spawn_blocking(move || {
         if let Err(err) = run_connection(std_stream, &state_clone, execs_clone) {
-            eprintln!("connection error: {err}");
+            error!(%err, "connection error");
         }
     })
     .await
@@ -239,11 +236,21 @@ fn run_connection(
     }
 }
 
+#[instrument(level = "debug", skip(state, connection_executions), fields(request_type))]
 fn handle_request(
     request: IpcRequest,
     state: &DaemonState,
     connection_executions: Arc<Mutex<Vec<u64>>>,
 ) -> Vec<IpcResponse> {
+    let request_type = match &request {
+        IpcRequest::RunScenario { name, .. } => format!("RunScenario({})", name),
+        IpcRequest::DaemonNotification => "DaemonNotification".to_string(),
+        IpcRequest::FrontendNotification => "FrontendNotification".to_string(),
+        IpcRequest::TestScenarioStarted { id, name } => format!("TestScenarioStarted({}, {})", id, name),
+        IpcRequest::TestScenarioFinished { id, name } => format!("TestScenarioFinished({}, {})", id, name),
+        IpcRequest::Reload => "Reload".to_string(),
+    };
+    tracing::Span::current().record("request_type", request_type.as_str());
     match request {
         IpcRequest::RunScenario { name, cwd, model_aliases } => {
             handle_run_scenario(name, cwd, model_aliases, state, connection_executions)
@@ -278,6 +285,7 @@ fn handle_request(
     }
 }
 
+#[instrument(level = "info", skip(state))]
 async fn handle_reload(state: &DaemonState) -> Vec<IpcResponse> {
     // Acquire write lock on reload_lock (blocks until all executions/chats release read locks)
     let _reload_guard = state.reload_lock.write().await;
@@ -397,6 +405,7 @@ fn mcp_cache_key(config: &McpConfig) -> String {
     )
 }
 
+#[instrument(level = "info", skip(state, connection_executions, model_aliases), fields(scenario = %name, cwd = %cwd))]
 fn handle_run_scenario(
     name: String,
     cwd: String,
@@ -532,7 +541,7 @@ fn handle_run_scenario(
         let model_config = inner_guard.models.values().next();
         let meta = build_scenario_meta(&name, &finished, model_config, status);
         if let Err(err) = crate::log::write_meta_json(&dir, &meta) {
-            eprintln!("failed to write meta.json: {}", err);
+            error!(%err, "failed to write meta.json");
         }
     }
 
