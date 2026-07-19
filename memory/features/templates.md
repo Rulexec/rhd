@@ -2,7 +2,7 @@
 
 ## Overview
 
-Templates are markdown files used for rendering dynamic content in the RHD system. They are embedded into the binary at compile time using Rust's `include_str!` macro, eliminating runtime file I/O and path resolution issues.
+Templates are markdown and JSON files used for rendering dynamic content in the RHD system. They are embedded into the binary at compile time using Rust's `include_str!` macro, eliminating runtime file I/O and path resolution issues.
 
 ## Architecture
 
@@ -26,45 +26,76 @@ pub struct TemplateLoader;
 impl TemplateLoader {
     pub fn new() -> Self;
     pub fn get_template(&self, name: &str) -> Option<&'static str>;
-    pub fn render_template(&self, name: &str, replacements: &HashMap<String, String>) -> Option<String>;
 }
+```
+
+## Folder Structure
+
+Templates are organized into logical folders based on their purpose:
+
+```
+templates/
+├── mcp_internal/           # MCP tool definitions and contracts
+│   ├── rhd_set_todo_list/
+│   │   ├── tool_definition.json
+│   │   └── contract.md
+│   ├── rhd_set_role/
+│   │   └── tool_definition.json
+│   └── rhd_set_flag/
+│       └── tool_definition.json
+├── environment/            # Environment details and todo list templates
+│   ├── details_no_role.md
+│   ├── details_with_role.md
+│   ├── todo_list_empty.md
+│   └── todo_list_with_items.md
+└── roles/                  # Role-related prompts
+    ├── roles_list_prompt.md
+    └── role_switch_prompt.md
 ```
 
 ## Available Templates
 
-| Template Name | Purpose |
+### MCP Internal Tools
+
+| Template Path | Purpose |
 |---------------|---------|
-| `environment_details_no_role` | Environment details without active role |
-| `environment_details_with_role` | Environment details with active role |
-| `rhd_set_todo_list_contract` | Tool contract for todo list |
-| `todo_list_empty` | Empty todo list prompt |
-| `todo_list_with_items` | Todo list with items template |
+| `mcp_internal/rhd_set_todo_list/tool_definition` | Tool definition JSON for rhd_set_todo_list |
+| `mcp_internal/rhd_set_todo_list/contract` | Contract documentation for rhd_set_todo_list |
+| `mcp_internal/rhd_set_role/tool_definition` | Tool definition JSON for rhd_set_role |
+| `mcp_internal/rhd_set_flag/tool_definition` | Tool definition JSON for rhd_set_flag |
 
-## Template Location
+### Environment Templates
 
-Template files are stored in the `templates/` directory at the project root:
+| Template Path | Purpose |
+|---------------|---------|
+| `environment/details_no_role` | Environment details without active role |
+| `environment/details_with_role` | Environment details with active role |
+| `environment/todo_list_empty` | Empty todo list prompt |
+| `environment/todo_list_with_items` | Todo list with items template |
 
-```
-templates/
-├── environment_details_no_role.md
-├── environment_details_with_role.md
-├── rhd_set_todo_list_contract.md
-├── todo_list_empty.md
-└── todo_list_with_items.md
-```
+### Role Templates
+
+| Template Path | Purpose |
+|---------------|---------|
+| `roles/roles_list_prompt` | Roles list injection template |
+| `roles/role_switch_prompt` | Role switch notification template |
 
 ## Adding New Templates
 
 To add a new template:
 
-1. Create a new `.md` file in the `templates/` directory
+1. Create a new file in the appropriate folder:
+   - MCP tool definitions: `templates/mcp_internal/<tool_name>/`
+   - Environment templates: `templates/environment/`
+   - Role templates: `templates/roles/`
+
 2. Add the template to the `TemplateRegistry::get()` match statement in [`packages/rhd_app/src/templates.rs`](../../packages/rhd_app/src/templates.rs)
-3. Add the template name to the `list_templates()` function
-4. Rebuild the project to embed the new template
+
+3. Rebuild the project to embed the new template
 
 ## Placeholder Syntax
 
-Templates support placeholder substitution using the `{placeholderName}` syntax. Placeholders are replaced with values from a `HashMap<String, String>` during rendering.
+Templates support placeholder substitution using the `{placeholderName}` syntax. Placeholders are replaced with values during rendering.
 
 Example template:
 ```markdown
@@ -79,8 +110,9 @@ Current Role: {currentRoleName}
 
 Templates are used throughout the application for:
 
+- **Tool Definitions**: Providing AI models with tool usage instructions (JSON format)
 - **Environment Details**: Injecting system context into AI prompts
 - **Todo List Rendering**: Displaying todo items in a formatted table
-- **Tool Contracts**: Providing AI models with tool usage instructions
+- **Role Prompts**: Managing role switching and role list injection
 
 The `TemplateLoader` is initialized in the daemon and passed to components that need template access via `Arc<TemplateLoader>`.

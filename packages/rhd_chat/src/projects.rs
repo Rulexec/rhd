@@ -198,6 +198,7 @@ pub async fn inject_roles_prompt<P: ProjectProvider>(
     manager: &ChatManager<P>,
     chat_id: i64,
     event_sender: &broadcast::Sender<ChatEvent>,
+    template_loader: &crate::stream::TemplateLoaderRef,
 ) -> Result<(), ChatError> {
     let db = manager.db();
     let project_provider = manager.project_provider();
@@ -225,18 +226,20 @@ pub async fn inject_roles_prompt<P: ProjectProvider>(
         .map(|(_, name)| name.as_str())
         .unwrap_or("none");
 
-    let mut prompt = String::new();
-    prompt.push_str(&format!(
-        "Your behavior is defined by the current active role. Current active role is \"{}\". You can switch your role by tool `rhd_set_role`.\n\n",
-        current_role_name
-    ));
-    prompt.push_str("These are the currently available roles:\n");
-
+    let mut roles_list = String::new();
     for (project_name, role) in &all_roles {
-        prompt.push_str(&format!("\n# {} (from project: {})\n\n", role.name, project_name));
-        prompt.push_str(&role.when_to_use);
-        prompt.push('\n');
+        roles_list.push_str(&format!("\n# {} (from project: {})\n\n", role.name, project_name));
+        roles_list.push_str(&role.when_to_use);
+        roles_list.push('\n');
     }
+
+    let template = template_loader
+        .get_template("roles/roles_list_prompt")
+        .ok_or_else(|| ChatError::Internal("Template 'roles/roles_list_prompt' not found".to_string()))?;
+
+    let prompt = template
+        .replace("{currentRoleName}", current_role_name)
+        .replace("{rolesList}", &roles_list);
 
     manager.add_message_and_notify(chat_id, "system", &prompt, None, None, event_sender)?;
 
@@ -251,6 +254,7 @@ pub fn inject_role_system_prompt<P: ProjectProvider>(
     project_name: &str,
     role_name: &str,
     event_sender: &broadcast::Sender<ChatEvent>,
+    template_loader: &crate::stream::TemplateLoaderRef,
 ) -> Result<(), ChatError> {
     let project_provider = manager.project_provider();
     let system_prompt = project_provider
@@ -259,10 +263,13 @@ pub fn inject_role_system_prompt<P: ProjectProvider>(
             ChatError::RoleNotFound(format!("{}:{}", project_name, role_name))
         })?;
 
-    let mut prompt = String::new();
-    prompt.push_str(&format!("Your current role is now \"{}\".\n\n", role_name));
-    prompt.push_str("-----\n\n");
-    prompt.push_str(&system_prompt);
+    let template = template_loader
+        .get_template("roles/role_switch_prompt")
+        .ok_or_else(|| ChatError::Internal("Template 'roles/role_switch_prompt' not found".to_string()))?;
+
+    let prompt = template
+        .replace("{roleName}", role_name)
+        .replace("{systemPrompt}", &system_prompt);
 
     manager.add_message_and_notify(chat_id, "system", &prompt, None, None, event_sender)?;
 
@@ -273,6 +280,7 @@ pub fn inject_pending_role_prompt<P: ProjectProvider>(
     manager: &ChatManager<P>,
     chat_id: i64,
     event_sender: &broadcast::Sender<ChatEvent>,
+    template_loader: &crate::stream::TemplateLoaderRef,
 ) -> Result<(), ChatError> {
     let db = manager.db();
     if !db.has_role_prompt_pending(chat_id)? {
@@ -287,6 +295,7 @@ pub fn inject_pending_role_prompt<P: ProjectProvider>(
             &project_name,
             &role_name,
             event_sender,
+            template_loader,
         )?;
     }
 
@@ -425,6 +434,16 @@ mod tests {
         cleanup(path);
     }
 
+    fn create_mock_template_loader() -> crate::stream::TemplateLoaderRef {
+        crate::stream::TemplateLoaderRef::new(|name: &str| {
+            match name {
+                "roles/roles_list_prompt" => Some("Your behavior is defined by the current active role. Current active role is \"{currentRoleName}\". You can switch your role by tool `rhd_set_role`.\n\nThese are the currently available roles:\n\n{rolesList}".to_string()),
+                "roles/role_switch_prompt" => Some("Your current role is now \"{roleName}\".\n\n-----\n\n{systemPrompt}".to_string()),
+                _ => None,
+            }
+        })
+    }
+
     #[tokio::test]
     async fn test_inject_roles_prompt() {
         let path = "test_inject_roles.db";
@@ -458,8 +477,9 @@ mod tests {
         let (event_sender, _) = broadcast::channel(100);
         let provider = Arc::new(provider);
         let manager = ChatManager::new(db.clone(), provider, None, false);
+        let template_loader = create_mock_template_loader();
 
-        inject_roles_prompt(&manager, chat_id, &event_sender)
+        inject_roles_prompt(&manager, chat_id, &event_sender, &template_loader)
             .await
             .unwrap();
 
@@ -470,7 +490,7 @@ mod tests {
         assert!(messages[0].content.contains("reviewer"));
         assert!(messages[0].content.contains("Current active role is \"none\""));
 
-        inject_roles_prompt(&manager, chat_id, &event_sender)
+        inject_roles_prompt(&manager, chat_id, &event_sender, &template_loader)
             .await
             .unwrap();
         let messages = db.get_messages(chat_id).unwrap();
@@ -499,6 +519,7 @@ mod tests {
         let (event_sender, _) = broadcast::channel(100);
         let provider = Arc::new(provider);
         let manager = ChatManager::new(db.clone(), provider, None, false);
+        let template_loader = create_mock_template_loader();
 
         inject_role_system_prompt(
             &manager,
@@ -506,6 +527,7 @@ mod tests {
             "project-a",
             "developer",
             &event_sender,
+            &template_loader,
         )
         .unwrap();
 

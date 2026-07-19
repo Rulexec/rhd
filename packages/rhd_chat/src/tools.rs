@@ -13,47 +13,44 @@ use crate::chat_log::ChatLoggers;
 use crate::error::ChatError;
 use crate::event::ChatEvent;
 use crate::manager::ChatManager;
+use crate::stream::TemplateLoaderRef;
 use crate::ProjectProvider;
 
 pub const RHD_SET_ROLE_TOOL_NAME: &str = "rhd_set_role";
 pub const RHD_SET_TODO_LIST_TOOL_NAME: &str = "rhd_set_todo_list";
 
-pub fn rhd_set_todo_list_tool_definition() -> ToolDefinition {
+pub fn rhd_set_todo_list_tool_definition(template_loader: &TemplateLoaderRef) -> ToolDefinition {
+    let template_content = template_loader
+        .get_template("mcp_internal/rhd_set_todo_list/tool_definition")
+        .expect("Template 'mcp_internal/rhd_set_todo_list/tool_definition' not found");
+    
+    let tool_def: serde_json::Value = serde_json::from_str(&template_content)
+        .expect("Failed to parse tool definition template as JSON");
+    
     ToolDefinition {
         tool_type: "function".to_string(),
         function: FunctionDefinition {
             name: RHD_SET_TODO_LIST_TOOL_NAME.to_string(),
-            description: "Replace the entire TODO list with an updated checklist reflecting the current state. Always provide the full list; the system will overwrite the previous one. This tool is designed for step-by-step task tracking, allowing you to confirm completion of each step before updating, update multiple statuses at once (e.g., mark one as completed and start the next), and dynamically add new todos as they're discovered.".to_string(),
-            parameters: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "todos": {
-                        "type": "string",
-                        "description": "Full markdown checklist in execution order, using [ ] for pending, [x] for completed, [-] for in progress, and [!] for discarded"
-                    }
-                },
-                "required": ["todos"]
-            }),
+            description: tool_def["description"].as_str().unwrap_or("").to_string(),
+            parameters: tool_def["parameters"].clone(),
         },
     }
 }
 
-pub fn rhd_set_role_tool_definition() -> ToolDefinition {
+pub fn rhd_set_role_tool_definition(template_loader: &TemplateLoaderRef) -> ToolDefinition {
+    let template_content = template_loader
+        .get_template("mcp_internal/rhd_set_role/tool_definition")
+        .expect("Template 'mcp_internal/rhd_set_role/tool_definition' not found");
+    
+    let tool_def: serde_json::Value = serde_json::from_str(&template_content)
+        .expect("Failed to parse tool definition template as JSON");
+    
     ToolDefinition {
         tool_type: "function".to_string(),
         function: FunctionDefinition {
             name: RHD_SET_ROLE_TOOL_NAME.to_string(),
-            description: "Switch the current active role. Use this tool when you need to change your behavioral role based on the task requirements. The role determines your system prompt and behavior patterns.".to_string(),
-            parameters: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "role_name": {
-                        "type": "string",
-                        "description": "The name of the role to switch to. Must be one of the available roles listed in the system prompt."
-                    }
-                },
-                "required": ["role_name"]
-            }),
+            description: tool_def["description"].as_str().unwrap_or("").to_string(),
+            parameters: tool_def["parameters"].clone(),
         },
     }
 }
@@ -62,10 +59,11 @@ pub fn collect_builtin_tools(
     db: &Arc<ChatDb>,
     project_provider: &Arc<impl ProjectProvider>,
     chat_id: i64,
+    template_loader: &TemplateLoaderRef,
 ) -> Vec<ToolDefinition> {
     let mut tools = Vec::new();
 
-    tools.push(rhd_set_todo_list_tool_definition());
+    tools.push(rhd_set_todo_list_tool_definition(template_loader));
 
     let attached_projects = match db.get_chat_projects(chat_id) {
         Ok(projects) => projects,
@@ -77,7 +75,7 @@ pub fn collect_builtin_tools(
         .any(|(project_name, _)| !project_provider.get_project_roles(project_name).is_empty());
 
     if has_roles {
-        tools.push(rhd_set_role_tool_definition());
+        tools.push(rhd_set_role_tool_definition(template_loader));
     }
 
     tools
@@ -87,11 +85,12 @@ pub async fn collect_tools_from_projects<P: ProjectProvider>(
     db: &Arc<ChatDb>,
     project_provider: &Arc<P>,
     chat_id: i64,
+    template_loader: &TemplateLoaderRef,
 ) -> (Vec<ToolDefinition>, Vec<(String, String, Arc<McpClient>)>) {
     let mut tools = Vec::new();
     let mut mcp_clients = Vec::new();
 
-    tools.extend(collect_builtin_tools(db, project_provider, chat_id));
+    tools.extend(collect_builtin_tools(db, project_provider, chat_id, template_loader));
 
     let attached_projects = match db.get_chat_projects(chat_id) {
         Ok(projects) => projects,
@@ -230,7 +229,7 @@ pub fn inject_todo_list_message<P: ProjectProvider>(
         Some(list) => list,
         None => {
             // No todo list exists, inject prompt to create one
-            let empty_prompt = match template_loader.get_template("todo_list_empty") {
+            let empty_prompt = match template_loader.get_template("environment/todo_list_empty") {
                 Some(template) => template,
                 None => {
                     // Template missing, skip injection silently
@@ -285,7 +284,7 @@ fn render_environment_details_for_injection(
 ) -> Option<String> {
     // Render todo items
     let todo_items_str = if todo_items.is_empty() {
-        template_loader.get_template("todo_list_empty")?
+        template_loader.get_template("environment/todo_list_empty")?
     } else {
         let mut items_output = String::new();
         for (idx, item) in todo_items.iter().enumerate() {
@@ -298,15 +297,15 @@ fn render_environment_details_for_injection(
             items_output.push_str(&format!("| {} | {} | {} |\n", idx + 1, item.content, status_str));
         }
         
-        let template = template_loader.get_template("todo_list_with_items")?;
+        let template = template_loader.get_template("environment/todo_list_with_items")?;
         template.replace("{todoItems}", &items_output)
     };
     
     // Select template based on role
     let template_name = if active_role.is_some() {
-        "environment_details_with_role"
+        "environment/details_with_role"
     } else {
-        "environment_details_no_role"
+        "environment/details_no_role"
     };
     
     let template = template_loader.get_template(template_name)?;
@@ -437,7 +436,7 @@ pub async fn tool_loop<P: ProjectProvider>(
 
         manager.check_pause_state(chat_id, event_sender).await;
 
-        crate::projects::inject_pending_role_prompt(manager, chat_id, event_sender)?;
+        crate::projects::inject_pending_role_prompt(manager, chat_id, event_sender, template_loader)?;
 
         let db_messages = manager.db().get_messages(chat_id)?;
         let chat_messages = build_chat_messages_for_tools(&db_messages);
@@ -1218,9 +1217,46 @@ mod tests {
         assert_eq!(tools[0].name, "echo");
     }
 
+    fn create_mock_template_loader() -> TemplateLoaderRef {
+        TemplateLoaderRef::new(|name: &str| {
+            match name {
+                "mcp_internal/rhd_set_todo_list/tool_definition" => Some(r#"{
+                    "name": "rhd_set_todo_list",
+                    "description": "Replace the entire TODO list with an updated checklist reflecting the current state. Always provide the full list; the system will overwrite the previous one. This tool is designed for step-by-step task tracking, allowing you to confirm completion of each step before updating, update multiple statuses at once (e.g., mark one as completed and start the next), and dynamically add new todos as they're discovered.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "todos": {
+                                "type": "string",
+                                "description": "Full markdown checklist in execution order, using [ ] for pending, [x] for completed, [-] for in progress, and [!] for discarded"
+                            }
+                        },
+                        "required": ["todos"]
+                    }
+                }"#.to_string()),
+                "mcp_internal/rhd_set_role/tool_definition" => Some(r#"{
+                    "name": "rhd_set_role",
+                    "description": "Switch the current active role. Use this tool when you need to change your behavioral role based on the task requirements. The role determines your system prompt and behavior patterns.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "role_name": {
+                                "type": "string",
+                                "description": "The name of the role to switch to. Must be one of the available roles listed in the system prompt."
+                            }
+                        },
+                        "required": ["role_name"]
+                    }
+                }"#.to_string()),
+                _ => None,
+            }
+        })
+    }
+
     #[test]
     fn test_rhd_set_role_tool_definition() {
-        let tool = rhd_set_role_tool_definition();
+        let template_loader = create_mock_template_loader();
+        let tool = rhd_set_role_tool_definition(&template_loader);
         assert_eq!(tool.function.name, "rhd_set_role");
         assert!(tool.function.description.contains("role"));
         
@@ -1240,7 +1276,8 @@ mod tests {
             role_prompts: std::collections::HashMap::new(),
         };
         
-        let tools = collect_builtin_tools(&db, &Arc::new(provider), chat_id);
+        let template_loader = create_mock_template_loader();
+        let tools = collect_builtin_tools(&db, &Arc::new(provider), chat_id, &template_loader);
         assert_eq!(tools.len(), 1);
         assert_eq!(tools[0].function.name, "rhd_set_todo_list");
         
@@ -1266,7 +1303,8 @@ mod tests {
         
         db.attach_project(chat_id, "project-a").unwrap();
         
-        let tools = collect_builtin_tools(&db, &Arc::new(provider), chat_id);
+        let template_loader = create_mock_template_loader();
+        let tools = collect_builtin_tools(&db, &Arc::new(provider), chat_id, &template_loader);
         assert_eq!(tools.len(), 2);
         assert_eq!(tools[0].function.name, "rhd_set_todo_list");
         assert_eq!(tools[1].function.name, "rhd_set_role");
@@ -1370,7 +1408,8 @@ mod tests {
 
     #[test]
     fn test_rhd_set_todo_list_tool_definition() {
-        let tool = rhd_set_todo_list_tool_definition();
+        let template_loader = create_mock_template_loader();
+        let tool = rhd_set_todo_list_tool_definition(&template_loader);
         assert_eq!(tool.function.name, "rhd_set_todo_list");
         assert!(tool.function.description.contains("TODO list"));
         
@@ -1513,9 +1552,9 @@ mod tests {
         // Create template loader with test templates
         let template_loader = crate::stream::TemplateLoaderRef::new(|name| {
             match name {
-                "environment_details_no_role" => Some("<environment_details>\n# TODO list\n{todoItems}\n</environment_details>".to_string()),
-                "todo_list_with_items" => Some("| # | Content | Status |\n|---|---------|--------|\n{todoItems}".to_string()),
-                "todo_list_empty" => Some("You have not created a todo list yet.".to_string()),
+                "environment/details_no_role" => Some("<environment_details>\n# TODO list\n{todoItems}\n</environment_details>".to_string()),
+                "environment/todo_list_with_items" => Some("| # | Content | Status |\n|---|---------|--------|\n{todoItems}".to_string()),
+                "environment/todo_list_empty" => Some("You have not created a todo list yet.".to_string()),
                 _ => None,
             }
         });
@@ -1552,7 +1591,7 @@ mod tests {
         let manager = ChatManager::new(db.clone(), provider.clone(), None, false);
         
         let template_loader = crate::stream::TemplateLoaderRef::new(|name| {
-            if name == "todo_list_empty" {
+            if name == "environment/todo_list_empty" {
                 Some("You have not created a todo list yet.".to_string())
             } else {
                 None
@@ -1600,8 +1639,8 @@ mod tests {
         
         let template_loader = crate::stream::TemplateLoaderRef::new(|name| {
             match name {
-                "environment_details_with_role" => Some("<environment_details>\n# Current role\n<name>{currentRoleName}</name>\n# TODO list\n{todoItems}\n</environment_details>".to_string()),
-                "todo_list_with_items" => Some("| # | Content | Status |\n|---|---------|--------|\n{todoItems}".to_string()),
+                "environment/details_with_role" => Some("<environment_details>\n# Current role\n<name>{currentRoleName}</name>\n# TODO list\n{todoItems}\n</environment_details>".to_string()),
+                "environment/todo_list_with_items" => Some("| # | Content | Status |\n|---|---------|--------|\n{todoItems}".to_string()),
                 _ => None,
             }
         });

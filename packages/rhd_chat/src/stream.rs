@@ -58,10 +58,10 @@ pub fn inject_todo_tool_contract<P: ProjectProvider>(
         return Ok(());
     }
 
-    let contract_content = match template_loader.get_template("rhd_set_todo_list_contract") {
+    let contract_content = match template_loader.get_template("mcp_internal/rhd_set_todo_list/contract") {
         Some(content) => content,
         None => {
-            let error_msg = "Template 'rhd_set_todo_list_contract' not found, cannot inject todo contract".to_string();
+            let error_msg = "Template 'mcp_internal/rhd_set_todo_list/contract' not found, cannot inject todo contract".to_string();
             eprintln!("[ERROR] {}", error_msg);
             let _ = event_sender.send(ChatEvent::DevNotification {
                 title: "Todo Contract Injection Failed".to_string(),
@@ -109,8 +109,8 @@ pub async fn send_message<P: ProjectProvider>(
         .ok_or_else(|| ChatError::ModelNotFound(model.to_string()))?;
 
     projects::inject_system_prompts(manager, chat_id, &event_sender).await?;
-    projects::inject_roles_prompt(manager, chat_id, &event_sender).await?;
-    projects::inject_pending_role_prompt(manager, chat_id, &event_sender)?;
+    projects::inject_roles_prompt(manager, chat_id, &event_sender, template_loader).await?;
+    projects::inject_pending_role_prompt(manager, chat_id, &event_sender, template_loader)?;
 
     manager.db().update_chat_active_model(chat_id, model)?;
 
@@ -120,7 +120,7 @@ pub async fn send_message<P: ProjectProvider>(
     let messages = manager.db().get_messages(chat_id)?;
     
     let (tool_defs, mcp_clients) =
-        tools::collect_tools_from_projects(manager.db(), manager.project_provider(), chat_id).await;
+        tools::collect_tools_from_projects(manager.db(), manager.project_provider(), chat_id, template_loader).await;
 
     if !tool_defs.is_empty() {
         let tool_names: Vec<String> = tool_defs.iter().map(|t| t.function.name.clone()).collect();
@@ -305,8 +305,8 @@ pub async fn edit_and_resend<P: ProjectProvider>(
     inject_todo_tool_contract(manager, chat_id, template_loader, &event_sender)?;
 
     projects::inject_system_prompts(manager, chat_id, &event_sender).await?;
-    projects::inject_roles_prompt(manager, chat_id, &event_sender).await?;
-    projects::inject_pending_role_prompt(manager, chat_id, &event_sender)?;
+    projects::inject_roles_prompt(manager, chat_id, &event_sender, template_loader).await?;
+    projects::inject_pending_role_prompt(manager, chat_id, &event_sender, template_loader)?;
 
     manager.db().update_chat_active_model(chat_id, model)?;
 
@@ -576,7 +576,7 @@ mod tests {
         let manager = ChatManager::new(db.clone(), provider.clone(), None, false);
 
         let template_loader = TemplateLoaderRef::new(|name| {
-            if name == "rhd_set_todo_list_contract" {
+            if name == "mcp_internal/rhd_set_todo_list/contract" {
                 Some("# rhd_set_todo_list Tool Contract\n\nThis is the contract.".to_string())
             } else {
                 None
@@ -610,7 +610,7 @@ mod tests {
         let manager = ChatManager::new(db.clone(), provider.clone(), None, false);
 
         let template_loader = TemplateLoaderRef::new(|name| {
-            if name == "rhd_set_todo_list_contract" {
+            if name == "mcp_internal/rhd_set_todo_list/contract" {
                 Some("# Contract".to_string())
             } else {
                 None
@@ -650,7 +650,7 @@ mod tests {
         let manager = ChatManager::new(db.clone(), provider.clone(), None, false);
 
         let template_loader = TemplateLoaderRef::new(|name| {
-            if name == "rhd_set_todo_list_contract" {
+            if name == "mcp_internal/rhd_set_todo_list/contract" {
                 Some("# New Contract".to_string())
             } else {
                 None
