@@ -55,3 +55,18 @@ run = ["cargo check"]
 
 [tasks.check]
 depends = ["check-svelte", "check-cargo"]
+
+[tasks.top-files-backend]
+run = ["find packages -name '*.rs' -type f -exec wc -l {} + | sort -rn | head -n 21"]
+
+[tasks.top-files-frontend]
+run = ["find frontend/src \\( -name '*.ts' -o -name '*.svelte' \\) -type f -exec wc -l {} + | sort -rn | head -n 21"]
+
+[tasks.check-large-files-backend]
+run = ["find packages -name '*.rs' -type f -exec wc -l {} + | sort -rn | awk '$1 > 400 && $2 != \"total\" {print}'"]
+
+[tasks.check-large-files-frontend]
+run = ["find frontend/src \\( -name '*.ts' -o -name '*.svelte' \\) -type f -exec wc -l {} + | sort -rn | awk '$1 > 400 && $2 != \"total\" {print}'"]
+
+[tasks.check-large-files]
+depends = ["check-large-files-backend", "check-large-files-frontend"]
