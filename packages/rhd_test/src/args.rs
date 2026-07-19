@@ -31,4 +31,6 @@ pub enum Commands {
     SseTest,
     /// Run mock MCP server (stdio JSON-RPC)
     McpServer,
+    /// Run daemon startup test only
+    DaemonStartup,
 }

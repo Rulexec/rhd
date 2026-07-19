@@ -142,7 +142,7 @@ pub async fn run_daemon(
     let mut sigterm = signal(SignalKind::terminate())?;
     let mut sigint = signal(SignalKind::interrupt())?;
 
-    println!("daemon listening on {}", sock_path.display());
+    info!(path = %sock_path.display(), "daemon listening");
 
     if let Some(port) = ws_port {
         let ws_state = state.clone();

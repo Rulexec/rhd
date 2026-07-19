@@ -1,5 +1,6 @@
 mod args;
 mod control_server;
+mod daemon_startup_test;
 mod frontend_test;
 mod mcp_test;
 mod mock_mcp_server;
@@ -35,6 +36,16 @@ async fn main() {
         }
         Some(Commands::McpServer) => {
             mock_mcp_server::run_mock_mcp_server();
+        }
+        Some(Commands::DaemonStartup) => {
+            let (failed, log) = daemon_startup_test::run_daemon_startup_test().await;
+            print!("{log}");
+            if failed {
+                eprintln!("\nDAEMON STARTUP TEST FAILED");
+                std::process::exit(1);
+            } else {
+                println!("\nDAEMON STARTUP TEST PASSED");
+            }
         }
         None => {
             run_standard_tests(args.seed, args.repetitions).await;
