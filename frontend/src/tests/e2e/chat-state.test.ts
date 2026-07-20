@@ -5,6 +5,7 @@
  * - tests/cases/chat-streaming.md
  * - tests/cases/chat-select-model.md
  * - tests/cases/chat-delete.md
+ * - tests/cases/chat-edit-message.md
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
@@ -283,5 +284,59 @@ describe('Chat state logic (state-based testing)', () => {
     // Step 8. If deleted chat was current: System sets currentChatId to null, clears messages store
     expect(get(currentChatId)).toBeNull();
     expect(get(messages).length).toBe(0);
+  });
+
+  it('edits message and re-streams response', async () => {
+    // Covers chat-edit-message.md steps 5-11 (state logic)
+    // Steps 1-4 are UI tests (see Message.test.ts)
+
+    // Setup: Create chat and send initial message
+    await dispatch({ type: 'createChat', payload: { title: 'Test' } });
+    await configureMock('Initial response');
+    const model = get(availableModels)[0] || 'test_model';
+    await dispatch({ type: 'sendMessage', payload: { content: 'Original message', model } });
+
+    await waitFor(() => {
+      expect(get(isStreaming)).toBe(false);
+    }, { timeout: 5000 });
+
+    // Verify initial state
+    let allMessages = get(messages);
+    expect(allMessages.length).toBe(5);
+    const userMsg = allMessages.find((m) => m.role === 'user');
+    expect(userMsg).toBeDefined();
+    expect(userMsg!.content).toBe('Original message');
+
+    // Step 5. System dispatches `editMessage` action with messageId, new content, model
+    // Step 6. System updates message content in messages store
+    // Step 7. System truncates all messages after edited message
+    // Step 8. System sets isStreaming to true
+    // Step 9. System sends request to daemon
+    await configureMock('Updated response');
+    await dispatch({
+      type: 'editMessage',
+      payload: {
+        messageId: userMsg!.id as number,
+        content: 'Edited message',
+        model,
+      },
+    });
+
+    // Step 10. Daemon re-processes from edited message
+    // Step 11. System receives streaming response
+    await waitFor(() => {
+      expect(get(isStreaming)).toBe(false);
+    }, { timeout: 5000 });
+
+    // Verify edited message and new response
+    allMessages = get(messages);
+    const editedUserMsg = allMessages.find((m) => m.role === 'user');
+    expect(editedUserMsg).toBeDefined();
+    expect(editedUserMsg!.content).toBe('Edited message');
+
+    const assistantMsgs = allMessages.filter((m) => m.role === 'assistant');
+    expect(assistantMsgs.length).toBeGreaterThanOrEqual(1);
+    const finalAssistantMsg = assistantMsgs.find((m) => m.content === 'Updated response');
+    expect(finalAssistantMsg).toBeDefined();
   });
 });
