@@ -4,6 +4,7 @@
  * - tests/cases/chat-send-message.md
  * - tests/cases/chat-streaming.md
  * - tests/cases/chat-select-model.md
+ * - tests/cases/chat-delete.md
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
@@ -255,5 +256,32 @@ describe('Chat state logic (state-based testing)', () => {
     
     // Verify abort was initiated (action dispatched without error)
     // The actual stream cancellation happens asynchronously in the daemon
+  });
+
+  it('deletes chat and updates state', async () => {
+    // Covers chat-delete.md steps 4-8 (state logic)
+    // Steps 1-3 are UI tests (see ChatList.test.ts)
+
+    // Setup: Create a chat first
+    await dispatch({ type: 'createChat', payload: { title: 'Test Chat' } });
+    const chatId = get(currentChatId);
+    expect(chatId).toBeDefined();
+
+    // Verify chat exists
+    let allChats = get(chats);
+    expect(allChats.length).toBe(1);
+
+    // Step 4. System dispatches `deleteChat` action with chatId
+    // Step 5. System sends request to daemon
+    await dispatch({ type: 'deleteChat', payload: { chatId: chatId! } });
+
+    // Step 6. Daemon deletes chat (mocked)
+    // Step 7. System removes chat from chats store
+    allChats = get(chats);
+    expect(allChats.length).toBe(0);
+
+    // Step 8. If deleted chat was current: System sets currentChatId to null, clears messages store
+    expect(get(currentChatId)).toBeNull();
+    expect(get(messages).length).toBe(0);
   });
 });
