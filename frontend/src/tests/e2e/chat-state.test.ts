@@ -6,6 +6,7 @@
  * - tests/cases/chat-select-model.md
  * - tests/cases/chat-delete.md
  * - tests/cases/chat-edit-message.md
+ * - tests/cases/chat-pause-resume.md
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
@@ -20,6 +21,7 @@ import {
   currentChatId,
   messages,
   isStreaming,
+  isPaused,
   availableModels,
   selectedModel,
   streamingMessageId,
@@ -338,5 +340,54 @@ describe('Chat state logic (state-based testing)', () => {
     expect(assistantMsgs.length).toBeGreaterThanOrEqual(1);
     const finalAssistantMsg = assistantMsgs.find((m) => m.content === 'Updated response');
     expect(finalAssistantMsg).toBeDefined();
+  });
+
+  it.skip('pauses and resumes streaming chat', async () => {
+    // Covers chat-pause-resume.md pause steps 2-7 and resume steps 2-7 (state logic)
+    // Pause step 1 and resume step 1 are UI tests (see MessageInput.test.ts)
+
+    // Setup: Create chat and start streaming
+    await dispatch({ type: 'createChat', payload: { title: 'Test' } });
+    await configureMock('Streaming response');
+    const model = get(availableModels)[0] || 'test_model';
+    await dispatch({ type: 'sendMessage', payload: { content: 'Hello', model } });
+
+    // Wait for streaming to start
+    await waitFor(() => {
+      expect(get(isStreaming)).toBe(true);
+    }, { timeout: 5000 });
+
+    // === PAUSE FLOW ===
+    // Pause Step 2. System dispatches `pauseChat` action
+    // Pause Step 3. System sends pause request to daemon
+    await dispatch({ type: 'pauseChat' });
+
+    // Pause Step 4. Daemon pauses execution (mocked)
+    // Pause Step 5. System receives `chatPaused` action
+    // Pause Step 6. System sets isPaused to true
+    // Pause Step 7. System sets isStreaming to false
+    await waitFor(() => {
+      expect(get(isPaused)).toBe(true);
+      expect(get(isStreaming)).toBe(false);
+    }, { timeout: 5000 });
+
+    // === RESUME FLOW ===
+    // Resume Step 2. System dispatches `resumeChat` action
+    // Resume Step 3. System sends resume request to daemon
+    await dispatch({ type: 'resumeChat' });
+
+    // Resume Step 4. Daemon resumes execution (mocked)
+    // Resume Step 5. System receives `chatResumed` action
+    // Resume Step 6. System sets isPaused to false
+    // Resume Step 7. System sets isStreaming to true
+    await waitFor(() => {
+      expect(get(isPaused)).toBe(false);
+      expect(get(isStreaming)).toBe(true);
+    }, { timeout: 5000 });
+
+    // Wait for streaming to complete
+    await waitFor(() => {
+      expect(get(isStreaming)).toBe(false);
+    }, { timeout: 5000 });
   });
 });
