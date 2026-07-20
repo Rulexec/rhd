@@ -6,7 +6,7 @@ use rhd_ai::config::ModelConfig;
 use rhd_db::Message;
 use tokio::sync::{broadcast, Mutex};
 
-use crate::chat_log::{self, ChatLogSink};
+use crate::chat_log;
 use crate::error::ChatError;
 use crate::event::ChatEvent;
 use crate::manager::ChatManager;
@@ -14,8 +14,10 @@ use crate::projects;
 use crate::tools;
 use crate::ProjectProvider;
 
-use super::TemplateLoaderRef;
-use super::contract::inject_todo_tool_contract;
+use crate::stream::TemplateLoaderRef;
+use crate::stream::contract::inject_todo_tool_contract;
+use super::tools::send_message_with_tools;
+use super::utils::{format_messages_for_log, handle_stream_result};
 
 pub async fn send_message<P: ProjectProvider>(
     manager: &ChatManager<P>,
@@ -172,53 +174,6 @@ pub async fn send_message<P: ProjectProvider>(
     .await
 }
 
-async fn send_message_with_tools<P: ProjectProvider>(
-    manager: &ChatManager<P>,
-    chat_id: i64,
-    content: String,
-    model: &str,
-    model_config: &ModelConfig,
-    tool_defs: Vec<rhd_ai::ToolDefinition>,
-    mcp_clients: Vec<(
-        String,
-        String,
-        Arc<rhd_mcp_client::client::McpClient>,
-    )>,
-    event_sender: broadcast::Sender<ChatEvent>,
-    loggers: Option<chat_log::ChatLoggers>,
-    template_loader: &TemplateLoaderRef,
-) -> Result<i64, ChatError> {
-    const MAX_ITERATIONS: u32 = 20;
-
-    let (cancel_token, _pause_notify) = manager.register_stream(chat_id).await;
-
-    let client = OpenAiClient::new(&model_config.base_url, &model_config.api_key);
-    let mut iterations = 0u32;
-    let mut current_content = content;
-
-    let result = tools::tool_loop(
-        manager,
-        chat_id,
-        model,
-        &model_config.model,
-        &client,
-        &tool_defs,
-        &mcp_clients,
-        &cancel_token,
-        &event_sender,
-        &mut iterations,
-        &mut current_content,
-        MAX_ITERATIONS,
-        loggers,
-        template_loader,
-    )
-    .await;
-
-    manager.unregister_stream(chat_id).await;
-
-    result
-}
-
 pub async fn edit_and_resend<P: ProjectProvider>(
     manager: &ChatManager<P>,
     message_id: i64,
@@ -345,109 +300,4 @@ pub async fn edit_and_resend<P: ProjectProvider>(
         loggers.as_mut().map(|l| &mut l.chat_log),
     )
     .await
-}
-
-fn format_messages_for_log(messages: &[Message]) -> String {
-    let mut output = String::new();
-    for msg in messages {
-        match msg.role.as_str() {
-            "system" => {
-                output.push_str(&format!("[system] {}\n", msg.content));
-            }
-            "user" => {
-                output.push_str(&format!("[user] {}\n", msg.content));
-            }
-            "assistant" => {
-                output.push_str(&format!("[assistant] {}\n", msg.content));
-            }
-            "tool" => {
-                output.push_str(&format!("[tool {}] {}\n", msg.id, msg.content));
-            }
-            _ => {
-                output.push_str(&format!("[{}] {}\n", msg.role, msg.content));
-            }
-        }
-    }
-    output
-}
-
-async fn handle_stream_result<P: ProjectProvider>(
-    manager: &ChatManager<P>,
-    result: Result<rhd_ai::client::StreamResult, rhd_ai::client::AiError>,
-    chat_id: i64,
-    model: &str,
-    accumulated_content: Arc<Mutex<String>>,
-    accumulated_thinking: Arc<Mutex<String>>,
-    event_sender: &broadcast::Sender<ChatEvent>,
-    chat_log: Option<&mut ChatLogSink>,
-) -> Result<i64, ChatError> {
-    match result {
-        Ok(stream_result) => {
-            let full_content = accumulated_content.lock().await.clone();
-            let full_thinking = accumulated_thinking.lock().await.clone();
-            let finish_reason = stream_result
-                .finish_reason
-                .clone()
-                .unwrap_or_else(|| "stop".to_string());
-            
-            if let Some(sink) = chat_log {
-                let reasoning = if full_thinking.is_empty() {
-                    None
-                } else {
-                    Some(full_thinking.as_str())
-                };
-                sink.log_assistant_response(
-                    reasoning,
-                    &full_content,
-                    &finish_reason,
-                    stream_result.usage.as_ref(),
-                );
-                sink.log_stream_finished(&finish_reason, 0);
-            }
-            
-            let thinking_option = if full_thinking.is_empty() {
-                None
-            } else {
-                Some(full_thinking.as_str())
-            };
-            let assistant_message = manager.add_message_and_notify(
-                chat_id,
-                "assistant",
-                &full_content,
-                Some(model),
-                thinking_option,
-                event_sender,
-            )?;
-            let assistant_message_id = assistant_message.id;
-            
-            let _ = event_sender.send(ChatEvent::StreamFinished {
-                chat_id,
-                message_id: assistant_message_id,
-                finish_reason,
-            });
-            Ok(assistant_message_id)
-        }
-        Err(rhd_ai::client::AiError::Aborted { .. }) => {
-            if let Some(sink) = chat_log {
-                sink.log_stream_error("aborted");
-            }
-            let _ = event_sender.send(ChatEvent::StreamError {
-                chat_id,
-                error: "aborted".to_string(),
-            });
-            Err(ChatError::Ai(rhd_ai::client::AiError::Aborted {
-                model: model.to_string(),
-            }))
-        }
-        Err(err) => {
-            if let Some(sink) = chat_log {
-                sink.log_stream_error(&err.to_string());
-            }
-            let _ = event_sender.send(ChatEvent::StreamError {
-                chat_id,
-                error: err.to_string(),
-            });
-            Err(ChatError::Ai(err))
-        }
-    }
 }
