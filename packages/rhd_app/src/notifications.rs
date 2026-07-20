@@ -1,10 +1,11 @@
 use std::process::Command;
+use tracing::warn;
 
 pub fn send_notification(title: &str, message: &str, open_url: Option<&str>) {
     if try_terminal_notifier(title, message, open_url) {
         return;
     }
-    eprintln!("terminal-notifier not available, falling back to osascript");
+    warn!("terminal-notifier not available, falling back to osascript");
     fallback_osascript(title, message);
 }
 

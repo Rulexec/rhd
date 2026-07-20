@@ -1,12 +1,11 @@
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use tokio::process::Command;
 
 use crate::mock_server::{SharedFlagValue, SharedRequests, SharedResponse};
-use crate::utils::generate_random_string;
+use crate::utils::{generate_random_string, spawn_daemon};
 
 pub async fn run_mcp_test(
     iter_seed: u64,
@@ -20,8 +19,6 @@ pub async fn run_mcp_test(
 
     let workspace_root = std::env::current_dir().unwrap();
     let rhd_bin = workspace_root.join("target/debug/rhd");
-    let models_dir = workspace_root.join("test_e2e/models");
-    let scenarios_dir = workspace_root.join("test_e2e/scenarios");
 
     let random_response = generate_random_string(&mut rng, 8);
     *response.lock().unwrap() = random_response.clone();
@@ -45,59 +42,33 @@ pub async fn run_mcp_test(
     log.push_str(&format!("  Logs dir: {}\n", logs_dir.display()));
 
     let socket_path = daemon_dir.path().join("rhd.sock");
-    let _ = std::fs::remove_file(&socket_path);
 
-    let mut daemon = Command::new(&rhd_bin)
-        .arg("daemon")
-        .arg("--models-dir")
-        .arg(&models_dir)
-        .arg("--scenarios-dir")
-        .arg(&scenarios_dir)
-        .arg("--socket")
-        .arg(&socket_path)
-        .arg("--logs")
-        .arg(&logs_dir)
-        .env("E2E_MODEL_PORT", port.to_string())
-        .current_dir(daemon_dir.path())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .expect("failed to spawn daemon");
+    let env_vars = vec![("E2E_MODEL_PORT", port.to_string())];
 
-    log.push_str(&format!("  Daemon spawned (PID: {:?})\n", daemon.id()));
-
-    let mut stdout = daemon.stdout.take().expect("failed to take stdout");
-    let mut stdout_buf = String::new();
-    let mut found_listening = false;
-    let start_time = std::time::Instant::now();
-    let timeout = Duration::from_secs(10);
-
-    while start_time.elapsed() < timeout {
-        let mut line = String::new();
-        match tokio::io::AsyncBufReadExt::read_line(
-            &mut tokio::io::BufReader::new(&mut stdout),
-            &mut line,
-        )
-        .await
-        {
-            Ok(0) => break,
-            Ok(_) => {
-                stdout_buf.push_str(&line);
-                if line.contains("listening on") {
-                    found_listening = true;
-                    break;
-                }
-            }
-            Err(_) => break,
+    let spawned = match spawn_daemon(
+        daemon_dir.path(),
+        &socket_path,
+        &logs_dir,
+        &env_vars,
+        &[],
+        None,
+        10,
+        "daemon listening",
+    )
+    .await
+    {
+        Ok(s) => s,
+        Err(err) => {
+            log.push_str("  FAIL: Daemon startup failed\n");
+            log.push_str(&format!("  {err}\n"));
+            return (true, log);
         }
-    }
+    };
 
-    if !found_listening {
-        log.push_str("  FAIL: Daemon did not print 'listening on' message\n");
-        log.push_str(&format!("  stdout so far: {stdout_buf}\n"));
-        daemon.kill().await.ok();
-        return (true, log);
-    }
+    let mut daemon = spawned.daemon;
+    let stdout = spawned.stdout;
+    let _stdout_buf = spawned.stdout_buf;
+    log.push_str(&format!("  Daemon spawned (PID: {:?})\n", daemon.id()));
 
     let daemon_stdout: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
     let daemon_stdout_clone = daemon_stdout.clone();

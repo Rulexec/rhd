@@ -1,16 +1,14 @@
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
-
-use tokio::process::Command;
 
 use crate::control_server::start_control_server;
 use crate::mock_server::start_mock_server;
+use crate::utils::spawn_daemon;
 
 pub async fn run_frontend_test(ws_port: Option<u16>, control_port: Option<u16>) -> bool {
     let workspace_root = std::env::current_dir().unwrap();
-    let rhd_bin = workspace_root.join("target/debug/rhd");
-    let models_dir = workspace_root.join("test_e2e/models");
-    let scenarios_dir = workspace_root.join("test_e2e/scenarios");
+    let _rhd_bin = workspace_root.join("target/debug/rhd");
+    let _models_dir = workspace_root.join("test_e2e/models");
+    let _scenarios_dir = workspace_root.join("test_e2e/scenarios");
     let projects_dir = workspace_root.join("test_e2e/projects");
     let mcp_dir = workspace_root.join("test_e2e/mcp");
 
@@ -33,63 +31,41 @@ pub async fn run_frontend_test(ws_port: Option<u16>, control_port: Option<u16>) 
     let db_dir = daemon_dir.path().join("db");
     std::fs::create_dir_all(&db_dir).unwrap();
 
-    let mut daemon = Command::new(&rhd_bin)
-        .arg("daemon")
-        .arg("--models-dir")
-        .arg(&models_dir)
-        .arg("--scenarios-dir")
-        .arg(&scenarios_dir)
-        .arg("--projects-dir")
-        .arg(&projects_dir)
-        .arg("--mcp-dir")
-        .arg(&mcp_dir)
-        .arg("--socket")
-        .arg(&socket_path)
-        .arg("--logs")
-        .arg(&logs_dir)
-        .arg("--db-dir")
-        .arg(&db_dir)
-        .arg("--ws-port")
-        .arg(ws_port.to_string())
-        .env("E2E_MODEL_PORT", ai_port.to_string())
-        .current_dir(&workspace_root)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .expect("failed to spawn daemon");
+    let extra_args = vec![
+        "--projects-dir".to_string(),
+        projects_dir.to_string_lossy().to_string(),
+        "--mcp-dir".to_string(),
+        mcp_dir.to_string_lossy().to_string(),
+        "--db-dir".to_string(),
+        db_dir.to_string_lossy().to_string(),
+        "--ws-port".to_string(),
+        ws_port.to_string(),
+    ];
 
-    println!("Daemon spawned (PID: {:?})", daemon.id());
+    let env_vars = vec![("E2E_MODEL_PORT", ai_port.to_string())];
 
-    let mut stdout = daemon.stdout.take().expect("failed to take stdout");
-    
-    let mut found_listening = false;
-    let start_time = std::time::Instant::now();
-    let timeout = Duration::from_secs(10);
-
-    while start_time.elapsed() < timeout {
-        let mut line = String::new();
-        match tokio::io::AsyncBufReadExt::read_line(
-            &mut tokio::io::BufReader::new(&mut stdout),
-            &mut line,
-        )
-        .await
-        {
-            Ok(0) => break,
-            Ok(_) => {
-                if line.contains("listening on") {
-                    found_listening = true;
-                    break;
-                }
-            }
-            Err(_) => break,
+    let spawned = match spawn_daemon(
+        daemon_dir.path(),
+        &socket_path,
+        &logs_dir,
+        &env_vars,
+        &extra_args,
+        Some(&workspace_root),
+        10,
+        "WebSocket listening",
+    )
+    .await
+    {
+        Ok(s) => s,
+        Err(err) => {
+            println!("FAIL: Daemon startup failed");
+            println!("{err}");
+            return false;
         }
-    }
+    };
 
-    if !found_listening {
-        println!("FAIL: Daemon did not start in time");
-        daemon.kill().await.ok();
-        return false;
-    }
+    let mut daemon = spawned.daemon;
+    println!("Daemon spawned (PID: {:?})", daemon.id());
 
     println!("WebSocket server started on port {ws_port}");
     println!("Daemon ready");

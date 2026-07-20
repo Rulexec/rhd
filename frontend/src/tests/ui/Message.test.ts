@@ -1,7 +1,7 @@
 /**
  * Test cases covered:
- * - tests/cases/chat-edit-message.md (UI part)
- * - tests/cases/chat-streaming.md (UI part)
+ * - tests/cases/chat-edit-message.md (UI rendering steps)
+ * - tests/cases/chat-streaming.md (UI rendering steps)
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -26,6 +26,8 @@ describe('Message UI', () => {
     streamingMessageId.set(null);
   });
 
+  // Covers chat-edit-message.md step 1 (UI rendering)
+  // Step 1. User clicks edit button on user message (renders user message content)
   it('renders user message content', () => {
     const message: ChatMessage = {
       id: 1,
@@ -39,6 +41,8 @@ describe('Message UI', () => {
     expect(screen.getByText('Hello, AI!')).toBeTruthy();
   });
 
+  // Covers chat-streaming.md step 8 (UI rendering)
+  // Step 8. System replaces optimistic message with real message (renders assistant message content)
   it('renders assistant message content', () => {
     const message: ChatMessage = {
       id: 2,
@@ -52,6 +56,8 @@ describe('Message UI', () => {
     expect(screen.getByText('Hello, user!')).toBeTruthy();
   });
 
+  // Covers chat-edit-message.md step 1 (UI rendering)
+  // Step 1. User clicks edit button on user message (renders edit button for user messages)
   it('renders edit button for user messages', () => {
     const message: ChatMessage = {
       id: 1,
@@ -66,6 +72,8 @@ describe('Message UI', () => {
     expect(editButton).toBeTruthy();
   });
 
+  // Covers chat-edit-message.md step 1 (UI rendering)
+  // Step 1. User clicks edit button on user message (edit button only for user messages, not assistant)
   it('does not render edit button for assistant messages', () => {
     const message: ChatMessage = {
       id: 2,
@@ -80,6 +88,8 @@ describe('Message UI', () => {
     expect(editButton).toBeNull();
   });
 
+  // Covers chat-streaming.md step 4 (UI rendering)
+  // Step 4. System displays animated dots indicator while streaming (shows streaming dots)
   it('shows streaming dots for streaming message', () => {
     const message: ChatMessage = {
       id: 'temp-123',
@@ -95,6 +105,8 @@ describe('Message UI', () => {
     expect(dots).toBeTruthy();
   });
 
+  // Covers chat-streaming.md step 8 (UI rendering)
+  // Step 8. System replaces optimistic message with real message (renders thinking content when present)
   it('renders thinking content when present', () => {
     const message: ChatMessage = {
       id: 2,
@@ -109,6 +121,8 @@ describe('Message UI', () => {
     expect(screen.getByText('Thinking')).toBeTruthy();
   });
 
+  // Covers chat-streaming.md step 8 (UI rendering)
+  // Step 8. System replaces optimistic message with real message (renders system message with collapsible header)
   it('renders system message with collapsible header', () => {
     const message: ChatMessage = {
       id: 3,

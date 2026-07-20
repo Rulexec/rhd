@@ -12,17 +12,28 @@ mod notifications;
 mod project_loader;
 mod project_manager;
 mod scenario;
+mod template_loader;
+mod templates;
 mod ws;
 
 use std::path::PathBuf;
 
 use clap::Parser;
 use cli::{Cli, Command};
+use tracing_subscriber::{fmt, EnvFilter};
 
 use crate::config::DaemonConfig;
 
 #[tokio::main]
 async fn main() {
+    fmt()
+        .with_writer(std::io::stdout)
+        .with_env_filter(
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new("info"))
+        )
+        .init();
+
     let cli = Cli::parse();
     match cli.command {
         Command::Daemon(args) => {
@@ -110,7 +121,6 @@ async fn run_daemon_command(
     let socket_path = args.socket.unwrap_or_else(cli::default_socket_path);
     let db_file = merged.db_dir.join("meta.db");
     let config_paths = daemon::ResolvedConfigPaths {
-        config_file: args.config.clone(),
         models_dir: merged.models_dir.clone(),
         scenarios_dir: merged.scenarios_dir.clone(),
         mcp_dir: merged.mcp_dir.clone(),

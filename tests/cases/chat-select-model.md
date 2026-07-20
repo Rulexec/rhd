@@ -27,5 +27,14 @@ User selects a model for the current chat.
 - `selectModel` — dispatched when user selects model
 
 ## Covered By
-- `frontend/src/tests/e2e/chat-state.test.ts` (state logic)
-- `frontend/src/tests/ui/MessageInput.test.ts` (UI rendering)
+
+### E2E Tests
+- [`chat-state.test.ts`](frontend/src/tests/e2e/chat-state.test.ts) - `loads available models from daemon` (step 1)
+- [`chat-state.test.ts`](frontend/src/tests/e2e/chat-state.test.ts) - `auto-selects first model when available` (steps 1-3, 6-8)
+
+### UI Tests
+- [`MessageInput.test.ts`](frontend/src/tests/ui/MessageInput.test.ts) - `renders model selector with available models` (step 2)
+
+### Coverage Notes
+- Steps 4-5 (user interaction with dropdown) are not explicitly tested
+- Partial coverage: steps 1-3, 6-8 covered (75%)

@@ -66,6 +66,46 @@ Detailed documentation is split into topic-specific files. Read the relevant fil
 | [backend-e2e.md](backend-e2e.md) | When working on backend E2E tests, rhd_test crate, mock server, or test scenarios |
 | [debugging.md](debugging.md) | When any test fails |
 
+## Token Saving Guidelines
+
+When exploring the RHD codebase, **ALWAYS prioritize tokensave tools** over brute-force file reads or wide directory scans. The tokensave MCP server provides indexed access to code structure, call graphs, and dependencies, making it significantly more efficient than manual file exploration.
+
+### Preferred Approach
+
+Use these tokensave tools to understand code architecture:
+
+- **`tokensave_context`** — Get relevant symbols, relationships, and code snippets for a task. Use this first to understand what code is relevant to your work.
+- **`tokensave_search`** — Find symbols by name or keyword. Use this to locate specific functions, structs, traits, or modules.
+- **`tokensave_related`** — Discover related symbols and dependencies. Use this to understand call chains, trait implementations, and code relationships.
+- **`tokensave_body`** — Retrieve the full source of a symbol by name. Use this when you need to see the implementation details of a specific function or type.
+
+### What to Avoid
+
+**Do NOT** use these approaches for code exploration:
+
+- ❌ Brute-force file reads (`read_file` on multiple files to "find" code)
+- ❌ Wide directory scans (`list_files` with `recursive: true` to explore structure)
+- ❌ Manual grep/search across files to locate functionality
+- ❌ Reading entire files to understand their purpose
+
+### Example: Finding Tool Loop Code
+
+Instead of scanning directories or reading files to find where the tool loop is implemented, use tokensave:
+
+```
+tokensave_search(query="tool loop")
+```
+
+This immediately returns that the tool loop code is in [`packages/rhd_chat/src/tools.rs`](packages/rhd_chat/src/tools.rs), along with related test functions and documentation references — no file scanning required.
+
+### When to Use File Reads
+
+File reads are appropriate **only after** you've identified the specific file and line range you need to examine via tokensave. Use `read_file` to:
+
+- View the full implementation of a symbol you've already located
+- Read configuration files, documentation, or test data
+- Examine specific line ranges when you know exactly what you need
+
 ## Product Features
 
 Product-scoped feature documentation (what the feature does, not how it's implemented):

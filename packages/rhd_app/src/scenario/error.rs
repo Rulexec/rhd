@@ -1,6 +1,5 @@
 use thiserror::Error;
 
-use super::placeholder::ExecutionContext;
 
 #[derive(Debug, Error)]
 pub enum ExecuteError {
@@ -38,6 +37,4 @@ impl From<rhd_ai::AiError> for ExecuteError {
 #[derive(Debug)]
 pub struct ExecuteOutput {
     pub outputs: Vec<String>,
-    #[allow(dead_code)]
-    pub context: ExecutionContext,
 }

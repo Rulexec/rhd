@@ -55,6 +55,34 @@ impl<P: ProjectProvider> ChatManager<P> {
         self.log_chats_raw
     }
 
+    /// Adds a message to the database and emits a MessageAdded event.
+    /// This is the single point of message addition to ensure consistency.
+    pub fn add_message_and_notify(
+        &self,
+        chat_id: i64,
+        role: &str,
+        content: &str,
+        model: Option<&str>,
+        thinking_content: Option<&str>,
+        event_sender: &broadcast::Sender<ChatEvent>,
+    ) -> Result<Message, ChatError> {
+        let message_id = self.db.add_message(chat_id, role, content, model, thinking_content)?;
+        let message = Message {
+            id: message_id,
+            chat_id,
+            role: role.to_string(),
+            content: content.to_string(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+            model: model.map(|s| s.to_string()),
+            thinking_content: thinking_content.map(|s| s.to_string()),
+        };
+        let _ = event_sender.send(ChatEvent::MessageAdded {
+            chat_id,
+            message: message.clone(),
+        });
+        Ok(message)
+    }
+
     pub fn create_chat(&self, title: &str) -> Result<i64, ChatError> {
         Ok(self.db.create_chat(title)?)
     }
@@ -157,7 +185,7 @@ impl<P: ProjectProvider> ChatManager<P> {
         project_name: &str,
         event_sender: broadcast::Sender<ChatEvent>,
     ) -> Result<(), ChatError> {
-        projects::detach_project(&self.db, chat_id, project_name, event_sender)
+        projects::detach_project(&self.db, &self.project_provider, chat_id, project_name, event_sender)
     }
 
     pub fn get_chat_projects(&self, chat_id: i64) -> Result<Vec<ProjectInfo>, ChatError> {
@@ -172,8 +200,9 @@ impl<P: ProjectProvider> ChatManager<P> {
         models: &HashMap<String, ModelConfig>,
         event_sender: broadcast::Sender<ChatEvent>,
         reload_lock: &tokio::sync::RwLock<()>,
+        template_loader: &stream::TemplateLoaderRef,
     ) -> Result<i64, ChatError> {
-        stream::send_message(self, chat_id, content, model, models, event_sender, reload_lock)
+        stream::send_message(self, chat_id, content, model, models, event_sender, reload_lock, template_loader)
             .await
     }
 
@@ -185,6 +214,7 @@ impl<P: ProjectProvider> ChatManager<P> {
         models: &HashMap<String, ModelConfig>,
         event_sender: broadcast::Sender<ChatEvent>,
         reload_lock: &tokio::sync::RwLock<()>,
+        template_loader: &stream::TemplateLoaderRef,
     ) -> Result<i64, ChatError> {
         stream::edit_and_resend(
             self,
@@ -194,6 +224,7 @@ impl<P: ProjectProvider> ChatManager<P> {
             models,
             event_sender,
             reload_lock,
+            template_loader,
         )
         .await
     }
@@ -251,5 +282,79 @@ impl<P: ProjectProvider> ChatManager<P> {
         } else {
             None
         }
+    }
+
+    pub async fn set_active_role(
+        &self,
+        chat_id: i64,
+        project_name: &str,
+        role_name: &str,
+        event_sender: broadcast::Sender<ChatEvent>,
+    ) -> Result<(), ChatError> {
+        if self.db.get_chat(chat_id)?.is_none() {
+            return Err(ChatError::ChatNotFound);
+        }
+
+        if self
+            .project_provider
+            .get_role_system_prompt(project_name, role_name)
+            .is_none()
+        {
+            return Err(ChatError::RoleNotFound(format!(
+                "{}:{}",
+                project_name, role_name
+            )));
+        }
+
+        self.db.set_active_role(chat_id, project_name, role_name)?;
+        self.db.set_role_prompt_pending(chat_id, true)?;
+
+        let _ = event_sender.send(ChatEvent::RoleChanged {
+            chat_id,
+            project_name: project_name.to_string(),
+            role_name: role_name.to_string(),
+        });
+
+        Ok(())
+    }
+
+    pub fn clear_active_role(
+        &self,
+        chat_id: i64,
+        event_sender: broadcast::Sender<ChatEvent>,
+    ) -> Result<(), ChatError> {
+        if self.db.get_chat(chat_id)?.is_none() {
+            return Err(ChatError::ChatNotFound);
+        }
+        self.db.clear_active_role(chat_id)?;
+        self.db.reset_roles_list_injected(chat_id)?;
+
+        let _ = event_sender.send(ChatEvent::ActiveRoleCleared { chat_id });
+
+        Ok(())
+    }
+
+    pub fn get_active_role(&self, chat_id: i64) -> Result<Option<(String, String)>, ChatError> {
+        Ok(self.db.get_active_role(chat_id)?)
+    }
+
+    pub fn get_available_roles(
+        &self,
+        chat_id: i64,
+    ) -> Result<Vec<(String, String, String)>, ChatError> {
+        if self.db.get_chat(chat_id)?.is_none() {
+            return Err(ChatError::ChatNotFound);
+        }
+
+        let attached_projects = self.db.get_chat_projects(chat_id)?;
+        let mut roles = Vec::new();
+
+        for (project_name, _) in attached_projects {
+            for role in self.project_provider.get_project_roles(&project_name) {
+                roles.push((project_name.clone(), role.name, role.when_to_use));
+            }
+        }
+
+        Ok(roles)
     }
 }

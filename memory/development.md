@@ -13,6 +13,16 @@
 - Strict YAML parsing with `deny_unknown_fields`
 - Field names use camelCase in YAML, snake_case in Rust structs (via `#[serde(rename_all = "camelCase")]`)
 
+### File Size Limits
+
+**Keep files under 500 lines.** When a file approaches or exceeds this limit, split it into smaller, logical modules. This applies to all source files and test files.
+
+To check for large files:
+- `mise run check-large-files` — checks both backend and frontend
+- `mise run top-files-backend` / `mise run top-files-frontend` — shows largest files
+
+When splitting, extract test modules first, then split by logical responsibility. See `.agents/skills/code-splitting/SKILL.md` for detailed patterns and examples.
+
 ## Testing
 
 **Prefer running tests via mise** — commands defined in `mise.toml` at project root.

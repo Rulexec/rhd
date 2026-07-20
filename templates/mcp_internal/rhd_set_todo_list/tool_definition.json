@@ -1,0 +1,14 @@
+{
+  "name": "rhd_set_todo_list",
+  "description": "Replace the entire TODO list with an updated checklist reflecting the current state. Always provide the full list; the system will overwrite the previous one. This tool is designed for step-by-step task tracking, allowing you to confirm completion of each step before updating, update multiple statuses at once (e.g., mark one as completed and start the next), and dynamically add new todos as they're discovered.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "todos": {
+        "type": "string",
+        "description": "Full markdown checklist in execution order, using [ ] for pending, [x] for completed, [-] for in progress, and [!] for discarded"
+      }
+    },
+    "required": ["todos"]
+  }
+}

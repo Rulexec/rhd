@@ -100,7 +100,7 @@ pub async fn execute_scenario(
         }
     }
 
-    Ok(ExecuteOutput { outputs, context })
+    Ok(ExecuteOutput { outputs })
 }
 
 fn evaluate_skip(skip_expr: &str, context: &ExecutionContext) -> bool {

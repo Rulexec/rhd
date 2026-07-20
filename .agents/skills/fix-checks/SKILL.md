@@ -4,6 +4,12 @@
 
 This skill documents how to run static analysis checks, identify warnings/errors, and fix them systematically.
 
+## IMPORTANT: Clean State Requirement
+
+**This skill MUST NOT be used during implementation of sub-plans.**
+
+The fix-checks skill should only be run when the codebase is in a clean, stable state. Dead code analysis assumes that unused code is truly unnecessary. During active development, functions may appear unused but are intended for upcoming features.
+
 ## Running Checks
 
 ### All Checks
@@ -111,37 +117,119 @@ Same as unused variables — prefix with underscore or remove if not needed for 
 
 **Warning pattern:** `warning: function \`name\` is never used`
 
-**Fix options:**
-1. Remove the function if truly unnecessary
-2. Add `#[allow(dead_code)]` if intentionally kept for future use
-3. Make the function public if it should be part of the API
+**Validation strategy:**
 
-Example:
+1. **Remove all `#[allow(dead_code)]` attributes:**
+   ```bash
+   # Find all suppressions
+   grep -r "#\[allow(dead_code)\]" packages/ --include="*.rs" -l
+   ```
+   Remove all `#[allow(dead_code)]` attributes from the codebase.
+
+2. **Run cargo check to identify actual warnings:**
+   ```bash
+   mise run check-cargo 2>&1 | grep -E "warning:|-->"
+   ```
+   This reveals which code is truly unused vs. which was unnecessarily suppressed.
+
+3. **For each warning, determine the appropriate action:**
+   - **If the code is not used anywhere** → Remove it entirely
+   - **If the code is only used in tests** → Mark with `#[cfg(test)]` instead of `#[allow(dead_code)]`
+   - **If the code is required for serde/trait/FFI** → Keep with `#[allow(dead_code)]` and add a comment
+
+4. **Check if code is used in tests:**
+   ```bash
+   # Search for usage in test files
+   grep -r "function_name" packages/ --include="*.rs" | grep -E "test|Test"
+   ```
+   If only found in test contexts, use `#[cfg(test)]`.
+
+**Example - Test-only code:**
 ```rust
-// Option 1: Remove
-// (delete the function entirely)
-
-// Option 2: Suppress warning
+// Before: Suppressed with allow(dead_code)
 #[allow(dead_code)]
-pub async fn active_stream_count(&self) -> usize {
-    self.active_streams.lock().await.len()
+pub fn test_helper() -> String {
+    "test data".to_string()
+}
+
+// After: Marked as test-only
+#[cfg(test)]
+pub fn test_helper() -> String {
+    "test data".to_string()
 }
 ```
+
+**Example - Truly dead code:**
+```rust
+// Before: Function is never used
+pub fn render_template(&self, name: &str) -> Option<String> {
+    // implementation
+}
+
+// After: Remove the dead code
+// (delete the function entirely)
+```
+
+**Avoid adding `#[allow(dead_code)]`** unless there's a compelling reason (e.g., trait implementation requirement, FFI boundary, serde deserialization).
 
 ### Dead Code (Unused Struct Fields)
 
 **Warning pattern:** `warning: field \`name\` is never read`
 
-**Fix:** Add `#[allow(dead_code)]` attribute to the field.
+**Validation strategy:**
 
-Example:
+1. **Remove all `#[allow(dead_code)]` attributes** from struct fields.
+
+2. **Run cargo check** to identify which fields actually generate warnings.
+
+3. **For each warning, determine the appropriate action:**
+   - **If the field is not used anywhere** → Remove it from the struct
+   - **If the field is only used in tests** → Mark the struct with `#[cfg(test)]` or move to a test module
+   - **If the field is required for serde** → Keep with `#[allow(dead_code)]` and add a comment
+
+4. **Check if field is used in tests:**
+   ```bash
+   # Search for field usage
+   grep -r "field_name" packages/ --include="*.rs"
+   ```
+
+**Example - Serde-required field:**
 ```rust
-pub struct DaemonState {
+// Before: Field is never read but required for deserialization
+pub struct JsonRpcRequest {
     #[allow(dead_code)]
-    pub chat_db: Arc<ChatDb>,
-    // other fields...
+    jsonrpc: String, // Required for deserialization
+}
+
+// After: Keep with clear comment
+pub struct JsonRpcRequest {
+    #[allow(dead_code)]
+    jsonrpc: String, // Required for deserialization
 }
 ```
+
+**Example - Test-only struct:**
+```rust
+// Before: Entire struct only used in tests
+#[allow(dead_code)]
+pub struct ToolCall {
+    pub id: String,
+    pub call_type: String,
+}
+
+// After: Mark as test-only
+#[cfg(test)]
+pub struct ToolCall {
+    pub id: String,
+    pub call_type: String,
+}
+```
+
+**Keep `#[allow(dead_code)]` only when:**
+- Required for serde serialization/deserialization
+- Required by a trait implementation
+- Part of FFI boundaries
+- Documented with a clear reason for keeping
 
 ### Unused Re-exports
 

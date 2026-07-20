@@ -5,11 +5,20 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct Role {
+    pub name: String,
+    pub system_prompt: String,
+    pub when_to_use: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Project {
     pub name: String,
     pub path: PathBuf,
     pub mcp_configs: Vec<McpRef>,
     pub system_prompt: Option<String>,
+    pub roles: Vec<Role>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,6 +45,8 @@ pub struct ProjectInfo {
     pub name: String,
     pub has_mcp: bool,
     pub has_system_prompt: bool,
+    pub has_roles: bool,
+    pub role_names: Vec<String>,
 }
 
 impl From<&Project> for ProjectInfo {
@@ -44,6 +55,8 @@ impl From<&Project> for ProjectInfo {
             name: project.name.clone(),
             has_mcp: !project.mcp_configs.is_empty(),
             has_system_prompt: project.system_prompt.is_some(),
+            has_roles: !project.roles.is_empty(),
+            role_names: project.roles.iter().map(|r| r.name.clone()).collect(),
         }
     }
 }

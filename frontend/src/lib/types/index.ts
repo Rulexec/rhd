@@ -87,3 +87,21 @@ export const ChatProjectSchema = z.object({
   systemPromptAdded: z.boolean(),
 });
 export type ChatProject = z.infer<typeof ChatProjectSchema>;
+
+export const RoleInfoSchema = z.object({
+  projectName: z.string(),
+  roleName: z.string(),
+  whenToUse: z.string(),
+});
+export type RoleInfo = z.infer<typeof RoleInfoSchema>;
+
+export const ActiveRoleSchema = z.object({
+  projectName: z.string(),
+  roleName: z.string(),
+});
+export type ActiveRole = z.infer<typeof ActiveRoleSchema>;
+
+export interface TodoItem {
+  content: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'discarded';
+}

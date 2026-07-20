@@ -182,6 +182,55 @@ export const ChatResumedEventSchema = z.object({
   }),
 });
 
+export const RoleInfoSchema = z.object({
+  projectName: z.string(),
+  roleName: z.string(),
+  whenToUse: z.string(),
+});
+
+export const RoleChangedEventSchema = z.object({
+  type: z.literal('event'),
+  event: z.literal('roleChanged'),
+  data: z.object({
+    chatId: z.number(),
+    projectName: z.string(),
+    roleName: z.string(),
+  }),
+});
+
+export const RolesUpdatedEventSchema = z.object({
+  type: z.literal('event'),
+  event: z.literal('rolesUpdated'),
+  data: z.object({
+    chatId: z.number(),
+    roles: z.array(RoleInfoSchema),
+    activeRoleProject: z.string().optional(),
+    activeRoleName: z.string().optional(),
+  }),
+});
+
+export const ActiveRoleClearedEventSchema = z.object({
+  type: z.literal('event'),
+  event: z.literal('activeRoleCleared'),
+  data: z.object({
+    chatId: z.number(),
+  }),
+});
+
+export const TodoItemSchema = z.object({
+  content: z.string(),
+  status: z.enum(['pending', 'in_progress', 'completed', 'discarded']),
+});
+
+export const TodoListUpdatedEventSchema = z.object({
+  type: z.literal('event'),
+  event: z.literal('todoListUpdated'),
+  data: z.object({
+    chatId: z.number(),
+    items: z.array(TodoItemSchema),
+  }),
+});
+
 export const WsEventSchema = z.discriminatedUnion('event', [
   ScenarioStartedEventSchema,
   StepStartedEventSchema,
@@ -202,6 +251,10 @@ export const WsEventSchema = z.discriminatedUnion('event', [
   ToolCallCompletedEventSchema,
   ChatPausedEventSchema,
   ChatResumedEventSchema,
+  RoleChangedEventSchema,
+  RolesUpdatedEventSchema,
+  ActiveRoleClearedEventSchema,
+  TodoListUpdatedEventSchema,
 ]);
 export type WsEvent = z.infer<typeof WsEventSchema>;
 

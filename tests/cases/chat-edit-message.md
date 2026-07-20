@@ -31,5 +31,13 @@ User edits a user message, truncates subsequent messages, and re-streams.
 - `editMessage` — dispatched when user saves edit
 
 ## Covered By
-- `frontend/src/tests/e2e/chat-state.test.ts` (state logic)
-- `frontend/src/tests/ui/Message.test.ts` (UI rendering)
+
+### E2E Tests
+- [`chat-state.test.ts`](frontend/src/tests/e2e/chat-state.test.ts) - `edits message and re-streams response` (steps 5-11)
+
+### UI Tests
+- [`Message.test.ts`](frontend/src/tests/ui/Message.test.ts) - `renders edit button for user messages` (step 1)
+
+### Coverage Notes
+- Steps 2-4 (edit mode UI) are not covered by tests
+- Partial coverage: steps 1, 5-11 covered (73%)

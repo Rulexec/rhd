@@ -14,7 +14,7 @@ pub use state::StreamState;
 
 use std::sync::Arc;
 use async_trait::async_trait;
-use rhd_api::project::McpRef;
+use rhd_api::project::{McpRef, Role};
 use rhd_mcp_client::client::McpClient;
 
 #[derive(Debug, Clone)]
@@ -37,4 +37,39 @@ pub trait ProjectProvider: Send + Sync {
     fn get_project_mcp_refs(&self, project_name: &str) -> Vec<McpRef>;
     async fn get_mcp_clients(&self, project_name: &str) -> Vec<(String, Arc<McpClient>)>;
     async fn spawn_project_mcp(&self, project_name: &str) -> Result<(), String>;
+    
+    /// Returns all roles defined in a project
+    fn get_project_roles(&self, project_name: &str) -> Vec<Role>;
+    
+    /// Returns the system prompt for a specific role in a project
+    fn get_role_system_prompt(&self, project_name: &str, role_name: &str) -> Option<String>;
 }
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TodoStatus {
+    Pending,
+    InProgress,
+    Completed,
+    Discarded,
+}
+
+impl TodoStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TodoStatus::Pending => "pending",
+            TodoStatus::InProgress => "in_progress",
+            TodoStatus::Completed => "completed",
+            TodoStatus::Discarded => "discarded",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TodoItem {
+    pub content: String,
+    pub status: TodoStatus,
+}
+
+pub type TodoList = Vec<TodoItem>;

@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
 struct JsonRpcRequest {
-    jsonrpc: String,
     #[serde(default)]
     id: Option<serde_json::Value>,
     method: String,

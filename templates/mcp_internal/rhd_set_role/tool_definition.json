@@ -1,0 +1,14 @@
+{
+  "name": "rhd_set_role",
+  "description": "Switch the current active role. Use this tool when you need to change your behavioral role based on the task requirements. The role determines your system prompt and behavior patterns.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "role_name": {
+        "type": "string",
+        "description": "The name of the role to switch to. Must be one of the available roles listed in the system prompt."
+      }
+    },
+    "required": ["role_name"]
+  }
+}

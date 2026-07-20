@@ -19,10 +19,12 @@ import {
   streamingMessageId,
   isPaused,
   pendingToolCalls,
+  availableRoles,
+  activeRole,
 } from './chatStores';
 import { projects, mcpStatuses, chatProjects } from './projectStores';
 import type { ActiveScenario, FinishedScenario, PausedScenario } from './types/index';
-import type { Chat, ChatMessage, ToolCall, Project, McpStatus, ChatProject } from './types/index';
+import type { Chat, ChatMessage, ToolCall, Project, McpStatus, ChatProject, RoleInfo, ActiveRole } from './types/index';
 
 export interface ExportedState {
   version: number;
@@ -47,6 +49,8 @@ export interface ExportedState {
     streamingMessageId: string | null;
     isPaused: boolean;
     pendingToolCalls: ToolCall[];
+    availableRoles: RoleInfo[];
+    activeRole: ActiveRole | null;
   };
   projects: {
     projects: Project[];
@@ -81,6 +85,8 @@ export function exportState(): ExportedState {
       streamingMessageId: get(streamingMessageId),
       isPaused: get(isPaused),
       pendingToolCalls: get(pendingToolCalls),
+      availableRoles: get(availableRoles),
+      activeRole: get(activeRole),
     },
     projects: {
       projects: get(projects),
@@ -139,6 +145,8 @@ export function importState(state: unknown): void {
   streamingMessageId.set(chat.streamingMessageId);
   isPaused.set(chat.isPaused);
   pendingToolCalls.set(chat.pendingToolCalls);
+  availableRoles.set(chat.availableRoles);
+  activeRole.set(chat.activeRole);
 
   projects.set(projectsState.projects);
   mcpStatuses.set(projectsState.mcpStatuses);

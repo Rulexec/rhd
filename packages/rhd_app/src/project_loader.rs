@@ -2,7 +2,7 @@ use std::path::Path;
 
 use thiserror::Error;
 
-use rhd_api::project::{McpRef, Project};
+use rhd_api::project::{McpRef, Project, Role};
 
 #[derive(Debug, Error)]
 pub enum ProjectLoadError {
@@ -132,160 +132,79 @@ pub fn load_project(project_dir: &Path) -> Result<Project, ProjectLoadError> {
         None
     };
 
+    let roles = load_roles(project_dir)?;
+
     Ok(Project {
         name: dir_name,
         path: project_dir.to_path_buf(),
         mcp_configs,
         system_prompt,
+        roles,
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
+pub fn load_roles(project_dir: &Path) -> Result<Vec<Role>, ProjectLoadError> {
+    let roles_dir = project_dir.join("roles");
 
-    #[test]
-    fn test_load_project_with_mcp_and_system_prompt() {
-        let dir = tempfile::tempdir().unwrap();
-        let project_dir = dir.path().join("test-project");
-        fs::create_dir_all(&project_dir).unwrap();
-
-        fs::write(
-            project_dir.join("mcp.yaml"),
-            "mcp:\n  - name: test-server\n    args:\n      - --port\n      - '8080'\n",
-        )
-        .unwrap();
-        fs::write(project_dir.join("systemPrompt.md"), "You are a helpful assistant.").unwrap();
-
-        let project = load_project(&project_dir).unwrap();
-        assert_eq!(project.name, "test-project");
-        assert_eq!(project.mcp_configs.len(), 1);
-        assert_eq!(project.mcp_configs[0].name, "test-server");
-        assert_eq!(
-            project.mcp_configs[0].args.as_ref().unwrap(),
-            &vec!["--port".to_string(), "8080".to_string()]
-        );
-        assert_eq!(
-            project.system_prompt.as_deref(),
-            Some("You are a helpful assistant.")
-        );
+    if !roles_dir.exists() || !roles_dir.is_dir() {
+        return Ok(Vec::new());
     }
 
-    #[test]
-    fn test_load_project_with_only_mcp() {
-        let dir = tempfile::tempdir().unwrap();
-        let project_dir = dir.path().join("mcp-only");
-        fs::create_dir_all(&project_dir).unwrap();
+    let mut roles = Vec::new();
+    let entries = roles_dir.read_dir().map_err(|source| ProjectLoadError::Io {
+        path: roles_dir.display().to_string(),
+        source,
+    })?;
 
-        fs::write(project_dir.join("mcp.yaml"), "mcp:\n  - name: server-a\n").unwrap();
+    for entry in entries {
+        let entry = entry.map_err(|source| ProjectLoadError::Io {
+            path: roles_dir.display().to_string(),
+            source,
+        })?;
+        let role_dir = entry.path();
 
-        let project = load_project(&project_dir).unwrap();
-        assert_eq!(project.name, "mcp-only");
-        assert_eq!(project.mcp_configs.len(), 1);
-        assert!(project.system_prompt.is_none());
-    }
-
-    #[test]
-    fn test_load_project_with_only_system_prompt() {
-        let dir = tempfile::tempdir().unwrap();
-        let project_dir = dir.path().join("prompt-only");
-        fs::create_dir_all(&project_dir).unwrap();
-
-        fs::write(project_dir.join("systemPrompt.md"), "Custom prompt").unwrap();
-
-        let project = load_project(&project_dir).unwrap();
-        assert_eq!(project.name, "prompt-only");
-        assert!(project.mcp_configs.is_empty());
-        assert_eq!(project.system_prompt.as_deref(), Some("Custom prompt"));
-    }
-
-    #[test]
-    fn test_load_project_empty_mcp_yaml() {
-        let dir = tempfile::tempdir().unwrap();
-        let project_dir = dir.path().join("empty-mcp");
-        fs::create_dir_all(&project_dir).unwrap();
-
-        fs::write(project_dir.join("mcp.yaml"), "mcp: []\n").unwrap();
-
-        let project = load_project(&project_dir).unwrap();
-        assert!(project.mcp_configs.is_empty());
-    }
-
-    #[test]
-    fn test_load_projects_skips_empty_dirs() {
-        let dir = tempfile::tempdir().unwrap();
-        let projects_dir = dir.path();
-
-        fs::create_dir_all(projects_dir.join("valid-project")).unwrap();
-        fs::write(
-            projects_dir.join("valid-project/mcp.yaml"),
-            "mcp:\n  - name: srv\n",
-        )
-        .unwrap();
-
-        fs::create_dir_all(projects_dir.join("empty-dir")).unwrap();
-
-        let projects = load_projects(projects_dir).unwrap();
-        assert_eq!(projects.len(), 1);
-        assert_eq!(projects[0].name, "valid-project");
-    }
-
-    #[test]
-    fn test_load_projects_nonexistent_dir() {
-        let projects = load_projects(Path::new("/nonexistent/path")).unwrap();
-        assert!(projects.is_empty());
-    }
-
-    #[test]
-    fn test_load_projects_invalid_yaml() {
-        let dir = tempfile::tempdir().unwrap();
-        let project_dir = dir.path().join("bad-yaml");
-        fs::create_dir_all(&project_dir).unwrap();
-
-        fs::write(project_dir.join("mcp.yaml"), "invalid: [yaml: content").unwrap();
-
-        let result = load_project(&project_dir);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_load_projects_sorted_by_name() {
-        let dir = tempfile::tempdir().unwrap();
-        let projects_dir = dir.path();
-
-        for name in &["charlie", "alpha", "bravo"] {
-            let project_dir = projects_dir.join(name);
-            fs::create_dir_all(&project_dir).unwrap();
-            fs::write(project_dir.join("mcp.yaml"), "mcp: []\n").unwrap();
+        if !role_dir.is_dir() {
+            continue;
         }
 
-        let projects = load_projects(projects_dir).unwrap();
-        assert_eq!(projects.len(), 3);
-        assert_eq!(projects[0].name, "alpha");
-        assert_eq!(projects[1].name, "bravo");
-        assert_eq!(projects[2].name, "charlie");
+        let role_name = role_dir
+            .file_name()
+            .expect("directory must have a name")
+            .to_string_lossy()
+            .into_owned();
+
+        let system_prompt_file = role_dir.join("systemPrompt.md");
+        let when_to_use_file = role_dir.join("whenToUse.md");
+
+        if !system_prompt_file.exists() || !when_to_use_file.exists() {
+            continue;
+        }
+
+        let system_prompt_path = system_prompt_file.display().to_string();
+        let system_prompt = std::fs::read_to_string(&system_prompt_file)
+            .map_err(|source| ProjectLoadError::Io {
+                path: system_prompt_path,
+                source,
+            })?;
+
+        let when_to_use_path = when_to_use_file.display().to_string();
+        let when_to_use = std::fs::read_to_string(&when_to_use_file)
+            .map_err(|source| ProjectLoadError::Io {
+                path: when_to_use_path,
+                source,
+            })?;
+
+        roles.push(Role {
+            name: role_name,
+            system_prompt,
+            when_to_use,
+        });
     }
 
-    #[test]
-    fn test_load_project_with_env_vars() {
-        let dir = tempfile::tempdir().unwrap();
-        let project_dir = dir.path().join("env-project");
-        fs::create_dir_all(&project_dir).unwrap();
+    roles.sort_by(|a, b| a.name.cmp(&b.name));
 
-        std::env::set_var("TEST_PROJECT_PORT", "9090");
-        fs::write(
-            project_dir.join("mcp.yaml"),
-            "mcp:\n  - name: test\n    args:\n      - --port\n      - $TEST_PROJECT_PORT\n",
-        )
-        .unwrap();
-
-        let project = load_project(&project_dir).unwrap();
-        assert_eq!(
-            project.mcp_configs[0].args.as_ref().unwrap(),
-            &vec!["--port".to_string(), "9090".to_string()]
-        );
-
-        std::env::remove_var("TEST_PROJECT_PORT");
-    }
+    Ok(roles)
 }
+
+#[cfg(test)]
+mod tests;

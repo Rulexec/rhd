@@ -12,8 +12,11 @@ import {
   pauseChat,
   resumeChat,
   handleChatEvent,
+  loadAvailableRoles,
+  setRole,
+  clearActiveRole,
 } from '../chatWs';
-import { selectedModel } from '../chatStores';
+import { selectedModel, availableRoles, activeRole } from '../chatStores';
 
 export async function processAction(action: ChatAction): Promise<void> {
   switch (action.type) {
@@ -91,6 +94,42 @@ export async function processAction(action: ChatAction): Promise<void> {
       break;
     case 'projectDetached':
       handleChatEvent('projectDetached', action.payload);
+      break;
+    case 'loadAvailableRoles':
+      await loadAvailableRoles(action.payload.chatId);
+      break;
+    case 'setRole':
+      await setRole(
+        action.payload.chatId,
+        action.payload.projectName,
+        action.payload.roleName
+      );
+      break;
+    case 'clearActiveRole':
+      await clearActiveRole(action.payload.chatId);
+      break;
+    case 'roleChanged':
+      activeRole.set({
+        projectName: action.payload.projectName,
+        roleName: action.payload.roleName,
+      });
+      break;
+    case 'rolesUpdated':
+      availableRoles.set(action.payload.roles);
+      if (action.payload.activeRoleProject && action.payload.activeRoleName) {
+        activeRole.set({
+          projectName: action.payload.activeRoleProject,
+          roleName: action.payload.activeRoleName,
+        });
+      } else {
+        activeRole.set(null);
+      }
+      break;
+    case 'activeRoleCleared':
+      activeRole.set(null);
+      break;
+    case 'todoListUpdated':
+      handleChatEvent('todoListUpdated', action.payload);
       break;
   }
 }
