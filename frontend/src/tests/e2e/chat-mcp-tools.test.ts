@@ -94,6 +94,9 @@ describe('Chat with MCP tools', () => {
   });
 
   it('attaches project with MCP and streams final response after tool call', async () => {
+    // Covers chat-mcp-tools.md steps 1-19
+
+    // Step 1. User creates new chat (setup)
     await dispatch({ type: 'loadAvailableModels' });
     await loadProjects();
 
@@ -105,9 +108,11 @@ describe('Chat with MCP tools', () => {
     const chatId = get(currentChatId);
     expect(chatId).toBeDefined();
 
+    // Step 2. User attaches project with MCP configuration
     const attachResult = await attachProject(chatId!, 'test-project-mcp');
     expect(attachResult.success).toBe(true);
 
+    // Step 3. System spawns MCP server, emits `ProjectAttached` event
     await waitFor(() => {
       const projects = get(chatProjects);
       expect(projects.some((p) => p.name === 'test-project-mcp')).toBe(true);
@@ -124,15 +129,31 @@ describe('Chat with MCP tools', () => {
 
     await configureMock('Tool executed successfully! The echo tool returned: Echo: Hello MCP');
 
+    // Step 4. User sends message asking to use specific MCP tool
+    // Step 5. System collects tools from attached projects
+    // Step 6. System calls AI with tool definitions (streaming)
     await dispatch({
       type: 'sendMessage',
       payload: { content: 'Please use the echo tool with message "Hello MCP"', model },
     });
 
+    // Step 7. AI streams thinking content via `ThinkingChunk` events
+    // Step 8. AI returns tool call request
+    // Step 9. System creates assistant message with thinking content and tool calls
+    // Step 10. System emits `ToolCallStarted` event
+    // Step 11. System executes MCP tool
+    // Step 12. System emits `ToolCallCompleted` event
+    // Step 13. System persists intermediate assistant message (with thinking and tool calls) to database
+    // Step 14. System persists tool result message to database
+    // Step 15. System feeds tool result back to AI
+    // Step 16. AI returns final response (no more tool calls)
+    // Step 17. System streams final response to user via `StreamChunk` events
+    // Step 18. System emits `StreamFinished` event
     await waitFor(() => {
       expect(get(isStreaming)).toBe(false);
     }, { timeout: 15000 });
 
+    // Step 19. System persists final assistant message to database
     const allMessages = get(messages);
     expect(allMessages.length).toBeGreaterThanOrEqual(2);
 
@@ -151,7 +172,7 @@ describe('Chat with MCP tools', () => {
     // Final assistant message should NOT have toolCalls (already shown in intermediate message)
     expect(assistantMsg.toolCalls).toBeUndefined();
 
-    // Verify tool calls are visible in messages
+    // Verify tool calls are visible in messages (steps 9-12)
     const assistantMsgsWithToolCalls = allMessages.filter(
       (m) => m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0
     );
@@ -177,13 +198,15 @@ describe('Chat with MCP tools', () => {
 
     expect(userMsgIndex).toBeLessThan(toolCallMsgIndex);
     expect(toolCallMsgIndex).toBeLessThan(finalAssistantMsgIndex);
-    
+
     // Verify no separate tool result messages visible
     const toolResultMsgCount = allMessages.filter((m) => m.role === 'tool').length;
     expect(toolResultMsgCount).toBe(0);
   }, 30000);
 
   it('handles multiple tool calls with different results', async () => {
+    // Covers chat-mcp-tools.md steps 1-19 (first iteration)
+    // Setup steps 1-3
     await dispatch({ type: 'loadAvailableModels' });
     await loadProjects();
 
@@ -212,6 +235,7 @@ describe('Chat with MCP tools', () => {
       expect(mockMcpStatus?.status).toBe('connected');
     }, { timeout: 10000 });
 
+    // Steps 4-19: First tool call iteration
     // Configure mock to return success
     await configureMock('Tool executed successfully');
 
@@ -251,13 +275,15 @@ describe('Chat with MCP tools', () => {
     );
 
     expect(userMsgIndex).toBeLessThan(toolCallMsgIndex);
-    
+
     // Verify no separate tool result messages visible
     const toolResultMsgCount = allMessages.filter((m) => m.role === 'tool').length;
     expect(toolResultMsgCount).toBe(0);
   }, 30000);
 
   it('maintains unique tool call ids across multiple iterations', async () => {
+    // Covers chat-mcp-tools.md steps 1-19 (two iterations)
+    // Setup steps 1-3
     await dispatch({ type: 'loadAvailableModels' });
     await loadProjects();
 
@@ -286,6 +312,7 @@ describe('Chat with MCP tools', () => {
       expect(mockMcpStatus?.status).toBe('connected');
     }, { timeout: 10000 });
 
+    // Steps 4-19: First tool call iteration
     // First tool call
     await configureMock('First result');
     await dispatch({
@@ -306,6 +333,7 @@ describe('Chat with MCP tools', () => {
     expect(firstToolCallId).toBeDefined();
     expect(firstToolCallMsgs[0].toolCalls![0].result).toContain('Echo: Hello MCP');
 
+    // Steps 4-19: Second tool call iteration (different message)
     // Second tool call (different iteration)
     await configureMock('Second result');
     await dispatch({
