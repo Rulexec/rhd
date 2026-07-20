@@ -27,5 +27,13 @@ User aborts active streaming response.
 - `chatStreamError` or `chatStreamFinished` — received from WebSocket
 
 ## Covered By
-- `frontend/src/tests/e2e/chat-state.test.ts` (state logic)
-- `frontend/src/tests/ui/MessageInput.test.ts` (UI rendering)
+
+### E2E Tests
+- [`chat-state.test.ts`](frontend/src/tests/e2e/chat-state.test.ts) - `aborts streaming chat and updates state` (steps 2-3)
+
+### UI Tests
+- [`MessageInput.test.ts`](frontend/src/tests/ui/MessageInput.test.ts) - `renders abort button when streaming` (step 1)
+
+### Coverage Notes
+- Steps 4-7 require daemon to send `chatStreamError` or `chatStreamFinished` event, which is not simulated by the mock server
+- Partial coverage: steps 1-3 covered (43%)

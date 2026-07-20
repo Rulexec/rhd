@@ -98,7 +98,17 @@ Tests the integration of the roles feature across all components, including edge
 - `clearActiveRole` — clear active role
 
 ## Covered By
-- `packages/rhd_chat/src/projects.rs` (backend logic)
-- `frontend/src/lib/chatStores.ts` (role stores)
-- `frontend/src/lib/stateExport.ts` (state export/import)
-- Backend unit tests in `packages/rhd_chat/src/projects.rs`
+
+### E2E Tests
+- [`roles-integration.test.ts`](frontend/src/tests/e2e/roles-integration.test.ts) - `Scenario 1: Basic Role Selection` (steps 1-8)
+- [`roles-integration.test.ts`](frontend/src/tests/e2e/roles-integration.test.ts) - `Scenario 2: Role Switching via Tool` (steps 1-6)
+- [`roles-integration.test.ts`](frontend/src/tests/e2e/roles-integration.test.ts) - `Scenario 3: Project Detachment with Active Role` (steps 1-7)
+- [`roles-integration.test.ts`](frontend/src/tests/e2e/roles-integration.test.ts) - `Scenario 4: Role Name Conflict` (steps 1-6)
+- [`roles-integration.test.ts`](frontend/src/tests/e2e/roles-integration.test.ts) - `Scenario 5: Project Attached After Chat Started` (steps 1-8)
+- [`roles-integration.test.ts`](frontend/src/tests/e2e/roles-integration.test.ts) - `Scenario 6: No Roles Available` (steps 1-6)
+- [`roles-integration.test.ts`](frontend/src/tests/e2e/roles-integration.test.ts) - `Scenario 7: Multiple Projects with Roles` (steps 1-6)
+- [`roles-integration.test.ts`](frontend/src/tests/e2e/roles-integration.test.ts) - `Scenario 8: State Export/Import with Roles` (steps 1-7)
+
+### Coverage Notes
+- All 8 scenarios are covered by E2E tests
+- Full coverage: 100%
