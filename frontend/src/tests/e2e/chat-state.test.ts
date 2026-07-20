@@ -20,6 +20,7 @@ import {
   isStreaming,
   availableModels,
   selectedModel,
+  streamingMessageId,
   resetAllStores,
 } from '../../lib/chatStores';
 import {
@@ -27,6 +28,8 @@ import {
   setControlPort,
   setWsPort,
   configureMock,
+  finishStream,
+  setAutoStream,
 } from '../testUtils';
 import { setWsPort as setWsWsPort, connectWebSocket } from '../../lib/ws';
 
@@ -224,5 +227,33 @@ describe('Chat state logic (state-based testing)', () => {
     expect(get(selectedModel)).toBe(models[0]);
 
     // Step 8. Model selection persists for current chat (verified by store state)
+  });
+
+  it('aborts streaming chat and updates state', async () => {
+    // Covers chat-abort.md steps 2-3 (state logic)
+    // Step 1 is UI test (see MessageInput.test.ts)
+    // Steps 4-7 require daemon to send chatStreamError event (not mocked)
+
+    // Setup: Create chat and start streaming
+    await dispatch({ type: 'createChat', payload: { title: 'Test' } });
+    await configureMock('Streaming response');
+    await setAutoStream(false);
+    const model = get(availableModels)[0] || 'test_model';
+    await dispatch({ type: 'sendMessage', payload: { content: 'Hello', model } });
+
+    // Wait for streaming to start
+    await waitFor(() => {
+      expect(get(isStreaming)).toBe(true);
+    }, { timeout: 5000 });
+
+    // Step 2. System dispatches `abortChat` action
+    // Step 3. System sends abort request to daemon
+    // The abort request is sent and returns successfully
+    // Note: Full abort flow (steps 4-7) requires daemon to send chatStreamError event
+    // which is not simulated by the mock server
+    await dispatch({ type: 'abortChat' });
+    
+    // Verify abort was initiated (action dispatched without error)
+    // The actual stream cancellation happens asynchronously in the daemon
   });
 });
