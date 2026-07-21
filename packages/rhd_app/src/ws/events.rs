@@ -142,11 +142,11 @@ pub fn chat_event_to_ws_event(
         }
         ChatEvent::StreamAborted { chat_id } => {
             let payload = StreamAbortedEvent { chat_id };
-            Some(WsEvent::new("chatStreamAborted", serde_json::to_value(&payload).ok()?))
+            Some(WsEvent::new("streamAborted", serde_json::to_value(&payload).ok()?))
         }
         ChatEvent::MessageQueued { chat_id, content, model } => {
             let payload = MessageQueuedEvent { chat_id, content, model };
-            Some(WsEvent::new("chatMessageQueued", serde_json::to_value(&payload).ok()?))
+            Some(WsEvent::new("messageQueued", serde_json::to_value(&payload).ok()?))
         }
     }
 }
