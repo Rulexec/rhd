@@ -11,7 +11,7 @@ use tokio_util::sync::CancellationToken;
 use crate::error::ChatError;
 use crate::event::ChatEvent;
 use crate::projects;
-use crate::state::StreamState;
+use crate::state::{ExecutionPhase, PendingToolCall, StreamState, StreamStateInfo};
 use crate::stream;
 use crate::ProjectProvider;
 
@@ -116,26 +116,16 @@ impl<P: ProjectProvider> ChatManager<P> {
         Ok(())
     }
 
-    pub async fn abort_chat(&self, chat_id: i64) -> bool {
-        let active = self.active_streams.lock().await;
-        if let Some(state) = active.get(&chat_id) {
-            state.cancel_token().cancel();
-            true
-        } else {
-            false
-        }
-    }
-
-    pub async fn pause_chat(&self, chat_id: i64) -> bool {
+    pub async fn abort_chat(&self, chat_id: i64, aborted_tool_ids: Vec<String>) -> bool {
         let mut active = self.active_streams.lock().await;
-        if let Some(StreamState::Running { cancel_token, pause_notify }) = active.get(&chat_id) {
-            let cancel_token = cancel_token.clone();
-            let pause_notify = pause_notify.clone();
+        if let Some(state) = active.get(&chat_id) {
+            let cancel_token = state.cancel_token().clone();
+            cancel_token.cancel();
             active.insert(
                 chat_id,
-                StreamState::Paused {
+                StreamState::Aborted {
                     cancel_token,
-                    pause_notify,
+                    aborted_tool_ids,
                 },
             );
             true
@@ -144,22 +134,50 @@ impl<P: ProjectProvider> ChatManager<P> {
         }
     }
 
-    pub async fn resume_chat(&self, chat_id: i64) -> bool {
+    pub async fn pause_chat(
+        &self,
+        chat_id: i64,
+        pending_tool_calls: Vec<PendingToolCall>,
+    ) -> bool {
         let mut active = self.active_streams.lock().await;
-        if let Some(StreamState::Paused { cancel_token, pause_notify }) = active.get(&chat_id) {
+        if let Some(StreamState::Running { cancel_token, pause_notify, phase }) = active.get(&chat_id) {
             let cancel_token = cancel_token.clone();
             let pause_notify = pause_notify.clone();
+            let phase = phase.clone();
+            active.insert(
+                chat_id,
+                StreamState::Paused {
+                    cancel_token,
+                    pause_notify,
+                    phase,
+                    pending_tool_calls,
+                },
+            );
+            true
+        } else {
+            false
+        }
+    }
+
+    pub async fn resume_chat(&self, chat_id: i64) -> Option<(Vec<PendingToolCall>, ExecutionPhase)> {
+        let mut active = self.active_streams.lock().await;
+        if let Some(StreamState::Paused { cancel_token, pause_notify, phase, pending_tool_calls }) = active.get(&chat_id) {
+            let cancel_token = cancel_token.clone();
+            let pause_notify = pause_notify.clone();
+            let phase = phase.clone();
+            let pending_tool_calls = pending_tool_calls.clone();
             pause_notify.notify_one();
             active.insert(
                 chat_id,
                 StreamState::Running {
                     cancel_token,
                     pause_notify,
+                    phase: ExecutionPhase::AiCall,
                 },
             );
-            true
+            Some((pending_tool_calls, phase))
         } else {
-            false
+            None
         }
     }
 
@@ -244,6 +262,7 @@ impl<P: ProjectProvider> ChatManager<P> {
             StreamState::Running {
                 cancel_token: cancel_token.clone(),
                 pause_notify: pause_notify.clone(),
+                phase: ExecutionPhase::AiCall,
             },
         );
         (cancel_token, pause_notify)
@@ -272,6 +291,32 @@ impl<P: ProjectProvider> ChatManager<P> {
             let _ = event_sender.send(ChatEvent::ChatPaused { chat_id });
             notify.notified().await;
             let _ = event_sender.send(ChatEvent::ChatResumed { chat_id });
+        }
+    }
+
+    pub async fn get_stream_state(&self, chat_id: i64) -> Option<StreamStateInfo> {
+        let active = self.active_streams.lock().await;
+        active.get(&chat_id).map(|state| StreamStateInfo::from(state))
+    }
+
+    pub async fn is_aborted(&self, chat_id: i64) -> bool {
+        let active = self.active_streams.lock().await;
+        active.get(&chat_id).map(|s| s.is_aborted()).unwrap_or(false)
+    }
+
+    pub async fn set_execution_phase(&self, chat_id: i64, phase: ExecutionPhase) {
+        let mut active = self.active_streams.lock().await;
+        if let Some(StreamState::Running { cancel_token, pause_notify, .. }) = active.get(&chat_id) {
+            let cancel_token = cancel_token.clone();
+            let pause_notify = pause_notify.clone();
+            active.insert(
+                chat_id,
+                StreamState::Running {
+                    cancel_token,
+                    pause_notify,
+                    phase,
+                },
+            );
         }
     }
 
@@ -356,5 +401,119 @@ impl<P: ProjectProvider> ChatManager<P> {
         }
 
         Ok(roles)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::ExecutionPhase;
+    use rhd_api::project::{McpRef, Role};
+    use rhd_mcp_client::client::McpClient;
+    use crate::{McpStatus, ProjectProvider};
+
+    struct MockProjectProvider;
+
+    #[async_trait::async_trait]
+    impl ProjectProvider for MockProjectProvider {
+        async fn get_mcp_status(&self, _project_name: &str) -> Vec<(String, McpStatus)> {
+            vec![]
+        }
+
+        fn get_project_system_prompt(&self, _project_name: &str) -> Option<String> {
+            None
+        }
+
+        fn get_project_mcp_refs(&self, _project_name: &str) -> Vec<McpRef> {
+            vec![]
+        }
+
+        async fn get_mcp_clients(&self, _project_name: &str) -> Vec<(String, Arc<McpClient>)> {
+            vec![]
+        }
+
+        async fn spawn_project_mcp(&self, _project_name: &str) -> Result<(), String> {
+            Ok(())
+        }
+
+        fn get_project_roles(&self, _project_name: &str) -> Vec<Role> {
+            vec![]
+        }
+
+        fn get_role_system_prompt(&self, _project_name: &str, _role_name: &str) -> Option<String> {
+            None
+        }
+    }
+
+    #[tokio::test]
+    async fn test_pause_chat_with_pending_tools() {
+        let db = Arc::new(ChatDb::new(":memory:").unwrap());
+        let project_provider = Arc::new(MockProjectProvider);
+        let manager = ChatManager::new(db, project_provider, None, false);
+
+        let chat_id = manager.create_chat("Test Chat").unwrap();
+        let (_cancel_token, _) = manager.register_stream(chat_id).await;
+
+        let pending_tools = vec![PendingToolCall {
+            id: "call_1".to_string(),
+            name: "test_tool".to_string(),
+            arguments: "{}".to_string(),
+        }];
+
+        let result = manager.pause_chat(chat_id, pending_tools.clone()).await;
+        assert!(result);
+
+        let state = manager.get_stream_state(chat_id).await.unwrap();
+        assert!(state.is_paused);
+        assert_eq!(state.pending_tool_calls.len(), 1);
+        assert_eq!(state.pending_tool_calls[0].id, "call_1");
+    }
+
+    #[tokio::test]
+    async fn test_abort_chat_transitions_to_aborted() {
+        let db = Arc::new(ChatDb::new(":memory:").unwrap());
+        let project_provider = Arc::new(MockProjectProvider);
+        let manager = ChatManager::new(db, project_provider, None, false);
+
+        let chat_id = manager.create_chat("Test Chat").unwrap();
+        let (cancel_token, _) = manager.register_stream(chat_id).await;
+
+        let aborted_tools = vec!["call_1".to_string(), "call_2".to_string()];
+        let result = manager.abort_chat(chat_id, aborted_tools.clone()).await;
+        assert!(result);
+
+        let state = manager.get_stream_state(chat_id).await.unwrap();
+        assert!(state.is_aborted);
+        assert_eq!(state.aborted_tool_ids, aborted_tools);
+        assert!(cancel_token.is_cancelled());
+    }
+
+    #[tokio::test]
+    async fn test_resume_chat_returns_pending_tools() {
+        let db = Arc::new(ChatDb::new(":memory:").unwrap());
+        let project_provider = Arc::new(MockProjectProvider);
+        let manager = ChatManager::new(db, project_provider, None, false);
+
+        let chat_id = manager.create_chat("Test Chat").unwrap();
+        let (_cancel_token, _pause_notify) = manager.register_stream(chat_id).await;
+
+        let pending_tools = vec![PendingToolCall {
+            id: "call_1".to_string(),
+            name: "test_tool".to_string(),
+            arguments: "{}".to_string(),
+        }];
+
+        manager.pause_chat(chat_id, pending_tools.clone()).await;
+        let result = manager.resume_chat(chat_id).await;
+        assert!(result.is_some());
+
+        let (returned_tools, phase) = result.unwrap();
+        assert_eq!(returned_tools.len(), 1);
+        assert_eq!(returned_tools[0].id, "call_1");
+        assert_eq!(phase, ExecutionPhase::AiCall);
+
+        let state = manager.get_stream_state(chat_id).await.unwrap();
+        assert!(state.is_running);
+        assert!(!state.is_paused);
     }
 }

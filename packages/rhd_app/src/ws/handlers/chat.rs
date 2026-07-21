@@ -161,7 +161,7 @@ pub async fn handle_edit_message(
 }
 
 pub async fn handle_abort_chat(id: String, chat_id: i64, state: &Arc<DaemonState>) -> WsResponse {
-    let aborted = state.chat_manager.abort_chat(chat_id).await;
+    let aborted = state.chat_manager.abort_chat(chat_id, Vec::new()).await;
     WsResponse::success(id, serde_json::json!({ "aborted": aborted }))
 }
 
@@ -174,11 +174,11 @@ pub fn handle_dev_notification(id: String, state: &Arc<DaemonState>) -> WsRespon
 }
 
 pub async fn handle_pause_chat(id: String, chat_id: i64, state: &Arc<DaemonState>) -> WsResponse {
-    let paused = state.chat_manager.pause_chat(chat_id).await;
+    let paused = state.chat_manager.pause_chat(chat_id, Vec::new()).await;
     WsResponse::success(id, serde_json::json!({ "paused": paused }))
 }
 
 pub async fn handle_resume_chat(id: String, chat_id: i64, state: &Arc<DaemonState>) -> WsResponse {
-    let resumed = state.chat_manager.resume_chat(chat_id).await;
+    let resumed = state.chat_manager.resume_chat(chat_id).await.is_some();
     WsResponse::success(id, serde_json::json!({ "resumed": resumed }))
 }
