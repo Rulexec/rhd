@@ -25,6 +25,7 @@ pub enum ChatEvent {
     },
     ChatPaused { chat_id: i64 },
     ChatResumed { chat_id: i64 },
+    StreamAborted { chat_id: i64 },
     RoleChanged {
         chat_id: i64,
         project_name: String,

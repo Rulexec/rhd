@@ -273,27 +273,6 @@ impl<P: ProjectProvider> ChatManager<P> {
         active.remove(&chat_id);
     }
 
-    pub(crate) async fn check_pause_state(
-        &self,
-        chat_id: i64,
-        event_sender: &broadcast::Sender<ChatEvent>,
-    ) {
-        let pause_notify = {
-            let active = self.active_streams.lock().await;
-            if let Some(StreamState::Paused { pause_notify, .. }) = active.get(&chat_id) {
-                Some(pause_notify.clone())
-            } else {
-                None
-            }
-        };
-
-        if let Some(notify) = pause_notify {
-            let _ = event_sender.send(ChatEvent::ChatPaused { chat_id });
-            notify.notified().await;
-            let _ = event_sender.send(ChatEvent::ChatResumed { chat_id });
-        }
-    }
-
     pub async fn get_stream_state(&self, chat_id: i64) -> Option<StreamStateInfo> {
         let active = self.active_streams.lock().await;
         active.get(&chat_id).map(|state| StreamStateInfo::from(state))
@@ -315,6 +294,24 @@ impl<P: ProjectProvider> ChatManager<P> {
                     cancel_token,
                     pause_notify,
                     phase,
+                },
+            );
+        }
+    }
+
+    pub async fn set_pending_tool_calls(&self, chat_id: i64, pending_tool_calls: Vec<PendingToolCall>) {
+        let mut active = self.active_streams.lock().await;
+        if let Some(StreamState::Paused { cancel_token, pause_notify, phase, .. }) = active.get(&chat_id) {
+            let cancel_token = cancel_token.clone();
+            let pause_notify = pause_notify.clone();
+            let phase = phase.clone();
+            active.insert(
+                chat_id,
+                StreamState::Paused {
+                    cancel_token,
+                    pause_notify,
+                    phase,
+                    pending_tool_calls,
                 },
             );
         }
