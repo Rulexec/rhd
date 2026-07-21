@@ -1,6 +1,6 @@
 <script lang="ts">
   import { afterUpdate } from 'svelte';
-  import { messages, isStreaming, streamingContent, streamingThinkingContent, streamingMessageId } from '../lib/chatStores';
+  import { messages, isStreaming, streamingContent, streamingThinkingContent, streamingMessageId, queuedMessages } from '../lib/chatStores';
   import Message from './Message.svelte';
   import StreamingMessage from './StreamingMessage.svelte';
   import ToolCallMessage from './ToolCallMessage.svelte';
@@ -25,23 +25,25 @@
     isAtBottom = true;
   }
 
+  $: allMessages = [...$messages, ...$queuedMessages];
+
   function shouldShowModelIndicator(index: number): boolean {
     if (index === 0) return true;
-    const currentModel = $messages[index].model;
-    const previousModel = $messages[index - 1].model;
+    const currentModel = allMessages[index].model;
+    const previousModel = allMessages[index - 1].model;
     return currentModel !== previousModel;
   }
 </script>
 
 <div class="message-list" bind:this={listElement} on:scroll={handleScroll}>
-  {#each $messages as message, index (message.id)}
+  {#each allMessages as message, index (message.id)}
     {#if shouldShowModelIndicator(index)}
       <div class="model-indicator">
         <span class="model-indicator-text">Model: {message.model || 'Unknown'}</span>
       </div>
     {/if}
     <Message {message} />
-    {#if message.toolCalls && message.toolCalls.length > 0}
+    {#if 'toolCalls' in message && message.toolCalls && message.toolCalls.length > 0}
       <div class="tool-calls-container">
         {#each message.toolCalls as toolCall (toolCall.id)}
           <ToolCallMessage {toolCall} />

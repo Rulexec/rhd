@@ -1,6 +1,7 @@
 import { get } from 'svelte/store';
 import { sendRequest, generateRequestId } from '../ws';
 import type { WsResponse } from '../types/ws';
+import type { QueuedMessage } from '../types/index';
 import {
   chats,
   currentChatId,
@@ -15,6 +16,7 @@ import {
   availableRoles,
   activeRole,
   todoList,
+  queuedMessages,
 } from '../chatStores';
 import {
   chatProjects,
@@ -248,5 +250,28 @@ export async function resumeChat(): Promise<WsResponse> {
 
   const id = generateRequestId();
   const response = await sendRequest({ type: 'resumeChat', id, chatId });
+  return response;
+}
+
+export async function queueMessage(content: string, model: string): Promise<WsResponse> {
+  const chatId = get(currentChatId);
+  if (!chatId) return { id: '', type: 'response', success: false, error: 'No chat selected' };
+
+  const tempId = `queued-${Date.now()}`;
+  const queuedMessage: QueuedMessage = {
+    id: tempId,
+    content,
+    model,
+    queuedAt: new Date().toISOString(),
+    status: 'queued',
+  };
+  
+  queuedMessages.update((list) => [...list, queuedMessage]);
+
+  const id = generateRequestId();
+  const response = await sendRequest({ type: 'queueMessage', id, chatId, content, model });
+  if (!response.success) {
+    queuedMessages.update((list) => list.filter((m) => m.id !== tempId));
+  }
   return response;
 }

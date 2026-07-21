@@ -7,6 +7,7 @@ import {
   deleteChat,
   deleteAllChats,
   sendMessage,
+  queueMessage,
   editMessage,
   abortChat,
   pauseChat,
@@ -40,6 +41,9 @@ export async function processAction(action: ChatAction): Promise<void> {
       break;
     case 'sendMessage':
       await sendMessage(action.payload.content, action.payload.model);
+      break;
+    case 'queueMessage':
+      await queueMessage(action.payload.content, action.payload.model);
       break;
     case 'editMessage':
       await editMessage(action.payload.messageId, action.payload.content, action.payload.model);

@@ -9,11 +9,14 @@ import {
   selectedModel,
   streamingMessageId,
   isPaused,
+  isAborted,
   pendingToolCalls,
   availableRoles,
   activeRole,
   todoList,
+  queuedMessages,
 } from '../chatStores';
+import type { QueuedMessage } from '../types/index';
 import {
   handleMcpStatusEvent,
   handleProjectAttachedEvent,
@@ -305,12 +308,41 @@ export function handleChatEvent(event: string, data: unknown): void {
     }
     case 'chatPaused': {
       isPaused.set(true);
+      isAborted.set(false);
       isStreaming.set(false);
       break;
     }
     case 'chatResumed': {
       isPaused.set(false);
+      isAborted.set(false);
       isStreaming.set(true);
+      queuedMessages.set([]);
+      break;
+    }
+    case 'streamAborted': {
+      const tempId = get(streamingMessageId);
+      if (tempId) {
+        messages.update((list) => list.filter((m) => m.id !== tempId));
+        streamingMessageId.set(null);
+      }
+      
+      isPaused.set(true);
+      isAborted.set(true);
+      isStreaming.set(false);
+      streamingThinkingContent.set('');
+      break;
+    }
+    case 'messageQueued': {
+      const { content, model } = data as { content: string; model: string };
+      const tempId = `queued-${Date.now()}`;
+      const queuedMessage: QueuedMessage = {
+        id: tempId,
+        content,
+        model,
+        queuedAt: new Date().toISOString(),
+        status: 'queued',
+      };
+      queuedMessages.update((list) => [...list, queuedMessage]);
       break;
     }
     case 'roleChanged': {

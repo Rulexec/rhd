@@ -2,11 +2,11 @@
   import { tick } from 'svelte';
   import { dispatch } from '../lib/actions';
   import { streamingMessageId, selectedModel } from '../lib/chatStores';
-  import type { ChatMessage } from '../lib/types/index';
+  import type { ChatMessage, QueuedMessage } from '../lib/types/index';
   import { renderMarkdown } from '../lib/markdown';
   import './Message.styles.css';
 
-  export let message: ChatMessage;
+  export let message: ChatMessage | QueuedMessage;
 
   let editing = false;
   let editContent = message.content;
@@ -18,12 +18,19 @@
   let markdownEnabled = true;
   const SCROLL_THRESHOLD = 30;
 
-  $: isStreamingMessage = $streamingMessageId === message.id;
-  $: isSystemMessage = message.role === 'system';
-  $: isAssistantMessage = message.role === 'assistant';
-  $: hasThinkingContent = message.thinkingContent && message.thinkingContent.length > 0;
-  $: renderedContent = markdownEnabled && isAssistantMessage ? renderMarkdown(message.content) : null;
-  $: renderedThinking = markdownEnabled && hasThinkingContent && message.thinkingContent ? renderMarkdown(message.thinkingContent) : null;
+  function isQueuedMessage(msg: ChatMessage | QueuedMessage): msg is QueuedMessage {
+    return 'status' in msg && msg.status === 'queued';
+  }
+
+  let chatMessage: ChatMessage | null;
+  $: isQueued = isQueuedMessage(message);
+  $: chatMessage = isQueued ? null : (message as ChatMessage);
+  $: isStreamingMessage = chatMessage !== null && $streamingMessageId === chatMessage.id;
+  $: isSystemMessage = chatMessage !== null && chatMessage.role === 'system';
+  $: isAssistantMessage = chatMessage !== null && chatMessage.role === 'assistant';
+  $: hasThinkingContent = chatMessage !== null && chatMessage.thinkingContent && chatMessage.thinkingContent.length > 0;
+  $: renderedContent = chatMessage !== null && markdownEnabled && isAssistantMessage ? renderMarkdown(chatMessage.content) : null;
+  $: renderedThinking = chatMessage !== null && markdownEnabled && hasThinkingContent && chatMessage.thinkingContent ? renderMarkdown(chatMessage.thinkingContent) : null;
 
   function toggleMarkdown() {
     markdownEnabled = !markdownEnabled;
@@ -51,7 +58,7 @@
     }
   }
 
-  $: message.thinkingContent, autoScrollThinking();
+  $: chatMessage?.thinkingContent, autoScrollThinking();
 
   function startEdit() {
     editing = true;
@@ -83,7 +90,10 @@
   }
 </script>
 
-<div class="message {message.role}" class:system-collapsed={isSystemMessage && !systemExpanded}>
+<div class="message {isQueued ? 'queued' : chatMessage?.role}" class:system-collapsed={isSystemMessage && !systemExpanded}>
+  {#if isQueued}
+    <div class="queued-badge">Queued</div>
+  {/if}
   {#if editing}
     <div class="edit-mode">
       <textarea
@@ -126,7 +136,7 @@
             {@html renderedThinking}
           </div>
         {:else}
-          <pre class="thinking-content" bind:this={thinkingEl} on:scroll={handleThinkingScroll}>{message.thinkingContent}</pre>
+          <pre class="thinking-content" bind:this={thinkingEl} on:scroll={handleThinkingScroll}>{chatMessage?.thinkingContent}</pre>
         {/if}
       {:else}
         <div class="thinking-preview">
@@ -135,7 +145,7 @@
               {@html renderedThinking}
             </div>
           {:else}
-            <pre class="thinking-content">{message.thinkingContent}</pre>
+            <pre class="thinking-content">{chatMessage?.thinkingContent}</pre>
           {/if}
         </div>
       {/if}
@@ -147,6 +157,22 @@
           <span class="streaming-dots"></span>
         {/if}
       </div>
+      
+      <style>
+        .queued {
+          opacity: 0.7;
+        }
+        
+        .queued-badge {
+          display: inline-block;
+          padding: 2px 8px;
+          background: #f0f0f0;
+          border-radius: 4px;
+          font-size: 12px;
+          color: #666;
+          margin-bottom: 4px;
+        }
+      </style>
     {:else}
       <div class="content">
         {message.content}
@@ -155,7 +181,7 @@
         {/if}
       </div>
     {/if}
-    {#if message.role === 'user'}
+    {#if chatMessage?.role === 'user'}
       <button class="edit-btn" on:click={startEdit} aria-label="Edit message">
         ✎
       </button>

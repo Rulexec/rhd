@@ -6,6 +6,7 @@ export type ChatAction =
   | { type: 'deleteChat'; payload: { chatId: number } }
   | { type: 'deleteAllChats' }
   | { type: 'sendMessage'; payload: { content: string; model: string } }
+  | { type: 'queueMessage'; payload: { content: string; model: string } }
   | { type: 'editMessage'; payload: { messageId: number; content: string; model: string } }
   | { type: 'abortChat' }
   | { type: 'pauseChat' }

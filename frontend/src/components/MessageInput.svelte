@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { isStreaming, streamError, currentChatId, availableModels, selectedModel, isPaused } from '../lib/chatStores';
+  import { isStreaming, streamError, currentChatId, availableModels, selectedModel, isPaused, isAborted, queuedMessages } from '../lib/chatStores';
   import { chatProjects, mcpStatuses } from '../lib/projectStores';
   import { dispatch } from '../lib/actions';
 
@@ -15,6 +15,12 @@
     (s) => $chatProjects.some((p) => p.name === s.projectName) && s.status === 'failed'
   );
 
+  $: canSend = $selectedModel && !$isStreaming;
+  $: canQueue = $selectedModel && ($isPaused || $isAborted);
+  $: showPauseButton = $isStreaming && !$isPaused;
+  $: showAbortButton = $isStreaming && !$isPaused;
+  $: showResumeButton = $isPaused || $isAborted;
+
   onMount(() => {
     dispatch({ type: 'loadAvailableModels' });
   });
@@ -22,14 +28,18 @@
   function handleKeydown(event: KeyboardEvent) {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
-      send();
+      handleSend();
     }
   }
 
-  function send() {
-    if (!input.trim() || (!$isPaused && $isStreaming) || !$currentChatId || !$selectedModel || hasMcpError) return;
-    dispatch({ type: 'sendMessage', payload: { content: input.trim(), model: $selectedModel } });
-    input = '';
+  function handleSend() {
+    if (canQueue) {
+      dispatch({ type: 'queueMessage', payload: { content: input.trim(), model: $selectedModel! } });
+      input = '';
+    } else if (canSend) {
+      dispatch({ type: 'sendMessage', payload: { content: input.trim(), model: $selectedModel! } });
+      input = '';
+    }
     if (textareaElement) {
       textareaElement.style.height = 'auto';
     }
@@ -89,26 +99,35 @@
       bind:value={input}
       on:keydown={handleKeydown}
       on:input={handleInput}
-      placeholder="Type a message..."
-      disabled={$isStreaming && !$isPaused}
+      placeholder={$isPaused || $isAborted ? 'Type a message to queue...' : 'Type a message...'}
+      disabled={!canSend && !canQueue}
       class="input-textarea"
       rows="1"
     ></textarea>
-    {#if $isPaused}
-      <button on:click={resume} class="resume-btn">Resume</button>
-      <button on:click={send} disabled={!input.trim() || !$currentChatId || hasMcpError} class="send-btn">
-        Send
-      </button>
-      <button on:click={abort} class="abort-btn">Abort</button>
-    {:else if $isStreaming}
+    {#if showPauseButton}
       <button on:click={pause} class="pause-btn">Pause</button>
+    {/if}
+    
+    {#if showAbortButton}
       <button on:click={abort} class="abort-btn">Abort</button>
-    {:else}
-      <button on:click={send} disabled={!input.trim() || !$currentChatId || hasMcpError} class="send-btn">
-        Send
+    {/if}
+    
+    {#if showResumeButton}
+      <button on:click={resume} class="resume-btn">Resume</button>
+    {/if}
+    
+    {#if canSend || canQueue}
+      <button on:click={handleSend} disabled={!input.trim() || !$currentChatId || hasMcpError} class="send-btn">
+        {canQueue ? 'Queue' : 'Send'}
       </button>
     {/if}
   </div>
+  
+  {#if $queuedMessages.length > 0}
+    <div class="queued-indicator">
+      {$queuedMessages.length} message{$queuedMessages.length === 1 ? '' : 's'} queued
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -234,5 +253,15 @@
   .resume-btn {
     background: #5cb85c;
     color: white;
+  }
+
+  .queued-indicator {
+    margin-top: var(--spacing-s);
+    padding: var(--spacing-xs) var(--spacing-s);
+    background: var(--color-bg-secondary, #f5f5f5);
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--color-text-secondary, #666);
+    text-align: center;
   }
 </style>

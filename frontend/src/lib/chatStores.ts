@@ -1,6 +1,6 @@
 import { writable, derived } from 'svelte/store';
 import type { Writable, Readable } from 'svelte/store';
-import type { Chat, ChatMessage, ToolCall, RoleInfo, ActiveRole, TodoItem } from './types/index';
+import type { Chat, ChatMessage, ToolCall, RoleInfo, ActiveRole, TodoItem, QueuedMessage } from './types/index';
 
 export const chats: Writable<Chat[]> = writable([]);
 export const currentChatId: Writable<number | null> = writable(null);
@@ -13,7 +13,9 @@ export const availableModels: Writable<string[]> = writable([]);
 export const selectedModel: Writable<string | null> = writable(null);
 export const streamingMessageId: Writable<string | null> = writable(null);
 export const isPaused: Writable<boolean> = writable(false);
+export const isAborted: Writable<boolean> = writable(false);
 export const pendingToolCalls: Writable<ToolCall[]> = writable([]);
+export const queuedMessages: Writable<QueuedMessage[]> = writable([]);
 export const availableRoles: Writable<RoleInfo[]> = writable([]);
 export const activeRole: Writable<ActiveRole | null> = writable(null);
 export const todoList: Writable<TodoItem[]> = writable([]);
@@ -66,7 +68,9 @@ export function resetAllStores(): void {
   selectedModel.set(null);
   streamingMessageId.set(null);
   isPaused.set(false);
+  isAborted.set(false);
   pendingToolCalls.set([]);
+  queuedMessages.set([]);
   availableRoles.set([]);
   activeRole.set(null);
   todoList.set([]);
