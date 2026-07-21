@@ -1,3 +1,10 @@
+> **DEPRECATED**: This test case has been superseded by the more detailed test cases in `tests/cases/pause-abort/`. See:
+> - [`pause-during-ai-call.md`](pause-abort/pause-during-ai-call.md)
+> - [`pause-during-tool-execution.md`](pause-abort/pause-during-tool-execution.md)
+> - [`abort-during-ai-call.md`](pause-abort/abort-during-ai-call.md)
+> - [`abort-during-tool-execution.md`](pause-abort/abort-during-tool-execution.md)
+> - [`message-queue-during-pause-abort.md`](pause-abort/message-queue-during-pause-abort.md)
+
 # Test Case: Pause/Resume Chat
 
 ## Description
