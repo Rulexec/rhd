@@ -123,5 +123,6 @@ Test cases documented in `tests/cases/*.md`:
 - `chat-pause-resume.md` — Pause/resume during tool loop
 - `chat-delete.md` — Delete chat
 - `chat-select-model.md` — Select model
+- `roles-integration.md` — Role selection, switching, and conflict detection
 
 Tests reference covered test cases in file header comments.

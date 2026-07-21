@@ -120,3 +120,4 @@ Product-scoped feature documentation (what the feature does, not how it's implem
 | [features/testing.md](features/testing.md) | Understanding E2E test infrastructure, mock server, test utilities |
 | [features/logging-monitoring.md](features/logging-monitoring.md) | Understanding log files, meta.json, WebSocket events, notifications |
 | [features/projects.md](features/projects.md) | Understanding projects feature, project structure, attaching projects to chats, MCP server lifecycle, system prompt injection |
+| [features/roles.md](features/roles.md) | Understanding roles feature, role selection, AI-driven role switching, role conflict detection, role injection |

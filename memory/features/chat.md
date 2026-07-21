@@ -3,6 +3,22 @@
 ## Purpose
 Persistent conversational interface for direct AI interaction. Users create chats, send messages, receive streaming responses, and can edit/resend previous messages. All conversations persist across daemon restarts.
 
+## Todo List
+- AI can create and manage a task tracking list during multi-step operations
+- Button appears near the role selector showing completed/total count (e.g., "3/5")
+- Clicking the button expands a dropdown showing the full todo list
+- Each item shows status icon and content:
+  - ✓ (green) - Completed tasks (strikethrough text)
+  - ◐ (blue) - In progress tasks (bold text)
+  - ○ (gray) - Pending tasks
+  - ✗ (red) - Discarded tasks (strikethrough, faded text)
+- Real-time updates as the AI modifies the list
+- Button only visible when a todo list exists
+- Dropdown shows header with "Task List" title and completion stats
+- Auto-updates via WebSocket events when AI calls `rhd_set_todo_list` tool
+- Todo list is injected into AI context during tool loop iterations
+- Tool contract is injected as system message on first message in chat
+
 ## Delete All Chats
 - "Delete all chats" button at the bottom of the chat list sidebar
 - Removes all chats and their messages at once

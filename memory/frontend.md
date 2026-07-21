@@ -75,6 +75,8 @@ See `frontend/src/lib/stateExport.ts` for the full implementation and `frontend/
   - Layout: `TabNav`, `App`
   - Scenarios: `ScenariosTab`, `ActiveScenario`, `FinishedScenario`, `PausedScenario`
   - Chats: `ChatsTab`, `ChatList`, `ChatView`, `MessageList`, `Message`, `MessageInput`, `StreamingMessage`, `ToolCallMessage`
+  - Roles: `RoleSelector` (dropdown for selecting active role from attached projects)
+  - Todo List: `TodoListButton` (button with progress count, expands to show full todo list)
 
 ## Actions Layer (`frontend/src/lib/actions/`)
 
