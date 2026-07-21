@@ -3,6 +3,11 @@
  * - tests/cases/chat-send-message.md (UI rendering steps)
  * - tests/cases/chat-abort.md (UI rendering steps)
  * - tests/cases/chat-pause-resume.md (UI rendering steps)
+ * - tests/cases/pause-abort/pause-during-ai-call.md (UI rendering steps)
+ * - tests/cases/pause-abort/pause-during-tool-execution.md (UI rendering steps)
+ * - tests/cases/pause-abort/abort-during-ai-call.md (UI rendering steps)
+ * - tests/cases/pause-abort/abort-during-tool-execution.md (UI rendering steps)
+ * - tests/cases/pause-abort/message-queue-during-pause-abort.md (UI rendering steps)
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -14,7 +19,9 @@ import {
   selectedModel,
   isStreaming,
   isPaused,
+  isAborted,
   streamError,
+  queuedMessages,
 } from '../../lib/chatStores';
 import { chatProjects, mcpStatuses } from '../../lib/projectStores';
 import { _testOverrideAction, _testClearOverrides } from '../../lib/actions';
@@ -113,5 +120,79 @@ describe('MessageInput UI', () => {
     );
     expect(options).toContain('model1');
     expect(options).toContain('model2');
+  });
+
+  // Covers pause-during-ai-call.md step 1 (UI rendering)
+  // Step 1. User clicks Pause button (renders pause button when streaming and not paused)
+  it('renders pause button when streaming and not paused', () => {
+    isStreaming.set(true);
+    isPaused.set(false);
+    isAborted.set(false);
+    render(MessageInput);
+    expect(screen.getByText('Pause')).toBeTruthy();
+    expect(screen.getByText('Abort')).toBeTruthy();
+    expect(screen.queryByText('Resume')).toBeNull();
+  });
+
+  // Covers pause-during-ai-call.md step 17 (UI rendering)
+  // Step 17. User clicks Resume button (renders resume button when paused)
+  it('renders resume button when paused', () => {
+    isStreaming.set(false);
+    isPaused.set(true);
+    isAborted.set(false);
+    render(MessageInput);
+    expect(screen.queryByText('Pause')).toBeNull();
+    expect(screen.queryByText('Abort')).toBeNull();
+    expect(screen.getByText('Resume')).toBeTruthy();
+  });
+
+  // Covers abort-during-ai-call.md step 20 (UI rendering)
+  // Step 20. User clicks Resume button (renders resume button when aborted)
+  it('renders resume button when aborted', () => {
+    isStreaming.set(false);
+    isPaused.set(true);
+    isAborted.set(true);
+    render(MessageInput);
+    expect(screen.queryByText('Pause')).toBeNull();
+    expect(screen.queryByText('Abort')).toBeNull();
+    expect(screen.getByText('Resume')).toBeTruthy();
+  });
+
+  // Covers pause-during-ai-call.md step 10 (UI rendering)
+  // Step 10. User types message in input field (allows message input when paused)
+  it('allows message input when paused', async () => {
+    isStreaming.set(false);
+    isPaused.set(true);
+    isAborted.set(false);
+    render(MessageInput);
+    
+    const textarea = screen.getByPlaceholderText('Type a message to queue...');
+    expect(textarea).toBeTruthy();
+    expect(textarea.hasAttribute('disabled')).toBe(false);
+    
+    await fireEvent.input(textarea, { target: { value: 'Hello' } });
+    expect((textarea as HTMLTextAreaElement).value).toBe('Hello');
+  });
+
+  // Covers pause-during-ai-call.md step 11 (UI rendering)
+  // Step 11. User clicks Send button (shows queue button when paused)
+  it('shows queue button when paused', () => {
+    isStreaming.set(false);
+    isPaused.set(true);
+    isAborted.set(false);
+    render(MessageInput);
+    expect(screen.getByText('Queue')).toBeTruthy();
+  });
+
+  // Covers message-queue-during-pause-abort.md step 7 (UI rendering)
+  // Step 7. System adds message to queuedMessages store with "Queued" indicator (shows queued messages indicator)
+  it('shows queued messages indicator', () => {
+    isPaused.set(true);
+    queuedMessages.set([
+      { id: 'queued-1', content: 'Hello', model: 'model1', queuedAt: new Date().toISOString(), status: 'queued' },
+      { id: 'queued-2', content: 'World', model: 'model1', queuedAt: new Date().toISOString(), status: 'queued' },
+    ]);
+    render(MessageInput);
+    expect(screen.getByText('2 messages queued')).toBeTruthy();
   });
 });

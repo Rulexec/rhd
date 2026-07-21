@@ -52,8 +52,8 @@ User pauses chat while tool calls are executing.
 ## Covered By
 
 ### E2E Tests
-- [`chat-state.test.ts`](frontend/src/tests/e2e/chat-state.test.ts) - `pauses during tool execution and resumes` (steps 2-28)
+- [`chat-state.test.ts`](frontend/src/tests/e2e/chat-state.test.ts) - `pauses during tool execution and resumes` (steps 2-28) - Line 443
 
 ### UI Tests
-- [`MessageInput.test.ts`](frontend/src/tests/ui/MessageInput.test.ts) - `renders pause button when streaming` (step 1)
-- [`MessageInput.test.ts`](frontend/src/tests/ui/MessageInput.test.ts) - `renders resume button when paused` (step 18)
+- [`MessageInput.test.ts`](frontend/src/tests/ui/MessageInput.test.ts) - `renders pause button when streaming and not paused` (step 1) - Line 119
+- [`MessageInput.test.ts`](frontend/src/tests/ui/MessageInput.test.ts) - `renders resume button when paused` (step 18) - Line 131

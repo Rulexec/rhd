@@ -21,9 +21,11 @@ export type ChatAction =
   | { type: 'chatMessageAdded'; payload: { message: ChatMessage } }
   | { type: 'chatUpdated'; payload: { chatId: number; title: string } }
   | { type: 'chatToolCallStarted'; payload: { chatId: number; toolCallId: string; toolName: string; arguments: string; mcpId: string } }
-  | { type: 'chatToolCallCompleted'; payload: { chatId: number; toolCallId: string; result: string } }
+  | { type: 'chatToolCallCompleted'; payload: { chatId: number; toolCallId: string; result: string; isError?: boolean } }
   | { type: 'chatPaused' }
   | { type: 'chatResumed' }
+  | { type: 'streamAborted' }
+  | { type: 'messageQueued'; payload: { content: string; model: string } }
   | { type: 'projectMcpStatusChanged'; payload: unknown }
   | { type: 'projectAttached'; payload: unknown }
   | { type: 'projectDetached'; payload: unknown }

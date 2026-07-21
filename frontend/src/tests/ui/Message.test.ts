@@ -2,6 +2,7 @@
  * Test cases covered:
  * - tests/cases/chat-edit-message.md (UI rendering steps)
  * - tests/cases/chat-streaming.md (UI rendering steps)
+ * - tests/cases/pause-abort/message-queue-during-pause-abort.md (UI rendering steps)
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -134,5 +135,32 @@ describe('Message UI', () => {
     };
     render(Message, { props: { message } });
     expect(screen.getByText('System Prompt')).toBeTruthy();
+  });
+
+  // Covers message-queue-during-pause-abort.md step 7 (UI rendering)
+  // Step 7. System adds message to queuedMessages store with "Queued" indicator (shows Queued indicator for queued messages)
+  it('shows Queued indicator for queued messages', () => {
+    const queuedMessage = {
+      id: 'queued-1',
+      content: 'Hello',
+      model: 'model1',
+      queuedAt: new Date().toISOString(),
+      status: 'queued' as const,
+    };
+    render(Message, { props: { message: queuedMessage } });
+    expect(screen.getByText('Queued')).toBeTruthy();
+  });
+
+  it('does not show Queued indicator for regular messages', () => {
+    const regularMessage: ChatMessage = {
+      id: 1,
+      chatId: 1,
+      role: 'user',
+      content: 'Hello',
+      createdAt: '',
+      model: 'model1',
+    };
+    render(Message, { props: { message: regularMessage } });
+    expect(screen.queryByText('Queued')).toBeNull();
   });
 });

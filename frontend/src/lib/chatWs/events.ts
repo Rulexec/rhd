@@ -322,7 +322,17 @@ export function handleChatEvent(event: string, data: unknown): void {
     case 'streamAborted': {
       const tempId = get(streamingMessageId);
       if (tempId) {
-        messages.update((list) => list.filter((m) => m.id !== tempId));
+        // Only remove the message if it doesn't have tool calls
+        // (messages with tool calls should be preserved even on abort)
+        messages.update((list) => {
+          const msg = list.find(m => m.id === tempId);
+          if (msg && msg.toolCalls && msg.toolCalls.length > 0) {
+            // Keep the message if it has tool calls
+            return list;
+          }
+          // Otherwise, remove it
+          return list.filter((m) => m.id !== tempId);
+        });
         streamingMessageId.set(null);
       }
       

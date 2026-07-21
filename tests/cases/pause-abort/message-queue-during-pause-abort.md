@@ -48,8 +48,9 @@ User adds messages while chat is paused or aborted, messages are queued and sent
 ## Covered By
 
 ### E2E Tests
-- [`chat-state.test.ts`](frontend/src/tests/e2e/chat-state.test.ts) - `queues multiple messages during pause and sends on resume` (steps 3-26)
+- [`chat-state.test.ts`](frontend/src/tests/e2e/chat-state.test.ts) - `queues multiple messages during pause and sends on resume` (steps 3-26) - Line 587
 
 ### UI Tests
-- [`MessageInput.test.ts`](frontend/src/tests/ui/MessageInput.test.ts) - `allows message input when paused` (step 1)
-- [`Message.test.ts`](frontend/src/tests/ui/Message.test.ts) - `shows Queued indicator for queued messages` (step 7)
+- [`MessageInput.test.ts`](frontend/src/tests/ui/MessageInput.test.ts) - `allows message input when paused` (step 1) - Line 155
+- [`MessageInput.test.ts`](frontend/src/tests/ui/MessageInput.test.ts) - `shows queued messages indicator` (step 7) - Line 167
+- [`Message.test.ts`](frontend/src/tests/ui/Message.test.ts) - `shows Queued indicator for queued messages` (step 7) - Line 140
