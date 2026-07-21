@@ -40,4 +40,7 @@ pub enum ChatError {
 
     #[error("chat was aborted by user")]
     Aborted,
+
+    #[error("invalid state: {0}")]
+    InvalidState(String),
 }

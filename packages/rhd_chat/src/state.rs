@@ -20,6 +20,42 @@ pub struct PendingToolCall {
     pub arguments: String,
 }
 
+/// Represents a message queued while chat is paused/aborted
+#[derive(Debug, Clone)]
+pub struct QueuedMessage {
+    pub content: String,
+    pub model: String,
+    pub queued_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Stores queued messages for a chat
+#[derive(Debug, Clone, Default)]
+pub struct MessageQueue {
+    pub messages: Vec<QueuedMessage>,
+}
+
+impl MessageQueue {
+    pub fn new() -> Self {
+        Self { messages: Vec::new() }
+    }
+
+    pub fn push(&mut self, message: QueuedMessage) {
+        self.messages.push(message);
+    }
+
+    pub fn drain(&mut self) -> Vec<QueuedMessage> {
+        std::mem::take(&mut self.messages)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.messages.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.messages.len()
+    }
+}
+
 #[derive(Debug)]
 pub enum StreamState {
     Running {
@@ -32,10 +68,12 @@ pub enum StreamState {
         pause_notify: Arc<Notify>,
         phase: ExecutionPhase,
         pending_tool_calls: Vec<PendingToolCall>,
+        message_queue: MessageQueue,
     },
     Aborted {
         cancel_token: CancellationToken,
         aborted_tool_ids: Vec<String>,
+        message_queue: MessageQueue,
     },
 }
 
@@ -66,6 +104,22 @@ impl StreamState {
             _ => None,
         }
     }
+
+    pub fn message_queue(&self) -> Option<&MessageQueue> {
+        match self {
+            StreamState::Paused { message_queue, .. } => Some(message_queue),
+            StreamState::Aborted { message_queue, .. } => Some(message_queue),
+            StreamState::Running { .. } => None,
+        }
+    }
+
+    pub fn message_queue_mut(&mut self) -> Option<&mut MessageQueue> {
+        match self {
+            StreamState::Paused { message_queue, .. } => Some(message_queue),
+            StreamState::Aborted { message_queue, .. } => Some(message_queue),
+            StreamState::Running { .. } => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -76,6 +130,7 @@ pub struct StreamStateInfo {
     pub phase: Option<ExecutionPhase>,
     pub pending_tool_calls: Vec<PendingToolCall>,
     pub aborted_tool_ids: Vec<String>,
+    pub queued_messages: Vec<QueuedMessage>,
 }
 
 impl From<&StreamState> for StreamStateInfo {
@@ -88,22 +143,25 @@ impl From<&StreamState> for StreamStateInfo {
                 phase: Some(phase.clone()),
                 pending_tool_calls: Vec::new(),
                 aborted_tool_ids: Vec::new(),
+                queued_messages: Vec::new(),
             },
-            StreamState::Paused { phase, pending_tool_calls, .. } => StreamStateInfo {
+            StreamState::Paused { phase, pending_tool_calls, message_queue, .. } => StreamStateInfo {
                 is_running: false,
                 is_paused: true,
                 is_aborted: false,
                 phase: Some(phase.clone()),
                 pending_tool_calls: pending_tool_calls.clone(),
                 aborted_tool_ids: Vec::new(),
+                queued_messages: message_queue.messages.clone(),
             },
-            StreamState::Aborted { aborted_tool_ids, .. } => StreamStateInfo {
+            StreamState::Aborted { aborted_tool_ids, message_queue, .. } => StreamStateInfo {
                 is_running: false,
                 is_paused: false,
                 is_aborted: true,
                 phase: None,
                 pending_tool_calls: Vec::new(),
                 aborted_tool_ids: aborted_tool_ids.clone(),
+                queued_messages: message_queue.messages.clone(),
             },
         }
     }
@@ -119,6 +177,7 @@ mod tests {
         let aborted = StreamState::Aborted {
             cancel_token,
             aborted_tool_ids: vec!["call_1".to_string()],
+            message_queue: MessageQueue::new(),
         };
         assert!(aborted.is_aborted());
 
@@ -158,7 +217,52 @@ mod tests {
             pause_notify,
             phase: ExecutionPhase::AiCall,
             pending_tool_calls: pending.clone(),
+            message_queue: MessageQueue::new(),
         };
         assert_eq!(paused.pending_tool_calls(), Some(&pending));
+    }
+
+    #[test]
+    fn test_message_queue_push_and_drain() {
+        let mut queue = MessageQueue::new();
+        assert!(queue.is_empty());
+        
+        queue.push(QueuedMessage {
+            content: "Hello".to_string(),
+            model: "gpt-4".to_string(),
+            queued_at: chrono::Utc::now(),
+        });
+        
+        assert_eq!(queue.len(), 1);
+        assert!(!queue.is_empty());
+        
+        let messages = queue.drain();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].content, "Hello");
+        assert!(queue.is_empty());
+    }
+
+    #[test]
+    fn test_message_queue_multiple_messages() {
+        let mut queue = MessageQueue::new();
+        
+        queue.push(QueuedMessage {
+            content: "First".to_string(),
+            model: "gpt-4".to_string(),
+            queued_at: chrono::Utc::now(),
+        });
+        
+        queue.push(QueuedMessage {
+            content: "Second".to_string(),
+            model: "gpt-4".to_string(),
+            queued_at: chrono::Utc::now(),
+        });
+        
+        assert_eq!(queue.len(), 2);
+        
+        let messages = queue.drain();
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].content, "First");
+        assert_eq!(messages[1].content, "Second");
     }
 }

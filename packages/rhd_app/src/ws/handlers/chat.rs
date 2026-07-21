@@ -182,3 +182,24 @@ pub async fn handle_resume_chat(id: String, chat_id: i64, state: &Arc<DaemonStat
     let resumed = state.chat_manager.resume_chat(chat_id).await.is_some();
     WsResponse::success(id, serde_json::json!({ "resumed": resumed }))
 }
+
+pub async fn handle_queue_message(
+    id: String,
+    chat_id: i64,
+    content: String,
+    model: String,
+    state: &Arc<DaemonState>,
+) -> WsResponse {
+    match state
+        .chat_manager
+        .queue_message(chat_id, content, model, &state.chat_event_sender)
+        .await
+    {
+        Ok(()) => WsResponse::success(id, serde_json::json!({})),
+        Err(e) => WsResponse::error(
+            id,
+            ErrorCode::InternalError,
+            format!("failed to queue message: {}", e),
+        ),
+    }
+}

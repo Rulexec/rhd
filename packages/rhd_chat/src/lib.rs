@@ -10,7 +10,7 @@ pub mod chat_log;
 pub use error::ChatError;
 pub use event::ChatEvent;
 pub use manager::ChatManager;
-pub use state::{ExecutionPhase, PendingToolCall, StreamState, StreamStateInfo};
+pub use state::{ExecutionPhase, MessageQueue, PendingToolCall, QueuedMessage, StreamState, StreamStateInfo};
 
 use std::sync::Arc;
 use async_trait::async_trait;

@@ -72,6 +72,13 @@ pub enum WsRequest {
     PauseChat { id: String, chat_id: i64 },
     #[serde(rename = "resumeChat", rename_all = "camelCase")]
     ResumeChat { id: String, chat_id: i64 },
+    #[serde(rename = "queueMessage", rename_all = "camelCase")]
+    QueueMessage {
+        id: String,
+        chat_id: i64,
+        content: String,
+        model: String,
+    },
 
     // Scenario pause/resume operations
     #[serde(rename = "retryScenario", rename_all = "camelCase")]
