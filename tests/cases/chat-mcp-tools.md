@@ -73,9 +73,9 @@ sendMessage → MessageAdded (user)
 ## Covered By
 
 ### E2E Tests
-- [`chat-mcp-tools.test.ts`](frontend/src/tests/e2e/chat-mcp-tools.test.ts) - `attaches project with MCP and streams final response after tool call` (steps 1-19)
-- [`chat-mcp-tools.test.ts`](frontend/src/tests/e2e/chat-mcp-tools.test.ts) - `handles multiple tool calls with different results` (steps 1-19, single iteration)
-- [`chat-mcp-tools.test.ts`](frontend/src/tests/e2e/chat-mcp-tools.test.ts) - `maintains unique tool call ids across multiple iterations` (steps 1-19, two iterations)
+- [`chat-mcp-tools.test.ts`](../../frontend/src/tests/e2e/chat-mcp-tools.test.ts) - `attaches project with MCP and streams final response after tool call` (steps 1-19)
+- [`chat-mcp-tools.test.ts`](../../frontend/src/tests/e2e/chat-mcp-tools.test.ts) - `handles multiple tool calls with different results` (steps 1-19, single iteration)
+- [`chat-mcp-tools.test.ts`](../../frontend/src/tests/e2e/chat-mcp-tools.test.ts) - `maintains unique tool call ids across multiple iterations` (steps 1-19, two iterations)
 
 ### Coverage Notes
 - Full coverage: steps 1-19 covered (100%)

@@ -29,11 +29,11 @@ User selects a model for the current chat.
 ## Covered By
 
 ### E2E Tests
-- [`chat-state.test.ts`](frontend/src/tests/e2e/chat-state.test.ts) - `loads available models from daemon` (step 1)
-- [`chat-state.test.ts`](frontend/src/tests/e2e/chat-state.test.ts) - `auto-selects first model when available` (steps 1-3, 6-8)
+- [`chat-state.test.ts`](../../frontend/src/tests/e2e/chat-state.test.ts) - `loads available models from daemon` (step 1)
+- [`chat-state.test.ts`](../../frontend/src/tests/e2e/chat-state.test.ts) - `auto-selects first model when available` (steps 1-3, 6-8)
 
 ### UI Tests
-- [`MessageInput.test.ts`](frontend/src/tests/ui/MessageInput.test.ts) - `renders model selector with available models` (step 2)
+- [`MessageInput.test.ts`](../../frontend/src/tests/ui/MessageInput.test.ts) - `renders model selector with available models` (step 2)
 
 ### Coverage Notes
 - Steps 4-5 (user interaction with dropdown) are not explicitly tested

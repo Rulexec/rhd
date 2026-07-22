@@ -38,13 +38,13 @@ System displays streaming chunks in real-time with animated indicator.
 ## Covered By
 
 ### E2E Tests
-- [`chat-state.test.ts`](frontend/src/tests/e2e/chat-state.test.ts) - `sends message and receives streaming response from daemon` (steps 1-9, state logic)
+- [`chat-state.test.ts`](../../frontend/src/tests/e2e/chat-state.test.ts) - `sends message and receives streaming response from daemon` (steps 1-9, state logic)
 
 ### UI Tests
-- [`Message.test.ts`](frontend/src/tests/ui/Message.test.ts) - `shows streaming dots for streaming message` (step 4)
-- [`Message.test.ts`](frontend/src/tests/ui/Message.test.ts) - `renders assistant message content` (step 8)
-- [`Message.test.ts`](frontend/src/tests/ui/Message.test.ts) - `renders thinking content when present` (step 8)
-- [`Message.test.ts`](frontend/src/tests/ui/Message.test.ts) - `renders system message with collapsible header` (step 8)
+- [`Message.test.ts`](../../frontend/src/tests/ui/Message.test.ts) - `shows streaming dots for streaming message` (step 4)
+- [`Message.test.ts`](../../frontend/src/tests/ui/Message.test.ts) - `renders assistant message content` (step 8)
+- [`Message.test.ts`](../../frontend/src/tests/ui/Message.test.ts) - `renders thinking content when present` (step 8)
+- [`Message.test.ts`](../../frontend/src/tests/ui/Message.test.ts) - `renders system message with collapsible header` (step 8)
 
 ### Coverage Notes
 - Full coverage: steps 1-9 covered (100%)
