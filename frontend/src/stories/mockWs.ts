@@ -1,8 +1,10 @@
 import type { WsResponse } from '@/lib/types/ws';
 
 type RequestHandler = (request: Record<string, unknown>) => WsResponse | Promise<WsResponse>;
+type EventHandler = (data: any) => void;
 
 const handlers = new Map<string, RequestHandler>();
+const eventHandlers = new Map<string, EventHandler[]>();
 let defaultHandler: RequestHandler = () => ({ type: 'response', id: '', success: true, data: {} });
 
 export function setMockWsHandler(requestType: string, handler: RequestHandler): void {
@@ -15,7 +17,22 @@ export function setDefaultMockWsHandler(handler: RequestHandler): void {
 
 export function clearMockWsHandlers(): void {
   handlers.clear();
+  eventHandlers.clear();
   defaultHandler = () => ({ type: 'response', id: '', success: true, data: {} });
+}
+
+export function onWsEvent(eventType: string, handler: EventHandler): void {
+  if (!eventHandlers.has(eventType)) {
+    eventHandlers.set(eventType, []);
+  }
+  eventHandlers.get(eventType)!.push(handler);
+}
+
+export function emitWsEvent(eventType: string, data: any): void {
+  const handlers = eventHandlers.get(eventType);
+  if (handlers) {
+    handlers.forEach(handler => handler(data));
+  }
 }
 
 let requestIdCounter = 0;

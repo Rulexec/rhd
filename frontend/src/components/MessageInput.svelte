@@ -3,6 +3,7 @@
   import { isStreaming, streamError, currentChatId, availableModels, selectedModel, isPaused, isAborted, queuedMessages } from '@/lib/chatStores';
   import { chatProjects, mcpStatuses } from '@/lib/projectStores';
   import { dispatch } from '@/lib/actions';
+  import { TEST_IDS } from '@/stories/testIds';
 
   let input = '';
   let textareaElement: HTMLTextAreaElement;
@@ -103,6 +104,7 @@
       disabled={!canSend && !canQueue}
       class="input-textarea"
       rows="1"
+      data-testid={TEST_IDS.MESSAGE_INPUT}
     ></textarea>
     {#if showPauseButton}
       <button on:click={pause} class="pause-btn">Pause</button>
@@ -117,7 +119,7 @@
     {/if}
     
     {#if canSend || canQueue}
-      <button on:click={handleSend} disabled={!input.trim() || !$currentChatId || hasMcpError} class="send-btn">
+      <button on:click={handleSend} disabled={!input.trim() || !$currentChatId || hasMcpError} class="send-btn" data-testid={TEST_IDS.SEND_BUTTON}>
         {canQueue ? 'Queue' : 'Send'}
       </button>
     {/if}

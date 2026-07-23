@@ -1,7 +1,27 @@
 import type { Meta, StoryObj } from '@storybook/svelte';
 import ChatView from '@/components/ChatView.svelte';
-import { chats, currentChatId, messages, availableModels, selectedModel, isStreaming, streamError, streamingMessageId, isPaused, pendingToolCalls, availableRoles, activeRole, todoList, resetAllStores } from '@/lib/chatStores';
+import ChatViewWithControls from './ChatViewWithControls.svelte';
+import type { StoryControlDefinition } from '@/stories/StoryExecutionControls.svelte';
+import { 
+  chats, 
+  currentChatId, 
+  messages, 
+  availableModels, 
+  selectedModel, 
+  isStreaming, 
+  streamError, 
+  streamingMessageId, 
+  isPaused, 
+  pendingToolCalls, 
+  availableRoles, 
+  activeRole, 
+  todoList, 
+  resetAllStores 
+} from '@/lib/chatStores';
 import { chatProjects, mcpStatuses } from '@/lib/projectStores';
+import { setMockWsHandler, clearMockWsHandlers, emitWsEvent } from '@/stories/mockWs';
+import { TEST_IDS } from '@/stories/testIds';
+import { sleep } from '@/stories/testUtils';
 
 const mockChat = {
   id: 1,
@@ -11,32 +31,15 @@ const mockChat = {
   activeModel: 'gpt-4',
 };
 
-const mockMessages = [
-  {
-    id: 1,
-    chatId: 1,
-    role: 'user' as const,
-    content: 'Hello, how are you?',
-    createdAt: '2026-07-23T10:00:00Z',
-    model: 'gpt-4',
-    thinkingContent: null,
-  },
-  {
-    id: 2,
-    chatId: 1,
-    role: 'assistant' as const,
-    content: 'I\'m doing well, thank you! How can I help you today?',
-    createdAt: '2026-07-23T10:00:05Z',
-    model: 'gpt-4',
-    thinkingContent: null,
-  },
-];
+interface StoryState {
+  messageId: number;
+}
 
 function setupDefaultStores() {
   resetAllStores();
   chats.set([mockChat]);
   currentChatId.set(1);
-  messages.set(mockMessages);
+  messages.set([]);
   availableModels.set(['gpt-4', 'gpt-3.5-turbo']);
   selectedModel.set('gpt-4');
   isStreaming.set(false);
@@ -50,6 +53,69 @@ function setupDefaultStores() {
   chatProjects.set([]);
   mcpStatuses.set([]);
 }
+
+const storyDefinition: StoryControlDefinition<StoryState> = {
+  getInitialState: () => ({
+    messageId: 1,
+  }),
+  
+  steps: [
+    {
+      name: 'Add user message',
+      execute: async ({ state }) => {
+        const textarea = document.querySelector(`[data-testid="${TEST_IDS.MESSAGE_INPUT}"]`) as HTMLTextAreaElement;
+        const sendButton = document.querySelector(`[data-testid="${TEST_IDS.SEND_BUTTON}"]`) as HTMLButtonElement;
+        
+        if (!textarea || !sendButton) {
+          throw new Error('Could not find message input or send button');
+        }
+        
+        textarea.value = 'Hello, how are you?';
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        
+        await sleep(100);
+        
+        sendButton.click();
+        
+        await sleep(200);
+        
+        return { state: { ...state, messageId: state.messageId + 1 } };
+      },
+    },
+    
+    {
+      name: 'Receive AI response',
+      execute: async ({ state }) => {
+        setMockWsHandler('sendMessage', async (request) => {
+          await sleep(100);
+          emitWsEvent('chatStreamChunk', {
+            chatId: 1,
+            content: 'I\'m doing well, thank you! ',
+          });
+          
+          await sleep(100);
+          emitWsEvent('chatStreamChunk', {
+            chatId: 1,
+            content: 'How can I help you today?',
+          });
+          
+          await sleep(100);
+          emitWsEvent('chatStreamFinished', {
+            chatId: 1,
+          });
+          
+          return { type: 'response', id: request.id as string, success: true, data: {} };
+        });
+        
+        await sleep(500);
+        
+        clearMockWsHandlers();
+        
+        return { state: { ...state, messageId: state.messageId + 1 } };
+      },
+    },
+  ],
+};
 
 setupDefaultStores();
 
@@ -73,3 +139,11 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {};
 
+export const WithControls: Story = {
+  render: () => ({
+    Component: ChatViewWithControls,
+    props: {
+      story: storyDefinition,
+    },
+  }),
+};

@@ -211,3 +211,32 @@ The `MessageList` component displays model indicators:
 - Shows a visual divider when the model changes between messages
 - Indicators are purely visual and not sent to the AI
 - Helps users track which model was used for each part of the conversation
+
+## Import Convention
+
+All imports in frontend code should use the `@/` alias instead of relative paths (`../`). This ensures consistency and makes imports more maintainable across the entire codebase.
+
+**Correct:**
+```typescript
+import { TEST_IDS } from '@/stories/testIds';
+import StoryExecutionControls from '@/stories/StoryExecutionControls.svelte';
+import { dispatch } from '@/lib/actions';
+```
+
+**Incorrect:**
+```typescript
+import { TEST_IDS } from '../testIds';
+import StoryExecutionControls from '../StoryExecutionControls.svelte';
+import { dispatch } from '../lib/actions';
+```
+
+This convention applies to:
+- Components
+- Stories
+- Tests
+- Utilities
+- Any other frontend code
+
+### Test IDs
+
+Test IDs are centralized in `frontend/src/stories/testIds.ts` to prevent duplicates and ensure consistency across components and tests.
