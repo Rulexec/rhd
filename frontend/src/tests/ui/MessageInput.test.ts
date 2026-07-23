@@ -12,7 +12,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
-import MessageInput from '../../components/MessageInput.svelte';
+import MessageInput from '@/components/MessageInput.svelte';
 import {
   currentChatId,
   availableModels,
@@ -22,13 +22,13 @@ import {
   isAborted,
   streamError,
   queuedMessages,
-} from '../../lib/chatStores';
-import { chatProjects, mcpStatuses } from '../../lib/projectStores';
-import { _testOverrideAction, _testClearOverrides } from '../../lib/actions';
-import type { ChatAction } from '../../lib/actions';
+} from '@/lib/chatStores';
+import { chatProjects, mcpStatuses } from '@/lib/projectStores';
+import { _testOverrideAction, _testClearOverrides } from '@/lib/actions';
+import type { ChatAction } from '@/lib/actions';
 
-vi.mock('../../lib/actions', async () => {
-  const actual = await vi.importActual('../../lib/actions');
+vi.mock('@/lib/actions', async () => {
+  const actual = await vi.importActual('@/lib/actions');
   return {
     ...actual,
     dispatch: vi.fn(),

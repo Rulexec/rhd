@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { availableRoles, activeRole, hasRoles, currentChatId, isStreaming } from '../chatStores';
-  import { dispatch } from '../actions';
+  import { availableRoles, activeRole, hasRoles, currentChatId, isStreaming } from '@/lib/chatStores';
+  import { dispatch } from '@/lib/actions';
 
   $: roles = $availableRoles;
   $: currentRole = $activeRole;

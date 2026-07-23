@@ -4,7 +4,7 @@ import {
   activeRole,
   hasRoles,
   resetAllStores,
-} from '../lib/chatStores';
+} from '@/lib/chatStores';
 import { get } from 'svelte/store';
 
 describe('Role Stores', () => {

@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { formatDuration, elapsedSeconds } from '../lib/utils';
-  import { abortScenario } from '../lib/ws';
-  import type { ActiveScenario } from '../lib/types/index';
+  import { formatDuration, elapsedSeconds } from '@/lib/utils';
+  import { abortScenario } from '@/lib/ws';
+  import type { ActiveScenario } from '@/lib/types/index';
 
   let { scenario }: { scenario: ActiveScenario } = $props();
 

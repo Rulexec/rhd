@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { projects, chatProjects, mcpStatuses } from '../lib/projectStores';
-  import { currentChatId } from '../lib/chatStores';
-  import { loadProjects, attachProject, detachProject, loadMcpStatus } from '../lib/projectStores';
+  import { projects, chatProjects, mcpStatuses } from '@/lib/projectStores';
+  import { currentChatId } from '@/lib/chatStores';
+  import { loadProjects, attachProject, detachProject, loadMcpStatus } from '@/lib/projectStores';
 
   let attachError = '';
   let errorTimeout: ReturnType<typeof setTimeout> | null = null;

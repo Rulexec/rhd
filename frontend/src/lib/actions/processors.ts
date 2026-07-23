@@ -16,8 +16,8 @@ import {
   loadAvailableRoles,
   setRole,
   clearActiveRole,
-} from '../chatWs';
-import { selectedModel, availableRoles, activeRole } from '../chatStores';
+} from '@/lib/chatWs';
+import { selectedModel, availableRoles, activeRole } from '@/lib/chatStores';
 
 export async function processAction(action: ChatAction): Promise<void> {
   switch (action.type) {

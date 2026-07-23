@@ -1,6 +1,6 @@
 import { get } from 'svelte/store';
-import { sendRequest, generateRequestId } from '../ws';
-import type { WsResponse } from '../types/ws';
+import { sendRequest, generateRequestId } from '@/lib/ws';
+import type { WsResponse } from '@/lib/types/ws';
 import {
   chats,
   currentChatId,
@@ -15,12 +15,12 @@ import {
   availableRoles,
   activeRole,
   todoList,
-} from '../chatStores';
+} from '@/lib/chatStores';
 import {
   chatProjects,
   mcpStatuses,
   loadChatProjects,
-} from '../projectStores';
+} from '@/lib/projectStores';
 import { mergeToolResults } from './parsers';
 
 export async function loadChats(): Promise<WsResponse> {

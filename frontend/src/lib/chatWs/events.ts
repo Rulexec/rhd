@@ -15,13 +15,13 @@ import {
   activeRole,
   todoList,
   queuedMessages,
-} from '../chatStores';
-import type { QueuedMessage } from '../types/index';
+} from '@/lib/chatStores';
+import type { QueuedMessage } from '@/lib/types/index';
 import {
   handleMcpStatusEvent,
   handleProjectAttachedEvent,
   handleProjectDetachedEvent,
-} from '../projectStores';
+} from '@/lib/projectStores';
 import { parseAssistantMessage, parseToolResult } from './parsers';
 
 export function handleChatEvent(event: string, data: unknown): void {

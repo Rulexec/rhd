@@ -1,9 +1,9 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import { dispatch } from '../lib/actions';
-  import { streamingMessageId, selectedModel } from '../lib/chatStores';
-  import type { ChatMessage, QueuedMessage } from '../lib/types/index';
-  import { renderMarkdown } from '../lib/markdown';
+  import { dispatch } from '@/lib/actions';
+  import { streamingMessageId, selectedModel } from '@/lib/chatStores';
+  import type { ChatMessage, QueuedMessage } from '@/lib/types/index';
+  import { renderMarkdown } from '@/lib/markdown';
   import './Message.styles.css';
 
   export let message: ChatMessage | QueuedMessage;

@@ -20,7 +20,7 @@ import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { get } from 'svelte/store';
 import { waitFor } from '@testing-library/svelte';
-import { dispatch, _testClearOverrides } from '../../lib/actions';
+import { dispatch, _testClearOverrides } from '@/lib/actions';
 import {
   chats,
   currentChatId,
@@ -33,7 +33,7 @@ import {
   streamingMessageId,
   queuedMessages,
   resetAllStores,
-} from '../../lib/chatStores';
+} from '@/lib/chatStores';
 import {
   waitForWebSocket,
   setControlPort,
@@ -42,7 +42,7 @@ import {
   finishStream,
   setAutoStream,
 } from '../testUtils';
-import { setWsPort as setWsWsPort, connectWebSocket } from '../../lib/ws';
+import { setWsPort as setWsWsPort, connectWebSocket } from '@/lib/ws';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

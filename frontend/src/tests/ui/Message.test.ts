@@ -7,13 +7,13 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
-import Message from '../../components/Message.svelte';
-import { streamingMessageId } from '../../lib/chatStores';
-import type { ChatMessage } from '../../lib/types/index';
-import { _testClearOverrides } from '../../lib/actions';
+import Message from '@/components/Message.svelte';
+import { streamingMessageId } from '@/lib/chatStores';
+import type { ChatMessage } from '@/lib/types/index';
+import { _testClearOverrides } from '@/lib/actions';
 
-vi.mock('../../lib/actions', async () => {
-  const actual = await vi.importActual('../../lib/actions');
+vi.mock('@/lib/actions', async () => {
+  const actual = await vi.importActual('@/lib/actions');
   return {
     ...actual,
     dispatch: vi.fn(),

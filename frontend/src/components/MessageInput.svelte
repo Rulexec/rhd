@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { isStreaming, streamError, currentChatId, availableModels, selectedModel, isPaused, isAborted, queuedMessages } from '../lib/chatStores';
-  import { chatProjects, mcpStatuses } from '../lib/projectStores';
-  import { dispatch } from '../lib/actions';
+  import { isStreaming, streamError, currentChatId, availableModels, selectedModel, isPaused, isAborted, queuedMessages } from '@/lib/chatStores';
+  import { chatProjects, mcpStatuses } from '@/lib/projectStores';
+  import { dispatch } from '@/lib/actions';
 
   let input = '';
   let textareaElement: HTMLTextAreaElement;

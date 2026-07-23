@@ -1,4 +1,4 @@
-import type { ChatMessage, RoleInfo } from '../types/index';
+import type { ChatMessage, RoleInfo } from '@/lib/types/index';
 
 export type ChatAction =
   | { type: 'createChat'; payload: { title: string } }
@@ -35,4 +35,4 @@ export type ChatAction =
   | { type: 'roleChanged'; payload: { chatId: number; projectName: string; roleName: string } }
   | { type: 'rolesUpdated'; payload: { chatId: number; roles: RoleInfo[]; activeRoleProject?: string; activeRoleName?: string } }
   | { type: 'activeRoleCleared'; payload: { chatId: number } }
-  | { type: 'todoListUpdated'; payload: { chatId: number; items: import('../types/index').TodoItem[] } };
+  | { type: 'todoListUpdated'; payload: { chatId: number; items: import('@/lib/types/index').TodoItem[] } };

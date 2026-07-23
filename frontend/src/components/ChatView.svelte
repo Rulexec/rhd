@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { currentChat } from '../lib/chatStores';
-  import { chatProjects, mcpStatuses } from '../lib/projectStores';
+  import { currentChat } from '@/lib/chatStores';
+  import { chatProjects, mcpStatuses } from '@/lib/projectStores';
   import MessageList from './MessageList.svelte';
   import MessageInput from './MessageInput.svelte';
   import McpStatusDrawer from './McpStatusDrawer.svelte';
   import ProjectsPanel from './ProjectsPanel.svelte';
-  import RoleSelector from '../lib/components/RoleSelector.svelte';
-  import TodoListButton from '../lib/components/TodoListButton.svelte';
+  import RoleSelector from '@/lib/components/RoleSelector.svelte';
+  import TodoListButton from '@/lib/components/TodoListButton.svelte';
 
   let showMcpDrawer = $state(false);
   let showProjectsPanel = $state(false);

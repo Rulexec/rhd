@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { chats, currentChatId } from '../lib/chatStores';
-  import { dispatch } from '../lib/actions';
+  import { chats, currentChatId } from '@/lib/chatStores';
+  import { dispatch } from '@/lib/actions';
 
   let showDialog = false;
   let chatTitle = '';
