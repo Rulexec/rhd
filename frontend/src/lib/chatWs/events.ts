@@ -72,6 +72,7 @@ export function handleChatEvent(event: string, data: unknown): void {
     case 'chatStreamFinished': {
       isStreaming.set(false);
       streamError.set(null);
+      streamingMessageId.set(null);
       streamingThinkingContent.set('');
       break;
     }

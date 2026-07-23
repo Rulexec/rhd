@@ -1,4 +1,6 @@
 import type { WsResponse } from '@/lib/types/ws';
+import { dispatch } from '@/lib/actions';
+import type { ChatAction } from '@/lib/actions';
 
 type RequestHandler = (request: Record<string, unknown>) => WsResponse | Promise<WsResponse>;
 type EventHandler = (data: any) => void;
@@ -32,6 +34,10 @@ export function emitWsEvent(eventType: string, data: any): void {
   const handlers = eventHandlers.get(eventType);
   if (handlers) {
     handlers.forEach(handler => handler(data));
+  }
+  
+  if (eventType.startsWith('chat') || eventType.startsWith('project')) {
+    dispatch({ type: eventType, payload: data } as ChatAction);
   }
 }
 

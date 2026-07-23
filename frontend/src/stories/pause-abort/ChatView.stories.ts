@@ -63,6 +63,10 @@ const storyDefinition: StoryControlDefinition<StoryState> = {
     {
       name: 'Add user message',
       execute: async ({ state }) => {
+        setMockWsHandler('sendMessage', async (request) => {
+          return { type: 'response', id: request.id as string, success: true, data: {} };
+        });
+
         const textarea = document.querySelector(`[data-testid="${TEST_IDS.MESSAGE_INPUT}"]`) as HTMLTextAreaElement;
         const sendButton = document.querySelector(`[data-testid="${TEST_IDS.SEND_BUTTON}"]`) as HTMLButtonElement;
         
@@ -86,28 +90,24 @@ const storyDefinition: StoryControlDefinition<StoryState> = {
     {
       name: 'Receive AI response',
       execute: async ({ state }) => {
-        setMockWsHandler('sendMessage', async (request) => {
-          await sleep(100);
-          emitWsEvent('chatStreamChunk', {
-            chatId: 1,
-            content: 'I\'m doing well, thank you! ',
-          });
-          
-          await sleep(100);
-          emitWsEvent('chatStreamChunk', {
-            chatId: 1,
-            content: 'How can I help you today?',
-          });
-          
-          await sleep(100);
-          emitWsEvent('chatStreamFinished', {
-            chatId: 1,
-          });
-          
-          return { type: 'response', id: request.id as string, success: true, data: {} };
+        await sleep(100);
+        emitWsEvent('chatStreamChunk', {
+          chatId: 1,
+          content: 'I\'m doing well, thank you! ',
         });
         
-        await sleep(500);
+        await sleep(100);
+        emitWsEvent('chatStreamChunk', {
+          chatId: 1,
+          content: 'How can I help you today?',
+        });
+        
+        await sleep(100);
+        emitWsEvent('chatStreamFinished', {
+          chatId: 1,
+        });
+        
+        await sleep(200);
         
         clearMockWsHandlers();
         
