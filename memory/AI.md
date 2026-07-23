@@ -45,6 +45,19 @@ The knowledge base is organized into two layers:
 
 **Pattern**: Features files describe "what it does" (product behavior), top-level files describe "how it's built" (implementation).
 
+## Planning Conventions
+
+**Plan File Naming**: Always use descriptive file names for plans in the `plans/` directory. Never use generic names like `plan.md`, `plan-1.md`, or `draft.md`. Instead, use short, meaningful names that describe the plan's purpose:
+
+- ✓ `path-alias-setup.md` — describes setting up `@` path aliases
+- ✓ `websocket-refactor.md` — describes WebSocket refactoring work
+- ✓ `chat-persistence.md` — describes chat persistence implementation
+- ✗ `plan.md` — too generic, doesn't indicate what the plan covers
+- ✗ `draft.md` — unclear purpose
+- ✗ `todo.md` — doesn't describe the actual work
+
+When creating a new plan, choose a name that captures the main feature or change being implemented. This makes it easy to identify plans at a glance and keeps the `plans/` directory organized.
+
 ## Knowledge Base Index
 
 **IMPORTANT**: Always read [development.md](development.md) before starting any work. It contains project conventions, testing practices, and commit guidelines.
