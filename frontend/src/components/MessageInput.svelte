@@ -7,9 +7,14 @@
 
   let input = '';
   let textareaElement: HTMLTextAreaElement;
+  let isPausePending = false;
 
   $: if ($availableModels.length > 0 && $selectedModel === null) {
     selectedModel.set($availableModels[0]);
+  }
+
+  $: if ($isPaused) {
+    isPausePending = false;
   }
 
   $: hasMcpError = $chatProjects.length > 0 && $mcpStatuses.some(
@@ -51,6 +56,7 @@
   }
 
   function pause() {
+    isPausePending = true;
     dispatch({ type: 'pauseChat' });
   }
 
@@ -107,7 +113,7 @@
       data-testid={TEST_IDS.MESSAGE_INPUT}
     ></textarea>
     {#if showPauseButton}
-      <button on:click={pause} class="pause-btn">Pause</button>
+      <button on:click={pause} class="pause-btn" data-testid={TEST_IDS.PAUSE_BUTTON} disabled={isPausePending}>Pause</button>
     {/if}
     
     {#if showAbortButton}
@@ -115,7 +121,7 @@
     {/if}
     
     {#if showResumeButton}
-      <button on:click={resume} class="resume-btn">Resume</button>
+      <button on:click={resume} class="resume-btn" data-testid={TEST_IDS.RESUME_BUTTON}>Resume</button>
     {/if}
     
     {#if canSend || canQueue}

@@ -13,10 +13,9 @@ Storybook is used for developing and testing UI components in isolation. Stories
 
 ## Running Storybook
 
-```bash
-# Start Storybook dev server
-cd frontend && npm run storybook
+**IMPORTANT**: Agents should NEVER run `npm run storybook` directly. This command starts an interactive dev server and should only be run manually by the user.
 
+```bash
 # Run Storybook tests (auto-starts Storybook)
 cd frontend && npm run test-storybook
 

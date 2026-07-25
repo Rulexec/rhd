@@ -6,9 +6,22 @@
   let { story }: { story: StoryControlDefinition<any> } = $props();
 </script>
 
-<div style="display: flex; flex-direction: column; height: 100vh;">
+<div class="story-container">
   <StoryExecutionControls {story} />
-  <div style="flex: 1; overflow: hidden;">
+  <div class="chat-view-wrapper">
     <ChatView />
   </div>
 </div>
+
+<style>
+  .story-container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+  
+  .chat-view-wrapper {
+    flex: 1;
+    overflow: hidden;
+  }
+</style>

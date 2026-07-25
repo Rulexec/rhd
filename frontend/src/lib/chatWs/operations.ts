@@ -8,6 +8,7 @@ import {
   streamingContent,
   streamingThinkingContent,
   isStreaming,
+  isPaused,
   streamError,
   availableModels,
   selectedModel,
@@ -246,8 +247,17 @@ export async function resumeChat(): Promise<WsResponse> {
   const chatId = get(currentChatId);
   if (!chatId) return { id: '', type: 'response', success: false, error: 'No chat selected' };
 
+  // Update state immediately to show pause/abort buttons
+  isPaused.set(false);
+  isStreaming.set(true);
+
   const id = generateRequestId();
   const response = await sendRequest({ type: 'resumeChat', id, chatId });
+  if (!response.success) {
+    // Revert state if the request failed
+    isPaused.set(true);
+    isStreaming.set(false);
+  }
   return response;
 }
 
@@ -255,7 +265,23 @@ export async function queueMessage(content: string, model: string): Promise<WsRe
   const chatId = get(currentChatId);
   if (!chatId) return { id: '', type: 'response', success: false, error: 'No chat selected' };
 
+  // Add message optimistically to the messages store
+  const tempId = Date.now();
+  const userMessage = {
+    id: tempId,
+    chatId,
+    role: 'user' as const,
+    content,
+    createdAt: new Date().toISOString(),
+    model,
+  };
+  messages.update((list) => [...list, userMessage]);
+
   const id = generateRequestId();
   const response = await sendRequest({ type: 'queueMessage', id, chatId, content, model });
+  if (!response.success) {
+    // Remove the optimistic message if the request failed
+    messages.update((list) => list.filter((m) => m.id !== tempId));
+  }
   return response;
 }

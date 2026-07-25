@@ -25,6 +25,8 @@ See `frontend/src/lib/stateExport.ts` for the full implementation and `frontend/
 - Build with `npm run build`
 - Connects to daemon WebSocket server (default port 9876, configurable via `VITE_WS_PORT` env var)
 
+**IMPORTANT**: Agents should NEVER run `npm run storybook` directly. This command starts an interactive dev server and should only be run manually by the user.
+
 ## Testing
 
 - UI tests use Vitest with happy-dom environment
