@@ -90,7 +90,7 @@
   }
 </script>
 
-<div class="message {isQueued ? 'queued' : chatMessage?.role}" class:system-collapsed={isSystemMessage && !systemExpanded}>
+<div class="message {isQueued ? 'queued' : chatMessage?.role}" class:system-collapsed={isSystemMessage && !systemExpanded} data-role={isQueued ? 'queued' : chatMessage?.role} data-message-id={message.id} data-message-content={message.content}>
   {#if isQueued}
     <div class="queued-badge">Queued</div>
   {/if}
@@ -157,22 +157,6 @@
           <span class="streaming-dots"></span>
         {/if}
       </div>
-      
-      <style>
-        .queued {
-          opacity: 0.7;
-        }
-        
-        .queued-badge {
-          display: inline-block;
-          padding: 2px 8px;
-          background: #f0f0f0;
-          border-radius: 4px;
-          font-size: 12px;
-          color: #666;
-          margin-bottom: 4px;
-        }
-      </style>
     {:else}
       <div class="content">
         {message.content}
@@ -188,3 +172,19 @@
     {/if}
   {/if}
 </div>
+
+<style>
+  .queued {
+    opacity: 0.8;
+  }
+  
+  .queued-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    background: #f0f0f0;
+    border-radius: 4px;
+    font-size: 12px;
+    color: #666;
+    margin-bottom: 4px;
+  }
+</style>

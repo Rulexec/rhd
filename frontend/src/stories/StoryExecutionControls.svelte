@@ -21,6 +21,7 @@
   
   let currentStep = $derived(story.steps[currentStepIndex]);
   let isComplete = $derived(currentStepIndex >= story.steps.length);
+  let previousStep = $derived(currentStepIndex > 0 ? story.steps[currentStepIndex - 1] : null);
   
   async function executeStep() {
     if (!currentStep || isExecuting || isComplete) return;
@@ -52,6 +53,9 @@
   
   <div class="step-info">
     <span>Step {currentStepIndex + 1} of {story.steps.length}</span>
+    {#if previousStep}
+      <span class="previous-step">Previous: {previousStep.name}</span>
+    {/if}
     {#if isComplete}
       <span class="complete">✓ All steps completed</span>
     {/if}
@@ -105,6 +109,12 @@
   .complete {
     color: #28a745;
     font-weight: bold;
+  }
+  
+  .previous-step {
+    color: #888;
+    font-size: 12px;
+    font-style: italic;
   }
   
   .execute-btn {

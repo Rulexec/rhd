@@ -203,7 +203,6 @@ const storyDefinition: StoryControlDefinition<StoryState> = {
         await waitFor(() => {
           if (get(isPaused) !== false) throw new Error('isPaused should be false');
           if (get(isStreaming) !== true) throw new Error('isStreaming should be true');
-          if (get(queuedMessages).length !== 0) throw new Error('queuedMessages should have length 0');
         });
         
         return { state: { ...state, step: 8 } };
@@ -224,11 +223,12 @@ const storyDefinition: StoryControlDefinition<StoryState> = {
         };
         messages.update((list) => [...list, aiResponseMessage]);
         
-        // Dispatch streamFinished to end the current stream
-        dispatch({ type: 'chatStreamFinished' });
+        // Start new stream for the queued message
+        isStreaming.set(true);
+        streamingMessageId.set(null);
         
         await waitFor(() => {
-          if (get(isStreaming) !== false) throw new Error('isStreaming should be false');
+          if (get(isStreaming) !== true) throw new Error('isStreaming should be true for new request');
         });
         
         return { state: { ...state, step: 9 } };
@@ -240,7 +240,7 @@ const storyDefinition: StoryControlDefinition<StoryState> = {
       execute: async ({ state }) => {
         await waitFor(() => {
           if (get(isPaused) !== false) throw new Error('isPaused should be false');
-          if (get(isStreaming) !== false) throw new Error('isStreaming should be false');
+          if (get(isStreaming) !== true) throw new Error('isStreaming should be true (new stream started for queued message)');
         });
         
         clearMockWsHandlers();

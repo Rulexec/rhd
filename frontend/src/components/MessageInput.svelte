@@ -131,11 +131,6 @@
     {/if}
   </div>
   
-  {#if $queuedMessages.length > 0}
-    <div class="queued-indicator">
-      {$queuedMessages.length} message{$queuedMessages.length === 1 ? '' : 's'} queued
-    </div>
-  {/if}
 </div>
 
 <style>
@@ -256,6 +251,11 @@
   .pause-btn {
     background: #f0ad4e;
     color: white;
+  }
+  
+  .pause-btn:disabled {
+    cursor: default;
+    opacity: 0.5;
   }
 
   .resume-btn {

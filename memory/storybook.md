@@ -135,6 +135,30 @@ Use in components:
 
 ## Writing Storybook Tests
 
+### Locator Best Practices
+
+**IMPORTANT**: When writing Playwright tests for Storybook stories, follow these locator guidelines:
+
+1. **Never use class name selectors** - Class names are implementation details and may change during refactoring. Avoid selectors like `.message.assistant.streaming`.
+
+2. **Prefer data-testid attributes** - Use `data-testid` for elements that need to be targeted by tests. Centralize test IDs in `frontend/src/stories/testIds.ts`.
+
+3. **Use data attributes for metadata** - Instead of matching by text content, add `data-` attributes with metadata:
+   - Use `data-queued-messages-count="1"` instead of `text=1 message queued`
+   - Use `data-role="assistant"` and `data-message-content="..."` instead of `text=AI response`
+   - Use `data-message-id="123"` for targeting specific messages
+
+4. **Avoid text matching when possible** - Text matching is fragile and breaks when copy changes. Use data attributes instead:
+   - ❌ `page.locator('text=Please continue later')`
+   - ✅ `page.locator('[data-role="user"][data-message-content="Please continue later"]')`
+
+5. **Add data attributes to components** - When creating or modifying components, add appropriate data attributes:
+   - `data-testid` for unique interactive elements
+   - `data-role` for message type (user/assistant/system/queued)
+   - `data-message-content` for message text content
+   - `data-message-id` for unique message identification
+   - `data-queued-messages-count` for queue indicators
+
 ### Test Structure
 
 ```typescript

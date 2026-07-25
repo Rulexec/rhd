@@ -317,7 +317,6 @@ export function handleChatEvent(event: string, data: unknown): void {
       isPaused.set(false);
       isAborted.set(false);
       isStreaming.set(true);
-      queuedMessages.set([]);
       break;
     }
     case 'streamAborted': {

@@ -25,18 +25,16 @@
     isAtBottom = true;
   }
 
-  $: allMessages = [...$messages, ...$queuedMessages];
-
   function shouldShowModelIndicator(index: number): boolean {
     if (index === 0) return true;
-    const currentModel = allMessages[index].model;
-    const previousModel = allMessages[index - 1].model;
+    const currentModel = $messages[index].model;
+    const previousModel = $messages[index - 1].model;
     return currentModel !== previousModel;
   }
 </script>
 
 <div class="message-list" bind:this={listElement} on:scroll={handleScroll}>
-  {#each allMessages as message, index (message.id)}
+  {#each $messages as message, index (message.id)}
     {#if shouldShowModelIndicator(index)}
       <div class="model-indicator">
         <span class="model-indicator-text">Model: {message.model || 'Unknown'}</span>
@@ -54,6 +52,9 @@
   {#if ($isStreaming || $isPaused) && !$streamingMessageId}
     <StreamingMessage content={$streamingContent} thinkingContent={$streamingThinkingContent} />
   {/if}
+  {#each $queuedMessages as message (message.id)}
+    <Message {message} />
+  {/each}
 </div>
 
 <style>
