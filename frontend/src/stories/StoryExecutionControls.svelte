@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { stepButtonTestId } from '@/stories/testIds';
+
   export interface StepDefinition<T> {
     name: string;
     execute: (options: { state: T }) => Promise<{ state: T }>;
@@ -59,6 +61,7 @@
     onclick={executeStep}
     disabled={isExecuting || isComplete}
     class="execute-btn"
+    data-testid={stepButtonTestId(currentStepIndex)}
   >
     {#if isExecuting}
       Executing...

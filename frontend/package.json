@@ -11,7 +11,10 @@
     "test:unit": "vitest run --config vitest.config.unit.ts",
     "test:e2e": "vitest run --config vitest.config.e2e.ts",
     "storybook": "storybook dev -p 6006 --no-open",
-    "build-storybook": "storybook build"
+    "build-storybook": "storybook build",
+    "test-storybook": "playwright test",
+    "test-storybook:ui": "playwright test --ui",
+    "test-storybook:debug": "playwright test --debug"
   },
   "devDependencies": {
     "@storybook/addon-essentials": "^8.6.14",
@@ -37,7 +40,8 @@
     "typescript": "^5.7.2",
     "vite": "^6.3.5",
     "vitest": "^4.1.9",
-    "zod": "^3.24.1"
+    "zod": "^3.24.1",
+    "@playwright/test": "^1.42.0"
   },
   "dependencies": {
     "dompurify": "^3.4.12",

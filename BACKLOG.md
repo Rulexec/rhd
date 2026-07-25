@@ -31,3 +31,7 @@ We need to fix pause-abort scenarios. Currently their implementation is almost c
 - If AI chat request was aborted — we should just forget it, as it never existed
 
 User can add messages while chat is paused. Then after resume — they should be sent. When we will implement it, ask user to provide examples.
+
+## storybook-addon-vitest
+
+Replace `@storybook/test-runner` with `@storybook/addon-vitest` for running Storybook interaction tests.

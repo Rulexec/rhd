@@ -77,6 +77,8 @@ Detailed documentation is split into topic-specific files. Read the relevant fil
 | [file-structure.md](file-structure.md) | When you need to find which file contains specific functionality or understand the project layout |
 | [frontend-e2e.md](frontend-e2e.md) | When working on frontend E2E tests, test utilities, or test infrastructure |
 | [backend-e2e.md](backend-e2e.md) | When working on backend E2E tests, rhd_test crate, mock server, or test scenarios |
+| [test-cases.md](test-cases.md) | When creating or modifying test cases, writing test step comments, or understanding test case format |
+| [storybook.md](storybook.md) | When creating Storybook stories, writing Storybook tests, or setting up interactive story controls |
 | [debugging.md](debugging.md) | When any test fails |
 
 ## Token Saving Guidelines
