@@ -18,13 +18,13 @@
   let markdownEnabled = true;
   const SCROLL_THRESHOLD = 30;
 
-  function isQueuedMessage(msg: ChatMessage | QueuedMessage): msg is QueuedMessage {
+  function isPendingMessage(msg: ChatMessage | QueuedMessage): msg is QueuedMessage {
     return 'status' in msg && msg.status === 'queued';
   }
 
   let chatMessage: ChatMessage | null;
-  $: isQueued = isQueuedMessage(message);
-  $: chatMessage = isQueued ? null : (message as ChatMessage);
+  $: isPending = isPendingMessage(message);
+  $: chatMessage = isPending ? null : (message as ChatMessage);
   $: isStreamingMessage = chatMessage !== null && $streamingMessageId === chatMessage.id;
   $: isSystemMessage = chatMessage !== null && chatMessage.role === 'system';
   $: isAssistantMessage = chatMessage !== null && chatMessage.role === 'assistant';
@@ -90,10 +90,7 @@
   }
 </script>
 
-<div class="message {isQueued ? 'queued' : chatMessage?.role}" class:system-collapsed={isSystemMessage && !systemExpanded} data-role={isQueued ? 'queued' : chatMessage?.role} data-message-id={message.id} data-message-content={message.content}>
-  {#if isQueued}
-    <div class="queued-badge">Queued</div>
-  {/if}
+<div class="message {isPending ? 'user pending' : chatMessage?.role}" class:system-collapsed={isSystemMessage && !systemExpanded} data-role={isPending ? 'user' : chatMessage?.role} data-pending={isPending ? 'true' : undefined} data-message-id={message.id} data-message-content={message.content}>
   {#if editing}
     <div class="edit-mode">
       <textarea
@@ -174,17 +171,8 @@
 </div>
 
 <style>
-  .queued {
-    opacity: 0.8;
-  }
-  
-  .queued-badge {
-    display: inline-block;
-    padding: 2px 8px;
-    background: #f0f0f0;
-    border-radius: 4px;
-    font-size: 12px;
-    color: #666;
-    margin-bottom: 4px;
+  .message.pending {
+    background: #f5f5f5;
+    color: var(--color-text-secondary, #666);
   }
 </style>

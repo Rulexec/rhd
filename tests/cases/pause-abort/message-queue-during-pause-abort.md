@@ -14,43 +14,44 @@ User adds messages while chat is paused or aborted, messages are queued and sent
 2. User clicks Send button
 3. System dispatches `queueMessage` action
 4. System sends queue request to daemon
-5. Daemon stores message in message queue
-6. System receives `messageQueued` action
-7. System adds message to queuedMessages store with "Queued" indicator
+5. System optimistically adds the message to pendingMessages store, rendered as a gray user message
+6. Daemon stores message in message queue
 
 ### Queue Second Message
-8. User types second message in input field
-9. User clicks Send button
-10. System dispatches `queueMessage` action
-11. System sends queue request to daemon
+7. User types second message in input field
+8. User clicks Send button
+9. System dispatches `queueMessage` action
+10. System sends queue request to daemon
+11. System optimistically adds the second message to pendingMessages store, rendered as a gray user message
 12. Daemon stores message in message queue
-13. System receives `messageQueued` action
-14. System adds message to queuedMessages store with "Queued" indicator
 
 ### Resume
-15. User clicks Resume button
-16. System dispatches `resumeChat` action
-17. System sends resume request to daemon
-18. Daemon processes queued messages in order
-19. Daemon appends first queued message to chat history
-20. Daemon appends second queued message to chat history
-21. Daemon sends AI chat request with full context
-22. Daemon transitions to Running state
-23. System receives `chatResumed` action
-24. System sets isPaused to false
-25. System sets isStreaming to true
-26. System clears queuedMessages store
+13. User clicks Resume button
+14. System dispatches `resumeChat` action
+15. System sends resume request to daemon
+16. Daemon processes queued messages in order
+17. Daemon appends first queued message to chat history
+18. Daemon appends second queued message to chat history
+19. Daemon sends AI chat request with full context
+20. Daemon transitions to Running state
+21. System receives `chatResumed` action
+22. System sets isPaused to false
+23. System sets isStreaming to true
+24. System keeps both gray pending messages visible, now rendered above the loader of the new call
+25. System receives `chatMessageAdded` for each queued message in order
+26. System removes the matching gray pending message each time, leaving exactly one visible copy per message
 
 ## Expected Results
-- Queue: Messages stored in order with "Queued" indicator
+- Queue: Messages shown in order, each exactly once, with a gray background meaning "not yet part of the chat"
 - Resume: Queued messages appended in order, AI call triggered with full context
+- Pending messages are removed only as the daemon confirms each of them, not on resume
 
 ## Covered By
 
 ### E2E Tests
-- [`chat-state.test.ts`](../../../frontend/src/tests/e2e/chat-state.test.ts) - `queues multiple messages during pause and sends on resume` (steps 3-26) - Line 587
+- [`chat-state.test.ts`](../../../frontend/src/tests/e2e/chat-state.test.ts) - `queues multiple messages during pause and sends on resume` (steps 3-26) - Line 691
 
 ### UI Tests
-- [`MessageInput.test.ts`](../../../frontend/src/tests/ui/MessageInput.test.ts) - `allows message input when paused` (step 1) - Line 155
-- [`MessageInput.test.ts`](../../../frontend/src/tests/ui/MessageInput.test.ts) - `shows queued messages indicator` (step 7) - Line 167
-- [`Message.test.ts`](../../../frontend/src/tests/ui/Message.test.ts) - `shows Queued indicator for queued messages` (step 7) - Line 140
+- [`MessageInput.test.ts`](../../../frontend/src/tests/ui/MessageInput.test.ts) - `allows message input when paused` (step 1) - Line 162
+- [`Message.test.ts`](../../../frontend/src/tests/ui/Message.test.ts) - `renders pending messages as gray user messages` (steps 5, 11) - Line 142
+- [`Message.test.ts`](../../../frontend/src/tests/ui/Message.test.ts) - `does not mark regular messages as pending` (step 26) - Line 158

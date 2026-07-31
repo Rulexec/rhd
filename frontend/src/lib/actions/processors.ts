@@ -93,9 +93,6 @@ export async function processAction(action: ChatAction): Promise<void> {
     case 'streamAborted':
       handleChatEvent('streamAborted', undefined);
       break;
-    case 'messageQueued':
-      handleChatEvent('messageQueued', action.payload);
-      break;
     case 'projectMcpStatusChanged':
       handleChatEvent('projectMcpStatusChanged', action.payload);
       break;

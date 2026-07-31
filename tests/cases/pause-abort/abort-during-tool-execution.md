@@ -30,34 +30,36 @@ User aborts chat while tool calls are executing.
 15. User clicks Send button
 16. System dispatches `queueMessage` action
 17. System sends queue request to daemon
-18. Daemon stores message in message queue
-19. System receives `messageQueued` action
-20. System adds message to queuedMessages store with "Queued" indicator
+18. System optimistically adds the message to pendingMessages store, rendered as a gray user message below the loader of the interrupted call
+19. Daemon stores message in message queue
 
 ### Resume Phase
-21. User clicks Resume button
-22. System dispatches `resumeChat` action
-23. System sends resume request to daemon
-24. Daemon processes queued messages
-25. Daemon appends queued messages to chat history
-26. Daemon sends AI chat request with full context
-27. Daemon transitions to Running state
-28. System receives `chatResumed` action
-29. System sets isPaused to false
-30. System sets isStreaming to true
-31. System clears queuedMessages store
+20. User clicks Resume button
+21. System dispatches `resumeChat` action
+22. System sends resume request to daemon
+23. Daemon processes queued messages
+24. Daemon appends queued messages to chat history
+25. Daemon sends AI chat request with full context
+26. Daemon transitions to Running state
+27. System receives `chatResumed` action
+28. System sets isPaused to false
+29. System sets isStreaming to true
+30. System keeps the gray pending message visible, now rendered above the loader of the new call
+31. System receives `chatMessageAdded` with the confirmed user message
+32. System removes the matching gray pending message, leaving exactly one visible copy
 
 ## Expected Results
 - Abort: Non-finished tools return "Aborted" error, finished tools keep results, all results inserted
-- Message queue: Messages stored with "Queued" indicator
+- Message queue: Message is shown exactly once, with a gray background meaning "not yet part of the chat"
 - Resume: Queued messages sent, tool loop continues
 
 ## Covered By
 
 ### E2E Tests
-- [`chat-state.test.ts`](../../../frontend/src/tests/e2e/chat-state.test.ts) - `aborts during tool execution and resumes with error results` (steps 2-31) - Line 539
+- [`chat-state.test.ts`](../../../frontend/src/tests/e2e/chat-state.test.ts) - `aborts during tool execution and resumes with error results` (steps 2-32) - Line 602
 
 ### UI Tests
 - [`MessageInput.test.ts`](../../../frontend/src/tests/ui/MessageInput.test.ts) - `renders abort button when streaming` (step 1) - Line 54
-- [`MessageInput.test.ts`](../../../frontend/src/tests/ui/MessageInput.test.ts) - `renders resume button when aborted` (step 21) - Line 143
+- [`MessageInput.test.ts`](../../../frontend/src/tests/ui/MessageInput.test.ts) - `renders resume button when aborted` (step 20) - Line 150
+- [`Message.test.ts`](../../../frontend/src/tests/ui/Message.test.ts) - `renders pending messages as gray user messages` (step 18) - Line 142
 - [`ToolCall.test.ts`](../../../frontend/src/tests/ui/ToolCall.test.ts) - `shows Aborted error for cancelled tool calls` (step 11) - Line 13

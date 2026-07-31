@@ -21,7 +21,6 @@ import {
   isPaused,
   isAborted,
   streamError,
-  queuedMessages,
 } from '@/lib/chatStores';
 import { chatProjects, mcpStatuses } from '@/lib/projectStores';
 import { _testOverrideAction, _testClearOverrides } from '@/lib/actions';
@@ -182,17 +181,5 @@ describe('MessageInput UI', () => {
     isAborted.set(false);
     render(MessageInput);
     expect(screen.getByText('Queue')).toBeTruthy();
-  });
-
-  // Covers message-queue-during-pause-abort.md step 7 (UI rendering)
-  // Step 7. System adds message to queuedMessages store with "Queued" indicator (shows queued messages indicator)
-  it('shows queued messages indicator', () => {
-    isPaused.set(true);
-    queuedMessages.set([
-      { id: 'queued-1', content: 'Hello', model: 'model1', queuedAt: new Date().toISOString(), status: 'queued' },
-      { id: 'queued-2', content: 'World', model: 'model1', queuedAt: new Date().toISOString(), status: 'queued' },
-    ]);
-    render(MessageInput);
-    expect(screen.getByText('2 messages queued')).toBeTruthy();
   });
 });

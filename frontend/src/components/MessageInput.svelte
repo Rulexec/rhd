@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { isStreaming, streamError, currentChatId, availableModels, selectedModel, isPaused, isAborted, queuedMessages } from '@/lib/chatStores';
+  import { isStreaming, streamError, currentChatId, availableModels, selectedModel, isPaused, isAborted } from '@/lib/chatStores';
   import { chatProjects, mcpStatuses } from '@/lib/projectStores';
   import { dispatch } from '@/lib/actions';
   import { TEST_IDS } from '@/stories/testIds';
@@ -261,15 +261,5 @@
   .resume-btn {
     background: #5cb85c;
     color: white;
-  }
-
-  .queued-indicator {
-    margin-top: var(--spacing-s);
-    padding: var(--spacing-xs) var(--spacing-s);
-    background: var(--color-bg-secondary, #f5f5f5);
-    border-radius: 4px;
-    font-size: 12px;
-    color: var(--color-text-secondary, #666);
-    text-align: center;
   }
 </style>

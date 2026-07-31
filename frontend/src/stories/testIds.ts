@@ -4,7 +4,6 @@ export const TEST_IDS = {
   PAUSE_BUTTON: 'pause-button',
   RESUME_BUTTON: 'resume-button',
   STREAMING_MESSAGE: 'streaming-message',
-  QUEUED_INDICATOR: 'queued-indicator',
 } as const;
 
 export const STEP_BUTTON_PREFIX = 'step-button';

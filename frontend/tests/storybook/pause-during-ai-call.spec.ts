@@ -1,6 +1,8 @@
 // Covers tests/cases/pause-abort/pause-during-ai-call.md
 import { test, expect } from '@playwright/test';
 
+const PENDING_BACKGROUND = 'rgb(245, 245, 245)';
+
 test.describe('Pause During AI Call', () => {
   test('pauses during AI call and resumes with pending tool calls', async ({ page }) => {
     // Step 1. User navigates to the PauseDuringAiCall story with controls
@@ -47,85 +49,98 @@ test.describe('Pause During AI Call', () => {
     const stepButton4 = page.locator('[data-testid="step-button-4"]');
     await stepButton4.click();
 
-    // Step 11. System dispatches queueMessage action
-    // (message is sent to daemon but not yet in queuedMessages store)
+    // Step 11. System dispatches queueMessage action, optimistically adding a pending message
+    const pendingMessage11 = page.locator('[data-pending="true"][data-message-content="Please continue later"]');
+    await expect(pendingMessage11).toBeVisible();
 
-    // Step 12. User clicks "daemon response: messageQueued" step button
+    // Verify exactly one copy of the message exists (no optimistic/daemon duplicate)
+    await expect(page.locator('[data-message-content="Please continue later"]')).toHaveCount(1);
+
+    // Verify the pending message is a user message that is not yet committed
+    await expect(pendingMessage11).toHaveAttribute('data-role', 'user');
+
+    // Verify the pending message is rendered with a gray background
+    await expect(pendingMessage11).toHaveCSS('background-color', PENDING_BACKGROUND);
+
+    // Verify the loader of the interrupted call comes BEFORE the pending message while paused
+    const loader11 = page.locator('[data-testid="streaming-message"]');
+    await expect(loader11).toBeVisible();
+    const loaderBox11 = await loader11.boundingBox();
+    const pendingBox11 = await pendingMessage11.boundingBox();
+    expect(loaderBox11).not.toBeNull();
+    expect(pendingBox11).not.toBeNull();
+    expect(pendingBox11!.y).toBeGreaterThan(loaderBox11!.y);
+
+    // Step 12. User clicks "click resume" step button
     const stepButton5 = page.locator('[data-testid="step-button-5"]');
     await stepButton5.click();
 
-    // Step 13. System receives messageQueued action, adds message to queuedMessages store
-    // Verify queued message appears after loader, not before
-    const loader13 = page.locator('[data-testid="streaming-message"]');
-    const queuedMessage13 = page.locator('[data-role="queued"][data-message-content="Please continue later"]');
-    await expect(queuedMessage13).toBeVisible();
-    // Verify loader comes before queued message in DOM
-    await expect(loader13).toBeVisible();
-    const loaderBox13 = await loader13.boundingBox();
-    const queuedBox13 = await queuedMessage13.boundingBox();
-    expect(loaderBox13).not.toBeNull();
-    expect(queuedBox13).not.toBeNull();
-    expect(queuedBox13!.y).toBeGreaterThan(loaderBox13!.y);
-    // Verify queued user message has reduced opacity
-    await expect(queuedMessage13).toHaveCSS('opacity', '0.8');
-    // Verify queued indicator is NOT visible (removed)
-    await expect(page.locator('[data-testid="queued-indicator"]')).not.toBeVisible();
-
-    // Step 14. User clicks "click resume" step button
-    const stepButton6 = page.locator('[data-testid="step-button-6"]');
-    await stepButton6.click();
-
-    // Step 15. System dispatches resumeChat action
+    // Step 13. System dispatches resumeChat action
     // Verify UI updates: pause/abort buttons visible again, resume/queue buttons hidden
     await expect(page.locator('[data-testid="pause-button"]')).toBeVisible();
     await expect(page.locator('[data-testid="resume-button"]')).not.toBeVisible();
 
-    // Step 16. User clicks "daemon response: chatResumed" step button
+    // Step 14. User clicks "daemon response: chatResumed" step button
+    const stepButton6 = page.locator('[data-testid="step-button-6"]');
+    await stepButton6.click();
+
+    // Step 15. System receives chatResumed action, sets isPaused=false, isStreaming=true
+    // Verify AI chat loader is visible (new stream started)
+    const loader15 = page.locator('[data-testid="streaming-message"]');
+    await expect(loader15).toBeVisible();
+
+    // The pending message is still awaiting daemon confirmation, so it stays visible
+    const pendingMessage15 = page.locator('[data-pending="true"][data-message-content="Please continue later"]');
+    await expect(pendingMessage15).toBeVisible();
+    await expect(page.locator('[data-message-content="Please continue later"]')).toHaveCount(1);
+
+    // After resume the loader belongs to a new call that includes the pending message,
+    // so the pending message now comes BEFORE the loader
+    const pendingBox15 = await pendingMessage15.boundingBox();
+    const loaderBox15 = await loader15.boundingBox();
+    expect(pendingBox15).not.toBeNull();
+    expect(loaderBox15).not.toBeNull();
+    expect(pendingBox15!.y).toBeLessThan(loaderBox15!.y);
+
+    // Step 16. User clicks "daemon response: streamFinished" step button
     const stepButton7 = page.locator('[data-testid="step-button-7"]');
     await stepButton7.click();
 
-    // Step 17. System receives chatResumed action, sets isPaused=false, isStreaming=true
-    // Verify AI chat loader is visible (new stream started)
-    await expect(page.locator('[data-testid="streaming-message"]')).toBeVisible();
-    // Verify queued messages are cleared (sent to daemon)
-    await expect(page.locator('[data-queued-messages-count]')).not.toBeVisible();
+    // Step 17. System receives chatStreamFinished action
+    // Verify message order: first user message, AI response, pending message, loader
+    const firstUserMessage17 = page.locator('[data-role="user"][data-message-content="Hello, can you help me?"]');
+    const aiResponse17 = page.locator('[data-role="assistant"][data-message-content="AI response after resume"]');
+    const pendingMessage17 = page.locator('[data-pending="true"][data-message-content="Please continue later"]');
+    const loader17 = page.locator('[data-testid="streaming-message"]');
 
-    // Step 18. User clicks "daemon response: streamFinished" step button
+    await expect(firstUserMessage17).toBeVisible();
+    await expect(aiResponse17).toBeVisible();
+    await expect(pendingMessage17).toBeVisible();
+    await expect(loader17).toBeVisible();
+
+    // Still exactly one copy of the pending message
+    await expect(page.locator('[data-message-content="Please continue later"]')).toHaveCount(1);
+
+    // Verify order in DOM
+    const firstBox17 = await firstUserMessage17.boundingBox();
+    const aiBox17 = await aiResponse17.boundingBox();
+    const pendingBox17 = await pendingMessage17.boundingBox();
+    const loaderBox17 = await loader17.boundingBox();
+
+    expect(firstBox17).not.toBeNull();
+    expect(aiBox17).not.toBeNull();
+    expect(pendingBox17).not.toBeNull();
+    expect(loaderBox17).not.toBeNull();
+
+    expect(firstBox17!.y).toBeLessThan(aiBox17!.y);
+    expect(aiBox17!.y).toBeLessThan(pendingBox17!.y);
+    expect(pendingBox17!.y).toBeLessThan(loaderBox17!.y);
+
+    // Step 18. User clicks "verify final state" step button
     const stepButton8 = page.locator('[data-testid="step-button-8"]');
     await stepButton8.click();
 
-    // Step 19. System receives chatStreamFinished action
-    // Verify message order: first user message, AI response, queued message, loader
-    const firstUserMessage19 = page.locator('[data-role="user"][data-message-content="Hello, can you help me?"]');
-    const aiResponse19 = page.locator('[data-role="assistant"][data-message-content="AI response after resume"]');
-    const queuedMessage19 = page.locator('[data-role="queued"][data-message-content="Please continue later"]');
-    const loader19 = page.locator('[data-testid="streaming-message"]');
-    
-    await expect(firstUserMessage19).toBeVisible();
-    await expect(aiResponse19).toBeVisible();
-    await expect(queuedMessage19).toBeVisible();
-    await expect(loader19).toBeVisible();
-    
-    // Verify order in DOM
-    const firstBox19 = await firstUserMessage19.boundingBox();
-    const aiBox19 = await aiResponse19.boundingBox();
-    const queuedBox19 = await queuedMessage19.boundingBox();
-    const loaderBox19 = await loader19.boundingBox();
-    
-    expect(firstBox19).not.toBeNull();
-    expect(aiBox19).not.toBeNull();
-    expect(queuedBox19).not.toBeNull();
-    expect(loaderBox19).not.toBeNull();
-    
-    expect(firstBox19!.y).toBeLessThan(aiBox19!.y);
-    expect(aiBox19!.y).toBeLessThan(queuedBox19!.y);
-    expect(queuedBox19!.y).toBeGreaterThan(loaderBox19!.y);
-
-    // Step 20. User clicks "verify final state" step button
-    const stepButton9 = page.locator('[data-testid="step-button-9"]');
-    await stepButton9.click();
-
-    // Step 21. System verifies final state: isPaused=false, isStreaming=false
+    // Step 19. System verifies final state: isPaused=false, isStreaming=true
     // Wait for the step to complete and show "All steps completed"
     await expect(page.locator('button:has-text("All steps completed")')).toBeVisible({ timeout: 10000 });
   });

@@ -26,36 +26,42 @@ User pauses chat while AI is in thinking or streaming state.
 11. User clicks Send button
 12. System dispatches `queueMessage` action
 13. System sends queue request to daemon
-14. Daemon stores message in message queue
-15. System receives `messageQueued` action
-16. System adds message to queuedMessages store with "Queued" indicator
+14. System optimistically adds the message to pendingMessages store, rendered as a gray user message below the loader of the interrupted call
+15. Daemon stores message in message queue
 
 ### Resume Phase
-17. User clicks Resume button
-18. System dispatches `resumeChat` action
-19. System sends resume request to daemon
-20. Daemon processes pending tool calls (if any)
-21. Daemon executes tools, sends results to AI
-22. Daemon processes queued messages
-23. Daemon appends queued messages to chat history
-24. Daemon sends AI chat request with full context
-25. Daemon transitions to Running state
-26. System receives `chatResumed` action
-27. System sets isPaused to false
-28. System sets isStreaming to true
-29. System clears queuedMessages store
+16. User clicks Resume button
+17. System dispatches `resumeChat` action
+18. System sends resume request to daemon
+19. Daemon processes pending tool calls (if any)
+20. Daemon executes tools, sends results to AI
+21. Daemon processes queued messages
+22. Daemon appends queued messages to chat history
+23. Daemon sends AI chat request with full context
+24. Daemon transitions to Running state
+25. System receives `chatResumed` action
+26. System sets isPaused to false
+27. System sets isStreaming to true
+28. System keeps the gray pending message visible, now rendered above the loader of the new call
+29. System receives `chatMessageAdded` with the confirmed user message
+30. System removes the matching gray pending message, leaving exactly one visible copy
 
 ## Expected Results
 - Pause: AI completes naturally, tool calls remembered but not executed
-- Message queue: Messages stored with "Queued" indicator
+- Message queue: Message is shown exactly once, with a gray background meaning "not yet part of the chat"
+- Ordering: while paused the loader precedes the pending message; after resume the pending message precedes the loader
 - Resume: Pending tool calls executed, queued messages sent, tool loop continues
 
 ## Covered By
 
 ### E2E Tests
-- [`chat-state.test.ts`](../../../frontend/src/tests/e2e/chat-state.test.ts) - `pauses during AI call and resumes with pending tool calls` (steps 2-29) - Line 395
+- [`chat-state.test.ts`](../../../frontend/src/tests/e2e/chat-state.test.ts) - `pauses during AI call and resumes with pending tool calls` (steps 2-30) - Line 403
+
+### Storybook Tests
+- [`pause-during-ai-call.spec.ts`](../../../frontend/tests/storybook/pause-during-ai-call.spec.ts) - `pauses during AI call and resumes with pending tool calls` (steps 1-30, incl. ordering and gray styling) - Line 7
 
 ### UI Tests
-- [`MessageInput.test.ts`](../../../frontend/src/tests/ui/MessageInput.test.ts) - `renders pause button when streaming and not paused` (step 1) - Line 119
-- [`MessageInput.test.ts`](../../../frontend/src/tests/ui/MessageInput.test.ts) - `renders resume button when paused` (step 17) - Line 131
-- [`MessageInput.test.ts`](../../../frontend/src/tests/ui/MessageInput.test.ts) - `allows message input when paused` (step 10) - Line 155
+- [`MessageInput.test.ts`](../../../frontend/src/tests/ui/MessageInput.test.ts) - `renders pause button when streaming and not paused` (step 1) - Line 126
+- [`MessageInput.test.ts`](../../../frontend/src/tests/ui/MessageInput.test.ts) - `renders resume button when paused` (step 16) - Line 138
+- [`MessageInput.test.ts`](../../../frontend/src/tests/ui/MessageInput.test.ts) - `allows message input when paused` (step 10) - Line 162
+- [`Message.test.ts`](../../../frontend/src/tests/ui/Message.test.ts) - `renders pending messages as gray user messages` (step 14) - Line 142

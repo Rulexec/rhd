@@ -171,6 +171,7 @@ Invalid WebSocket messages are logged and ignored via `safeParse`.
 - `selectedModel`: writable string|null, currently selected model for the active chat
 - `isPaused`: writable boolean indicating chat paused during tool loop
 - `pendingToolCalls`: writable array of active tool calls
+- `pendingMessages`: writable array of not-yet-sent messages queued while paused/aborted (see "Pending Messages" below)
 - `isToolLoopRunning`: derived store (isStreaming && !isPaused)
 - `resetAllStores()`: resets all stores to initial state (for testing)
 
@@ -199,6 +200,29 @@ Invalid WebSocket messages are logged and ignored via `safeParse`.
 - **`Message.svelte`**: Individual message display with edit mode for user messages. When message.id matches streamingMessageId, displays animated dots indicator (CSS animation cycling through ".", "..", "...")
 - **`MessageInput.svelte`**: Textarea with send/abort buttons, error display with retry, model selector dropdown
 - **`StreamingMessage.svelte`**: Loading dots animation shown before first streaming chunk arrives
+
+### Pending Messages (queued while paused/aborted)
+
+When the chat is paused or aborted, a sent message is not yet part of the conversation. It is held in the `pendingMessages` store (type `QueuedMessage`, `status: 'queued'`) as the **single source of truth** — there is exactly one representation, so the message can never render twice.
+
+**Lifecycle:**
+- `queueMessage()` inserts the message optimistically into `pendingMessages` with id `pending-<timestamp>`; it is **not** added to `messages`. On request failure the entry is rolled back.
+- The entry is **not** cleared on `chatResumed` — it stays visible until the daemon confirms it.
+- `chatMessageAdded` with `role === 'user'` removes the first `pendingMessages` entry whose `content` matches, so the confirmed message in `messages` replaces the gray copy.
+
+**Ordering rule** in `MessageList.svelte` — the loader has two meanings, so pending messages are positioned relative to it based on `$isPaused || $isAborted`:
+
+```
+$messages
+  →  if (paused || aborted)  loader (interrupted call), then pending
+  →  else                    pending, then loader (new call whose context includes them)
+```
+
+**Styling convention:** a pending message renders as a user message with a gray background (`.message.pending`, `#f5f5f5`) and muted text, meaning "not yet part of the chat". There is no "Queued" badge and no opacity change.
+
+**Test attributes:** `data-role="user"` plus `data-pending="true"` (a pending message *is* a user message that simply is not committed yet). There is no `data-role="queued"`.
+
+**Note:** the backend still emits a `messageQueued` event and `MessageQueuedEventSchema` is retained for validation, but the frontend intentionally has **no handler** for it — it is a no-op on the client. Do not reintroduce one, or queued messages will render twice.
 
 ### Model Selection UI
 

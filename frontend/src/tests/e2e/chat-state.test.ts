@@ -31,7 +31,7 @@ import {
   availableModels,
   selectedModel,
   streamingMessageId,
-  queuedMessages,
+  pendingMessages,
   resetAllStores,
 } from '@/lib/chatStores';
 import {
@@ -401,11 +401,16 @@ describe('Chat state logic (state-based testing)', () => {
   // Covers pause-during-ai-call.md steps 2-29 (state logic)
   // Steps 1, 10, 17 are UI tests (see MessageInput.test.ts)
   it('pauses during AI call and resumes with pending tool calls', async () => {
-    // Setup: Create chat and start streaming
+    // Setup: Create chat and start streaming so the daemon has an active stream to pause
     await dispatch({ type: 'createChat', payload: { title: 'Test Chat' } });
     await configureMock('AI response with tool calls');
     await setAutoStream(false);
     const model = get(availableModels)[0] || 'test_model';
+    await dispatch({ type: 'sendMessage', payload: { content: 'Start', model } });
+    
+    await waitFor(() => {
+      expect(get(isStreaming)).toBe(true);
+    }, { timeout: 5000 });
     
     // Step 2. System dispatches `pauseChat` action
     // Step 3. System sends pause request to daemon
@@ -418,44 +423,61 @@ describe('Chat state logic (state-based testing)', () => {
     expect(get(isPaused)).toBe(true);
     expect(get(isStreaming)).toBe(false);
     
-    // Step 10-16. Message queue phase
+    // Step 10-15. Message queue phase
     // Step 10. User types message in input field (UI test)
     // Step 11. User clicks Send button (UI test)
     // Step 12. System dispatches `queueMessage` action
     // Step 13. System sends queue request to daemon
+    // Step 14. System optimistically adds the message to pendingMessages store (gray, not yet part of chat)
     await dispatch({ type: 'queueMessage', payload: { content: 'Hello', model } });
     
-    // Step 14. Daemon stores message in message queue (mocked)
-    // Step 15. System receives `messageQueued` action
-    // Step 16. System adds message to queuedMessages store with "Queued" indicator
-    await dispatch({ type: 'messageQueued', payload: { content: 'Hello', model } });
+    expect(get(pendingMessages).length).toBe(1);
+    expect(get(pendingMessages)[0].content).toBe('Hello');
     
-    expect(get(queuedMessages).length).toBe(1);
-    expect(get(queuedMessages)[0].content).toBe('Hello');
-    
-    // Step 17. User clicks Resume button (UI test)
-    // Step 18. System dispatches `resumeChat` action
-    // Step 19. System sends resume request to daemon
+    // Step 15. User clicks Resume button (UI test)
+    // Step 16. System dispatches `resumeChat` action
+    // Step 17. System sends resume request to daemon
     await dispatch({ type: 'resumeChat' });
     
-    // Step 20-25. Daemon processes pending tool calls and queued messages (mocked)
-    // Step 26. System receives `chatResumed` action
-    // Step 27. System sets isPaused to false
-    // Step 28. System sets isStreaming to true
-    // Step 29. System clears queuedMessages store
+    // Step 18-23. Daemon processes pending tool calls and queued messages (mocked)
+    // Step 24. System receives `chatResumed` action
+    // Step 25. System sets isPaused to false
+    // Step 26. System sets isStreaming to true
     await dispatch({ type: 'chatResumed' });
     
     expect(get(isPaused)).toBe(false);
     expect(get(isStreaming)).toBe(true);
-    expect(get(queuedMessages).length).toBe(0);
+    
+    // The pending message stays visible until the daemon confirms it
+    expect(get(pendingMessages).length).toBe(1);
+    
+    // Step 27. System receives `chatMessageAdded` confirming the queued message
+    // Step 28. System drops the gray pending copy, leaving exactly one visible message
+    await dispatch({
+      type: 'chatMessageAdded',
+      payload: { message: { id: 9001, chatId: get(currentChatId)!, role: 'user', content: 'Hello', createdAt: new Date().toISOString(), model } as any },
+    });
+    
+    expect(get(pendingMessages).length).toBe(0);
+    expect(get(messages).filter((m) => m.content === 'Hello').length).toBe(1);
   });
 
   // Covers pause-during-tool-execution.md steps 2-28 (state logic)
   // Steps 1, 11, 18 are UI tests (see MessageInput.test.ts)
   it('pauses during tool execution and resumes', async () => {
-    // Setup: Create chat and start tool execution
+    // Setup: Create chat and start streaming so the daemon has an active stream to pause
     await dispatch({ type: 'createChat', payload: { title: 'Test Chat' } });
     const chatId = get(currentChatId);
+    await configureMock('AI response with tool calls');
+    await setAutoStream(false);
+    await dispatch({
+      type: 'sendMessage',
+      payload: { content: 'Start', model: get(availableModels)[0] || 'test_model' },
+    });
+    
+    await waitFor(() => {
+      expect(get(isStreaming)).toBe(true);
+    }, { timeout: 5000 });
     
     // Simulate tool call started
     await dispatch({
@@ -486,31 +508,37 @@ describe('Chat state logic (state-based testing)', () => {
     // Step 12. User clicks Send button (UI test)
     // Step 13. System dispatches `queueMessage` action
     // Step 14. System sends queue request to daemon
+    // Step 15. System optimistically adds the message to pendingMessages store (gray, not yet part of chat)
     const model = get(availableModels)[0] || 'test_model';
     await dispatch({ type: 'queueMessage', payload: { content: 'Hello', model } });
     
-    // Step 15. Daemon stores message in message queue (mocked)
-    // Step 16. System receives `messageQueued` action
-    // Step 17. System adds message to queuedMessages store with "Queued" indicator
-    await dispatch({ type: 'messageQueued', payload: { content: 'Hello', model } });
+    expect(get(pendingMessages).length).toBe(1);
     
-    expect(get(queuedMessages).length).toBe(1);
-    
-    // Step 18. User clicks Resume button (UI test)
-    // Step 19. System dispatches `resumeChat` action
-    // Step 20. System sends resume request to daemon
+    // Step 16. User clicks Resume button (UI test)
+    // Step 17. System dispatches `resumeChat` action
+    // Step 18. System sends resume request to daemon
     await dispatch({ type: 'resumeChat' });
     
-    // Step 21-24. Daemon processes queued messages (mocked)
-    // Step 25. System receives `chatResumed` action
-    // Step 26. System sets isPaused to false
-    // Step 27. System sets isStreaming to true
-    // Step 28. System clears queuedMessages store
+    // Step 19-22. Daemon processes queued messages (mocked)
+    // Step 23. System receives `chatResumed` action
+    // Step 24. System sets isPaused to false
+    // Step 25. System sets isStreaming to true
     await dispatch({ type: 'chatResumed' });
     
     expect(get(isPaused)).toBe(false);
     expect(get(isStreaming)).toBe(true);
-    expect(get(queuedMessages).length).toBe(0);
+    
+    // The pending message stays visible until the daemon confirms it
+    expect(get(pendingMessages).length).toBe(1);
+    
+    // Step 26. System receives `chatMessageAdded` confirming the queued message
+    // Step 27. System drops the gray pending copy
+    await dispatch({
+      type: 'chatMessageAdded',
+      payload: { message: { id: 9002, chatId: chatId!, role: 'user', content: 'Hello', createdAt: new Date().toISOString(), model } as any },
+    });
+    
+    expect(get(pendingMessages).length).toBe(0);
   });
 
   // Covers abort-during-ai-call.md steps 2-30 (state logic)
@@ -551,39 +579,55 @@ describe('Chat state logic (state-based testing)', () => {
     // Step 14. User clicks Send button (UI test)
     // Step 15. System dispatches `queueMessage` action
     // Step 16. System sends queue request to daemon
+    // Step 17. System optimistically adds the message to pendingMessages store (gray, not yet part of chat)
     await dispatch({ type: 'queueMessage', payload: { content: 'Hello', model } });
     
-    // Step 17. Daemon stores message in message queue (mocked)
-    // Step 18. System receives `messageQueued` action
-    // Step 19. System adds message to queuedMessages store with "Queued" indicator
-    await dispatch({ type: 'messageQueued', payload: { content: 'Hello', model } });
+    expect(get(pendingMessages).length).toBe(1);
     
-    expect(get(queuedMessages).length).toBe(1);
-    
-    // Step 20. User clicks Resume button (UI test)
-    // Step 21. System dispatches `resumeChat` action
-    // Step 22. System sends resume request to daemon
+    // Step 18. User clicks Resume button (UI test)
+    // Step 19. System dispatches `resumeChat` action
+    // Step 20. System sends resume request to daemon
     await dispatch({ type: 'resumeChat' });
     
-    // Step 23-26. Daemon processes queued messages (mocked)
-    // Step 27. System receives `chatResumed` action
-    // Step 28. System sets isPaused to false
-    // Step 29. System sets isStreaming to true
-    // Step 30. System clears queuedMessages store
+    // Step 21-24. Daemon processes queued messages (mocked)
+    // Step 25. System receives `chatResumed` action
+    // Step 26. System sets isPaused to false
+    // Step 27. System sets isStreaming to true
     await dispatch({ type: 'chatResumed' });
     
     expect(get(isPaused)).toBe(false);
     expect(get(isAborted)).toBe(false);
     expect(get(isStreaming)).toBe(true);
-    expect(get(queuedMessages).length).toBe(0);
+    
+    // The pending message stays visible until the daemon confirms it
+    expect(get(pendingMessages).length).toBe(1);
+    
+    // Step 28. System receives `chatMessageAdded` confirming the queued message
+    // Step 29. System drops the gray pending copy
+    await dispatch({
+      type: 'chatMessageAdded',
+      payload: { message: { id: 9003, chatId: get(currentChatId)!, role: 'user', content: 'Hello', createdAt: new Date().toISOString(), model } as any },
+    });
+    
+    expect(get(pendingMessages).length).toBe(0);
   });
 
   // Covers abort-during-tool-execution.md steps 2-31 (state logic)
   // Steps 1, 14, 21 are UI tests (see MessageInput.test.ts)
   it('aborts during tool execution and resumes with error results', async () => {
-    // Setup: Create chat and start tool execution
+    // Setup: Create chat and start streaming so the daemon has an active stream to abort
     await dispatch({ type: 'createChat', payload: { title: 'Test Chat' } });
     const chatId = get(currentChatId);
+    await configureMock('AI response with tool calls');
+    await setAutoStream(false);
+    await dispatch({
+      type: 'sendMessage',
+      payload: { content: 'Start', model: get(availableModels)[0] || 'test_model' },
+    });
+    
+    await waitFor(() => {
+      expect(get(isStreaming)).toBe(true);
+    }, { timeout: 5000 });
     
     // Simulate tool call started
     await dispatch({
@@ -633,40 +677,54 @@ describe('Chat state logic (state-based testing)', () => {
     // Step 15. User clicks Send button (UI test)
     // Step 16. System dispatches `queueMessage` action
     // Step 17. System sends queue request to daemon
+    // Step 18. System optimistically adds the message to pendingMessages store (gray, not yet part of chat)
     const model = get(availableModels)[0] || 'test_model';
     await dispatch({ type: 'queueMessage', payload: { content: 'Hello', model } });
     
-    // Step 18. Daemon stores message in message queue (mocked)
-    // Step 19. System receives `messageQueued` action
-    // Step 20. System adds message to queuedMessages store with "Queued" indicator
-    await dispatch({ type: 'messageQueued', payload: { content: 'Hello', model } });
+    expect(get(pendingMessages).length).toBe(1);
     
-    expect(get(queuedMessages).length).toBe(1);
-    
-    // Step 21. User clicks Resume button (UI test)
-    // Step 22. System dispatches `resumeChat` action
-    // Step 23. System sends resume request to daemon
+    // Step 19. User clicks Resume button (UI test)
+    // Step 20. System dispatches `resumeChat` action
+    // Step 21. System sends resume request to daemon
     await dispatch({ type: 'resumeChat' });
     
-    // Step 24-27. Daemon processes queued messages (mocked)
-    // Step 28. System receives `chatResumed` action
-    // Step 29. System sets isPaused to false
-    // Step 30. System sets isStreaming to true
-    // Step 31. System clears queuedMessages store
+    // Step 22-25. Daemon processes queued messages (mocked)
+    // Step 26. System receives `chatResumed` action
+    // Step 27. System sets isPaused to false
+    // Step 28. System sets isStreaming to true
     await dispatch({ type: 'chatResumed' });
     
     expect(get(isPaused)).toBe(false);
     expect(get(isAborted)).toBe(false);
     expect(get(isStreaming)).toBe(true);
-    expect(get(queuedMessages).length).toBe(0);
+    
+    // The pending message stays visible until the daemon confirms it
+    expect(get(pendingMessages).length).toBe(1);
+    
+    // Step 29. System receives `chatMessageAdded` confirming the queued message
+    // Step 30. System drops the gray pending copy
+    await dispatch({
+      type: 'chatMessageAdded',
+      payload: { message: { id: 9004, chatId: chatId!, role: 'user', content: 'Hello', createdAt: new Date().toISOString(), model } as any },
+    });
+    
+    expect(get(pendingMessages).length).toBe(0);
   });
 
   // Covers message-queue-during-pause-abort.md steps 3-26 (state logic)
   // Steps 1, 8, 15 are UI tests (see MessageInput.test.ts)
   it('queues multiple messages during pause and sends on resume', async () => {
-    // Setup: Create chat and pause
+    // Setup: Create chat, start streaming so the daemon has an active stream, then pause
     await dispatch({ type: 'createChat', payload: { title: 'Test Chat' } });
     const chatId = get(currentChatId);
+    const model = get(availableModels)[0] || 'test_model';
+    await configureMock('AI response');
+    await setAutoStream(false);
+    await dispatch({ type: 'sendMessage', payload: { content: 'Start', model } });
+    
+    await waitFor(() => {
+      expect(get(isStreaming)).toBe(true);
+    }, { timeout: 5000 });
     
     await dispatch({ type: 'pauseChat' });
     await dispatch({ type: 'chatPaused' });
@@ -675,45 +733,54 @@ describe('Chat state logic (state-based testing)', () => {
     
     // Step 3. System dispatches `queueMessage` action
     // Step 4. System sends queue request to daemon
-    const model = get(availableModels)[0] || 'test_model';
+    // Step 5. System optimistically adds the message to pendingMessages store (gray, not yet part of chat)
     await dispatch({ type: 'queueMessage', payload: { content: 'First', model } });
     
-    // Step 5. Daemon stores message in message queue (mocked)
-    // Step 6. System receives `messageQueued` action
-    // Step 7. System adds message to queuedMessages store with "Queued" indicator
-    await dispatch({ type: 'messageQueued', payload: { content: 'First', model } });
+    expect(get(pendingMessages).length).toBe(1);
+    expect(get(pendingMessages)[0].content).toBe('First');
     
-    expect(get(queuedMessages).length).toBe(1);
-    expect(get(queuedMessages)[0].content).toBe('First');
-    
-    // Step 8. User types second message in input field (UI test)
-    // Step 9. User clicks Send button (UI test)
-    // Step 10. System dispatches `queueMessage` action
-    // Step 11. System sends queue request to daemon
+    // Step 6. User types second message in input field (UI test)
+    // Step 7. User clicks Send button (UI test)
+    // Step 8. System dispatches `queueMessage` action
+    // Step 9. System sends queue request to daemon
+    // Step 10. System optimistically adds the second message to pendingMessages store
     await dispatch({ type: 'queueMessage', payload: { content: 'Second', model } });
     
-    // Step 12. Daemon stores message in message queue (mocked)
-    // Step 13. System receives `messageQueued` action
-    // Step 14. System adds message to queuedMessages store with "Queued" indicator
-    await dispatch({ type: 'messageQueued', payload: { content: 'Second', model } });
+    expect(get(pendingMessages).length).toBe(2);
+    expect(get(pendingMessages)[1].content).toBe('Second');
     
-    expect(get(queuedMessages).length).toBe(2);
-    expect(get(queuedMessages)[1].content).toBe('Second');
-    
-    // Step 15. User clicks Resume button (UI test)
-    // Step 16. System dispatches `resumeChat` action
-    // Step 17. System sends resume request to daemon
+    // Step 11. User clicks Resume button (UI test)
+    // Step 12. System dispatches `resumeChat` action
+    // Step 13. System sends resume request to daemon
     await dispatch({ type: 'resumeChat' });
     
-    // Step 18-22. Daemon processes queued messages in order (mocked)
-    // Step 23. System receives `chatResumed` action
-    // Step 24. System sets isPaused to false
-    // Step 25. System sets isStreaming to true
-    // Step 26. System clears queuedMessages store
+    // Step 14-18. Daemon processes queued messages in order (mocked)
+    // Step 19. System receives `chatResumed` action
+    // Step 20. System sets isPaused to false
+    // Step 21. System sets isStreaming to true
     await dispatch({ type: 'chatResumed' });
     
     expect(get(isPaused)).toBe(false);
     expect(get(isStreaming)).toBe(true);
-    expect(get(queuedMessages).length).toBe(0);
+    
+    // Both pending messages stay visible until the daemon confirms each of them
+    expect(get(pendingMessages).length).toBe(2);
+    
+    // Step 22. System receives `chatMessageAdded` for each queued message in order
+    // Step 23. System drops the matching gray pending copy each time
+    await dispatch({
+      type: 'chatMessageAdded',
+      payload: { message: { id: 9005, chatId: chatId!, role: 'user', content: 'First', createdAt: new Date().toISOString(), model } as any },
+    });
+    
+    expect(get(pendingMessages).length).toBe(1);
+    expect(get(pendingMessages)[0].content).toBe('Second');
+    
+    await dispatch({
+      type: 'chatMessageAdded',
+      payload: { message: { id: 9006, chatId: chatId!, role: 'user', content: 'Second', createdAt: new Date().toISOString(), model } as any },
+    });
+    
+    expect(get(pendingMessages).length).toBe(0);
   });
 });

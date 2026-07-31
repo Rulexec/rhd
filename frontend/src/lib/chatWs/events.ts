@@ -14,9 +14,8 @@ import {
   availableRoles,
   activeRole,
   todoList,
-  queuedMessages,
+  pendingMessages,
 } from '@/lib/chatStores';
-import type { QueuedMessage } from '@/lib/types/index';
 import {
   handleMcpStatusEvent,
   handleProjectAttachedEvent,
@@ -87,6 +86,14 @@ export function handleChatEvent(event: string, data: unknown): void {
     case 'chatMessageAdded': {
       const added = data as { message: { id: number; role: string; content: string; thinkingContent?: string } };
       const tempId = get(streamingMessageId);
+      if (added.message.role === 'user') {
+        // The daemon confirmed this message, so drop the optimistic gray copy
+        pendingMessages.update((list) => {
+          const pendingIdx = list.findIndex((m) => m.content === added.message.content);
+          if (pendingIdx === -1) return list;
+          return list.filter((_, idx) => idx !== pendingIdx);
+        });
+      }
       messages.update((list) => {
         const getNumericId = (id: number | string): number => {
           if (typeof id === 'number') return id;
@@ -340,19 +347,6 @@ export function handleChatEvent(event: string, data: unknown): void {
       isAborted.set(true);
       isStreaming.set(false);
       streamingThinkingContent.set('');
-      break;
-    }
-    case 'messageQueued': {
-      const { content, model } = data as { content: string; model: string };
-      const tempId = `queued-${Date.now()}`;
-      const queuedMessage: QueuedMessage = {
-        id: tempId,
-        content,
-        model,
-        queuedAt: new Date().toISOString(),
-        status: 'queued',
-      };
-      queuedMessages.update((list) => [...list, queuedMessage]);
       break;
     }
     case 'roleChanged': {

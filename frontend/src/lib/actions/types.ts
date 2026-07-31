@@ -25,7 +25,6 @@ export type ChatAction =
   | { type: 'chatPaused' }
   | { type: 'chatResumed' }
   | { type: 'streamAborted' }
-  | { type: 'messageQueued'; payload: { content: string; model: string } }
   | { type: 'projectMcpStatusChanged'; payload: unknown }
   | { type: 'projectAttached'; payload: unknown }
   | { type: 'projectDetached'; payload: unknown }

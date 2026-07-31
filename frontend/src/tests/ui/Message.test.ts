@@ -137,21 +137,25 @@ describe('Message UI', () => {
     expect(screen.getByText('System Prompt')).toBeTruthy();
   });
 
-  // Covers message-queue-during-pause-abort.md step 7 (UI rendering)
-  // Step 7. System adds message to queuedMessages store with "Queued" indicator (shows Queued indicator for queued messages)
-  it('shows Queued indicator for queued messages', () => {
-    const queuedMessage = {
-      id: 'queued-1',
+  // Covers message-queue-during-pause-abort.md step 5 (UI rendering)
+  // Step 5. System optimistically adds message to pendingMessages store (renders as a gray, not-yet-sent user message)
+  it('renders pending messages as gray user messages', () => {
+    const pendingMessage = {
+      id: 'pending-1',
       content: 'Hello',
       model: 'model1',
       queuedAt: new Date().toISOString(),
       status: 'queued' as const,
     };
-    render(Message, { props: { message: queuedMessage } });
-    expect(screen.getByText('Queued')).toBeTruthy();
+    const { container } = render(Message, { props: { message: pendingMessage } });
+    const element = container.querySelector('[data-message-content="Hello"]');
+    expect(element).toBeTruthy();
+    expect(element?.getAttribute('data-pending')).toBe('true');
+    expect(element?.getAttribute('data-role')).toBe('user');
+    expect(element?.classList.contains('pending')).toBe(true);
   });
 
-  it('does not show Queued indicator for regular messages', () => {
+  it('does not mark regular messages as pending', () => {
     const regularMessage: ChatMessage = {
       id: 1,
       chatId: 1,
@@ -160,7 +164,10 @@ describe('Message UI', () => {
       createdAt: '',
       model: 'model1',
     };
-    render(Message, { props: { message: regularMessage } });
-    expect(screen.queryByText('Queued')).toBeNull();
+    const { container } = render(Message, { props: { message: regularMessage } });
+    const element = container.querySelector('[data-message-content="Hello"]');
+    expect(element).toBeTruthy();
+    expect(element?.getAttribute('data-pending')).toBeNull();
+    expect(element?.classList.contains('pending')).toBe(false);
   });
 });

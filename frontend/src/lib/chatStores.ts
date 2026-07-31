@@ -15,7 +15,7 @@ export const streamingMessageId: Writable<string | null> = writable(null);
 export const isPaused: Writable<boolean> = writable(false);
 export const isAborted: Writable<boolean> = writable(false);
 export const pendingToolCalls: Writable<ToolCall[]> = writable([]);
-export const queuedMessages: Writable<QueuedMessage[]> = writable([]);
+export const pendingMessages: Writable<QueuedMessage[]> = writable([]);
 export const availableRoles: Writable<RoleInfo[]> = writable([]);
 export const activeRole: Writable<ActiveRole | null> = writable(null);
 export const todoList: Writable<TodoItem[]> = writable([]);
@@ -70,7 +70,7 @@ export function resetAllStores(): void {
   isPaused.set(false);
   isAborted.set(false);
   pendingToolCalls.set([]);
-  queuedMessages.set([]);
+  pendingMessages.set([]);
   availableRoles.set([]);
   activeRole.set(null);
   todoList.set([]);

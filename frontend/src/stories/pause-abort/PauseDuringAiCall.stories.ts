@@ -14,7 +14,7 @@ import {
   streamingMessageId, 
   isPaused, 
   pendingToolCalls, 
-  queuedMessages,
+  pendingMessages,
   availableRoles, 
   activeRole, 
   todoList, 
@@ -50,7 +50,7 @@ function setupDefaultStores() {
   streamingMessageId.set(null);
   isPaused.set(false);
   pendingToolCalls.set([]);
-  queuedMessages.set([]);
+  pendingMessages.set([]);
   availableRoles.set([]);
   activeRole.set(null);
   todoList.set([]);
@@ -163,20 +163,11 @@ const storyDefinition: StoryControlDefinition<StoryState> = {
         
         sendButton.click();
         
-        return { state: { ...state, step: 5 } };
-      },
-    },
-    
-    {
-      name: 'daemon response: messageQueued',
-      execute: async ({ state }) => {
-        dispatch({ type: 'messageQueued', payload: { content: 'Please continue later', model: 'gpt-4' } });
-        
         await waitFor(() => {
-          if (get(queuedMessages).length !== 1) throw new Error('queuedMessages should have length 1');
+          if (get(pendingMessages).length !== 1) throw new Error('pendingMessages should have length 1');
         });
         
-        return { state: { ...state, step: 6 } };
+        return { state: { ...state, step: 5 } };
       },
     },
     
@@ -191,7 +182,7 @@ const storyDefinition: StoryControlDefinition<StoryState> = {
         
         resumeButton.click();
         
-        return { state: { ...state, step: 7 } };
+        return { state: { ...state, step: 6 } };
       },
     },
     
@@ -205,7 +196,7 @@ const storyDefinition: StoryControlDefinition<StoryState> = {
           if (get(isStreaming) !== true) throw new Error('isStreaming should be true');
         });
         
-        return { state: { ...state, step: 8 } };
+        return { state: { ...state, step: 7 } };
       },
     },
     
@@ -231,7 +222,7 @@ const storyDefinition: StoryControlDefinition<StoryState> = {
           if (get(isStreaming) !== true) throw new Error('isStreaming should be true for new request');
         });
         
-        return { state: { ...state, step: 9 } };
+        return { state: { ...state, step: 8 } };
       },
     },
     
@@ -245,7 +236,7 @@ const storyDefinition: StoryControlDefinition<StoryState> = {
         
         clearMockWsHandlers();
         
-        return { state: { ...state, step: 10 } };
+        return { state: { ...state, step: 9 } };
       },
     },
   ],
