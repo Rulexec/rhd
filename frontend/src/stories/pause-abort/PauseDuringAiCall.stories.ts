@@ -203,7 +203,7 @@ const storyDefinition: StoryControlDefinition<StoryState> = {
     {
       name: 'daemon response: streamFinished',
       execute: async ({ state }) => {
-        // Add AI response message to the messages store
+        // The interrupted call produced its result
         const aiResponseMessage = {
           id: Date.now(),
           chatId: 1,
@@ -214,12 +214,17 @@ const storyDefinition: StoryControlDefinition<StoryState> = {
         };
         messages.update((list) => [...list, aiResponseMessage]);
         
-        // Start new stream for the queued message
+        dispatch({ type: 'chatStreamFinished' });
+        
+        // The daemon now drains the queue, so a new call starts for the promoted message
         isStreaming.set(true);
         streamingMessageId.set(null);
         
         await waitFor(() => {
           if (get(isStreaming) !== true) throw new Error('isStreaming should be true for new request');
+          if (get(pendingMessages).length !== 0) throw new Error('pendingMessages should be empty after promotion');
+          const promoted = get(messages).find((m) => m.role === 'user' && m.content === 'Please continue later');
+          if (!promoted) throw new Error('messages should contain the promoted user message');
         });
         
         return { state: { ...state, step: 8 } };

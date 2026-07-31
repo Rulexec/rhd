@@ -448,11 +448,19 @@ describe('Chat state logic (state-based testing)', () => {
     expect(get(isPaused)).toBe(false);
     expect(get(isStreaming)).toBe(true);
     
-    // The pending message stays visible until the daemon confirms it
+    // Step 27. The interrupted call has not produced its result yet, so the message
+    // stays queued and gray after resume
     expect(get(pendingMessages).length).toBe(1);
     
-    // Step 27. System receives `chatMessageAdded` confirming the queued message
-    // Step 28. System drops the gray pending copy, leaving exactly one visible message
+    // Step 28. System receives `chatStreamFinished` while resumed
+    // Step 29. System promotes the queued message into messages as a regular user message
+    await dispatch({ type: 'chatStreamFinished' });
+    
+    expect(get(pendingMessages).length).toBe(0);
+    const promoted = get(messages).filter((m) => m.role === 'user' && m.content === 'Hello');
+    expect(promoted.length).toBe(1);
+    
+    // Step 30. A later `chatMessageAdded` echo replaces the promoted message in place
     await dispatch({
       type: 'chatMessageAdded',
       payload: { message: { id: 9001, chatId: get(currentChatId)!, role: 'user', content: 'Hello', createdAt: new Date().toISOString(), model } as any },
@@ -528,17 +536,24 @@ describe('Chat state logic (state-based testing)', () => {
     expect(get(isPaused)).toBe(false);
     expect(get(isStreaming)).toBe(true);
     
-    // The pending message stays visible until the daemon confirms it
+    // The interrupted call has not finished, so the message stays queued and gray
     expect(get(pendingMessages).length).toBe(1);
     
-    // Step 26. System receives `chatMessageAdded` confirming the queued message
-    // Step 27. System drops the gray pending copy
+    // Step 26. System receives `chatStreamFinished` while resumed
+    // Step 27. System promotes the queued message into messages as a regular user message
+    await dispatch({ type: 'chatStreamFinished' });
+    
+    expect(get(pendingMessages).length).toBe(0);
+    expect(get(messages).filter((m) => m.role === 'user' && m.content === 'Hello').length).toBe(1);
+    
+    // A later daemon echo replaces the promoted message instead of duplicating it
     await dispatch({
       type: 'chatMessageAdded',
       payload: { message: { id: 9002, chatId: chatId!, role: 'user', content: 'Hello', createdAt: new Date().toISOString(), model } as any },
     });
     
     expect(get(pendingMessages).length).toBe(0);
+    expect(get(messages).filter((m) => m.content === 'Hello').length).toBe(1);
   });
 
   // Covers abort-during-ai-call.md steps 2-30 (state logic)
@@ -584,6 +599,14 @@ describe('Chat state logic (state-based testing)', () => {
     
     expect(get(pendingMessages).length).toBe(1);
     
+    // A stream finishing while still aborted means the chat was never resumed,
+    // so the message is genuinely still queued and stays gray
+    await dispatch({ type: 'chatStreamFinished' });
+    
+    expect(get(isAborted)).toBe(true);
+    expect(get(pendingMessages).length).toBe(1);
+    expect(get(messages).filter((m) => m.role === 'user' && m.content === 'Hello').length).toBe(0);
+    
     // Step 18. User clicks Resume button (UI test)
     // Step 19. System dispatches `resumeChat` action
     // Step 20. System sends resume request to daemon
@@ -599,17 +622,24 @@ describe('Chat state logic (state-based testing)', () => {
     expect(get(isAborted)).toBe(false);
     expect(get(isStreaming)).toBe(true);
     
-    // The pending message stays visible until the daemon confirms it
+    // The interrupted call has not finished, so the message stays queued and gray
     expect(get(pendingMessages).length).toBe(1);
     
-    // Step 28. System receives `chatMessageAdded` confirming the queued message
-    // Step 29. System drops the gray pending copy
+    // Step 28. System receives `chatStreamFinished` while resumed
+    // Step 29. System promotes the queued message into messages as a regular user message
+    await dispatch({ type: 'chatStreamFinished' });
+    
+    expect(get(pendingMessages).length).toBe(0);
+    expect(get(messages).filter((m) => m.role === 'user' && m.content === 'Hello').length).toBe(1);
+    
+    // A later daemon echo replaces the promoted message instead of duplicating it
     await dispatch({
       type: 'chatMessageAdded',
       payload: { message: { id: 9003, chatId: get(currentChatId)!, role: 'user', content: 'Hello', createdAt: new Date().toISOString(), model } as any },
     });
     
     expect(get(pendingMessages).length).toBe(0);
+    expect(get(messages).filter((m) => m.content === 'Hello').length).toBe(1);
   });
 
   // Covers abort-during-tool-execution.md steps 2-31 (state logic)
@@ -683,6 +713,14 @@ describe('Chat state logic (state-based testing)', () => {
     
     expect(get(pendingMessages).length).toBe(1);
     
+    // A stream finishing while still aborted means the chat was never resumed,
+    // so the message is genuinely still queued and stays gray
+    await dispatch({ type: 'chatStreamFinished' });
+    
+    expect(get(isAborted)).toBe(true);
+    expect(get(pendingMessages).length).toBe(1);
+    expect(get(messages).filter((m) => m.role === 'user' && m.content === 'Hello').length).toBe(0);
+    
     // Step 19. User clicks Resume button (UI test)
     // Step 20. System dispatches `resumeChat` action
     // Step 21. System sends resume request to daemon
@@ -698,17 +736,24 @@ describe('Chat state logic (state-based testing)', () => {
     expect(get(isAborted)).toBe(false);
     expect(get(isStreaming)).toBe(true);
     
-    // The pending message stays visible until the daemon confirms it
+    // The interrupted call has not finished, so the message stays queued and gray
     expect(get(pendingMessages).length).toBe(1);
     
-    // Step 29. System receives `chatMessageAdded` confirming the queued message
-    // Step 30. System drops the gray pending copy
+    // Step 29. System receives `chatStreamFinished` while resumed
+    // Step 30. System promotes the queued message into messages as a regular user message
+    await dispatch({ type: 'chatStreamFinished' });
+    
+    expect(get(pendingMessages).length).toBe(0);
+    expect(get(messages).filter((m) => m.role === 'user' && m.content === 'Hello').length).toBe(1);
+    
+    // A later daemon echo replaces the promoted message instead of duplicating it
     await dispatch({
       type: 'chatMessageAdded',
       payload: { message: { id: 9004, chatId: chatId!, role: 'user', content: 'Hello', createdAt: new Date().toISOString(), model } as any },
     });
     
     expect(get(pendingMessages).length).toBe(0);
+    expect(get(messages).filter((m) => m.content === 'Hello').length).toBe(1);
   });
 
   // Covers message-queue-during-pause-abort.md steps 3-26 (state logic)
@@ -763,18 +808,25 @@ describe('Chat state logic (state-based testing)', () => {
     expect(get(isPaused)).toBe(false);
     expect(get(isStreaming)).toBe(true);
     
-    // Both pending messages stay visible until the daemon confirms each of them
+    // Both messages stay queued and gray while the interrupted call is still in flight
     expect(get(pendingMessages).length).toBe(2);
     
-    // Step 22. System receives `chatMessageAdded` for each queued message in order
-    // Step 23. System drops the matching gray pending copy each time
+    // Step 22. System receives `chatStreamFinished` while resumed
+    // Step 23. System promotes both queued messages in queue order
+    await dispatch({ type: 'chatStreamFinished' });
+    
+    expect(get(pendingMessages).length).toBe(0);
+    
+    const promotedContents = get(messages)
+      .filter((m) => m.role === 'user' && (m.content === 'First' || m.content === 'Second'))
+      .map((m) => m.content);
+    expect(promotedContents).toEqual(['First', 'Second']);
+    
+    // Step 24. Later daemon echoes replace the promoted messages instead of duplicating them
     await dispatch({
       type: 'chatMessageAdded',
       payload: { message: { id: 9005, chatId: chatId!, role: 'user', content: 'First', createdAt: new Date().toISOString(), model } as any },
     });
-    
-    expect(get(pendingMessages).length).toBe(1);
-    expect(get(pendingMessages)[0].content).toBe('Second');
     
     await dispatch({
       type: 'chatMessageAdded',
@@ -782,5 +834,7 @@ describe('Chat state logic (state-based testing)', () => {
     });
     
     expect(get(pendingMessages).length).toBe(0);
+    expect(get(messages).filter((m) => m.content === 'First').length).toBe(1);
+    expect(get(messages).filter((m) => m.content === 'Second').length).toBe(1);
   });
 });

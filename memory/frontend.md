@@ -207,16 +207,18 @@ When the chat is paused or aborted, a sent message is not yet part of the conver
 
 **Lifecycle:**
 - `queueMessage()` inserts the message optimistically into `pendingMessages` with id `pending-<timestamp>`; it is **not** added to `messages`. On request failure the entry is rolled back.
-- The entry is **not** cleared on `chatResumed` — it stays visible until the daemon confirms it.
-- `chatMessageAdded` with `role === 'user'` removes the first `pendingMessages` entry whose `content` matches, so the confirmed message in `messages` replaces the gray copy.
+- The entry is **not** cleared on `chatResumed` — resuming only hands the preserved queue back to the interrupted stream; the daemon drains it later.
+- **Promotion on `chatStreamFinished`**: when a stream finishes while the chat is **neither paused nor aborted**, every `pendingMessages` entry is *moved* into `messages` as a normal user message and `pendingMessages` is cleared. The interrupted call has ended, so the daemon is draining the queue — the message has been sent and must stop rendering gray. While paused/aborted the guard skips promotion and the message stays gray and queued.
+- Promoted messages get a numeric `Date.now()`-style id kept above every existing numeric id, so a later `chatMessageAdded` echo replaces them **in place** (the reconciliation matches a user message with numeric id `> 1000000000000` and identical content) instead of duplicating, and keys in the rendered list stay unique.
+- `chatMessageAdded` with `role === 'user'` also removes the first `pendingMessages` entry whose `content` matches. Since promotion already empties the store, this is a fallback for the paused-forever case.
 
-**Ordering rule** in `MessageList.svelte` — the loader has two meanings, so pending messages are positioned relative to it based on `$isPaused || $isAborted`:
+**Ordering rule** in `MessageList.svelte` — **unconditional**: a not-yet-sent message always renders *after* the loader of the in-flight call, because the interrupted call must finish before the queue is drained.
 
 ```
-$messages
-  →  if (paused || aborted)  loader (interrupted call), then pending
-  →  else                    pending, then loader (new call whose context includes them)
+$messages  →  loader (if shown)  →  $pendingMessages
 ```
+
+The loader condition remains `($isStreaming || $isPaused) && !$streamingMessageId`. Do not reintroduce an `isPaused`/`isAborted` branch here: `resumeChat()` optimistically flips `isPaused` to false, which used to make the pending message jump above the loader on resume.
 
 **Styling convention:** a pending message renders as a user message with a gray background (`.message.pending`, `#f5f5f5`) and muted text, meaning "not yet part of the chat". There is no "Queued" badge and no opacity change.
 

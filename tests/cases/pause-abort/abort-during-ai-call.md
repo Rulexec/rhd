@@ -43,9 +43,9 @@ User aborts chat while AI is in thinking or streaming state.
 26. System receives `chatResumed` action
 27. System sets isPaused to false
 28. System sets isStreaming to true
-29. System keeps the gray pending message visible, now rendered above the loader of the new call
-30. System receives `chatMessageAdded` with the confirmed user message
-31. System removes the matching gray pending message, leaving exactly one visible copy
+29. System keeps the gray pending message visible, still rendered below the loader, because the interrupted call has not produced its result yet
+30. System receives `chatStreamFinished` while resumed and promotes the queued message into the chat as a regular user message
+31. System receives `chatMessageAdded` with the confirmed user message, replacing the promoted message in place
 
 ## Expected Results
 - Abort: AI request cancelled, partial response discarded, no message saved

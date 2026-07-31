@@ -37,9 +37,9 @@ User adds messages while chat is paused or aborted, messages are queued and sent
 21. System receives `chatResumed` action
 22. System sets isPaused to false
 23. System sets isStreaming to true
-24. System keeps both gray pending messages visible, now rendered above the loader of the new call
-25. System receives `chatMessageAdded` for each queued message in order
-26. System removes the matching gray pending message each time, leaving exactly one visible copy per message
+24. System keeps both gray pending messages visible, still rendered below the loader, because the interrupted call has not produced its result yet
+25. System receives `chatStreamFinished` while resumed and promotes both queued messages into the chat in queue order as regular user messages
+26. System receives `chatMessageAdded` for each queued message in order, replacing each promoted message in place and leaving exactly one visible copy per message
 
 ## Expected Results
 - Queue: Messages shown in order, each exactly once, with a gray background meaning "not yet part of the chat"

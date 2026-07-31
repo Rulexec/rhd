@@ -44,9 +44,9 @@ User aborts chat while tool calls are executing.
 27. System receives `chatResumed` action
 28. System sets isPaused to false
 29. System sets isStreaming to true
-30. System keeps the gray pending message visible, now rendered above the loader of the new call
-31. System receives `chatMessageAdded` with the confirmed user message
-32. System removes the matching gray pending message, leaving exactly one visible copy
+30. System keeps the gray pending message visible, still rendered below the loader, because the interrupted call has not produced its result yet
+31. System receives `chatStreamFinished` while resumed and promotes the queued message into the chat as a regular user message
+32. System receives `chatMessageAdded` with the confirmed user message, replacing the promoted message in place
 
 ## Expected Results
 - Abort: Non-finished tools return "Aborted" error, finished tools keep results, all results inserted

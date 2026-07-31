@@ -23,6 +23,35 @@ import {
 } from '@/lib/projectStores';
 import { parseAssistantMessage, parseToolResult } from './parsers';
 
+function promotePendingMessagesToChat(): void {
+  const chatId = get(currentChatId);
+  if (!chatId) return;
+
+  const queued = get(pendingMessages);
+  if (queued.length === 0) return;
+
+  messages.update((list) => {
+    const highestNumericId = list.reduce(
+      (highest, m) => (typeof m.id === 'number' && m.id > highest ? m.id : highest),
+      0
+    );
+    // A numeric Date.now()-style id lets a later chatMessageAdded echo replace the
+    // promoted message in place instead of rendering a second copy. Staying above
+    // every existing id keeps keys unique in the rendered list.
+    let promotedId = Math.max(Date.now(), highestNumericId + 1);
+    const promoted = queued.map((entry) => ({
+      id: promotedId++,
+      chatId,
+      role: 'user' as const,
+      content: entry.content,
+      createdAt: entry.queuedAt,
+      model: entry.model,
+    }));
+    return [...list, ...(promoted as any[])];
+  });
+  pendingMessages.set([]);
+}
+
 export function handleChatEvent(event: string, data: unknown): void {
   switch (event) {
     case 'chatStreamChunk': {
@@ -73,6 +102,11 @@ export function handleChatEvent(event: string, data: unknown): void {
       streamError.set(null);
       streamingMessageId.set(null);
       streamingThinkingContent.set('');
+      // The interrupted call has ended. While the chat is resumed the daemon now
+      // drains the message queue, so queued messages are no longer waiting to be sent
+      if (!get(isPaused) && !get(isAborted)) {
+        promotePendingMessagesToChat();
+      }
       break;
     }
     case 'chatStreamError': {

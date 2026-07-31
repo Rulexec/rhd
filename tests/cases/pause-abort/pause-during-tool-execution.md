@@ -41,9 +41,9 @@ User pauses chat while tool calls are executing.
 24. System receives `chatResumed` action
 25. System sets isPaused to false
 26. System sets isStreaming to true
-27. System keeps the gray pending message visible, now rendered above the loader of the new call
-28. System receives `chatMessageAdded` with the confirmed user message
-29. System removes the matching gray pending message, leaving exactly one visible copy
+27. System keeps the gray pending message visible, still rendered below the loader, because the interrupted call has not produced its result yet
+28. System receives `chatStreamFinished` while resumed and promotes the queued message into the chat as a regular user message
+29. System receives `chatMessageAdded` with the confirmed user message, replacing the promoted message in place
 
 ## Expected Results
 - Pause: Current tool calls complete, results inserted, tool loop paused

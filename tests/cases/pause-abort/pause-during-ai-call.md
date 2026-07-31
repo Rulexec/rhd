@@ -42,23 +42,25 @@ User pauses chat while AI is in thinking or streaming state.
 25. System receives `chatResumed` action
 26. System sets isPaused to false
 27. System sets isStreaming to true
-28. System keeps the gray pending message visible, now rendered above the loader of the new call
-29. System receives `chatMessageAdded` with the confirmed user message
-30. System removes the matching gray pending message, leaving exactly one visible copy
+28. System keeps the gray pending message visible, still rendered below the loader, because the interrupted call has not produced its result yet
+29. System receives `chatStreamFinished`, signalling the interrupted call has ended
+30. System promotes the queued message into the chat as a regular user message (no longer gray) because the daemon now drains the queue
+31. System receives `chatMessageAdded` with the confirmed user message, replacing the promoted message in place
 
 ## Expected Results
 - Pause: AI completes naturally, tool calls remembered but not executed
 - Message queue: Message is shown exactly once, with a gray background meaning "not yet part of the chat"
-- Ordering: while paused the loader precedes the pending message; after resume the pending message precedes the loader
+- Ordering: a not-yet-sent message always renders below the loader of the in-flight call, both while paused and after resume
+- Promotion: on `chatStreamFinished` while resumed, the queued message becomes a regular user message; while paused or aborted it stays gray and queued
 - Resume: Pending tool calls executed, queued messages sent, tool loop continues
 
 ## Covered By
 
 ### E2E Tests
-- [`chat-state.test.ts`](../../../frontend/src/tests/e2e/chat-state.test.ts) - `pauses during AI call and resumes with pending tool calls` (steps 2-30) - Line 403
+- [`chat-state.test.ts`](../../../frontend/src/tests/e2e/chat-state.test.ts) - `pauses during AI call and resumes with pending tool calls` (steps 2-31, incl. promotion on stream finish) - Line 403
 
 ### Storybook Tests
-- [`pause-during-ai-call.spec.ts`](../../../frontend/tests/storybook/pause-during-ai-call.spec.ts) - `pauses during AI call and resumes with pending tool calls` (steps 1-30, incl. ordering and gray styling) - Line 7
+- [`pause-during-ai-call.spec.ts`](../../../frontend/tests/storybook/pause-during-ai-call.spec.ts) - `pauses during AI call and resumes with pending tool calls` (steps 1-31, incl. ordering, gray styling and promotion) - Line 7
 
 ### UI Tests
 - [`MessageInput.test.ts`](../../../frontend/src/tests/ui/MessageInput.test.ts) - `renders pause button when streaming and not paused` (step 1) - Line 126

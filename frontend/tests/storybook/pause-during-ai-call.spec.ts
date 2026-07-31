@@ -80,61 +80,84 @@ test.describe('Pause During AI Call', () => {
     await expect(page.locator('[data-testid="pause-button"]')).toBeVisible();
     await expect(page.locator('[data-testid="resume-button"]')).not.toBeVisible();
 
+    // The interrupted call has not produced its result yet, so the message stays
+    // queued: still gray, still below the loader of that interrupted call
+    const pendingMessage13 = page.locator('[data-pending="true"][data-message-content="Please continue later"]');
+    await expect(pendingMessage13).toBeVisible();
+    await expect(pendingMessage13).toHaveAttribute('data-pending', 'true');
+    await expect(pendingMessage13).toHaveCSS('background-color', PENDING_BACKGROUND);
+    await expect(page.locator('[data-message-content="Please continue later"]')).toHaveCount(1);
+
+    const loader13 = page.locator('[data-testid="streaming-message"]');
+    await expect(loader13).toBeVisible();
+    const loaderBox13 = await loader13.boundingBox();
+    const pendingBox13 = await pendingMessage13.boundingBox();
+    expect(loaderBox13).not.toBeNull();
+    expect(pendingBox13).not.toBeNull();
+    expect(pendingBox13!.y).toBeGreaterThan(loaderBox13!.y);
+
     // Step 14. User clicks "daemon response: chatResumed" step button
     const stepButton6 = page.locator('[data-testid="step-button-6"]');
     await stepButton6.click();
 
     // Step 15. System receives chatResumed action, sets isPaused=false, isStreaming=true
-    // Verify AI chat loader is visible (new stream started)
+    // Verify AI chat loader is visible (interrupted call still in flight)
     const loader15 = page.locator('[data-testid="streaming-message"]');
     await expect(loader15).toBeVisible();
 
     // The pending message is still awaiting daemon confirmation, so it stays visible
     const pendingMessage15 = page.locator('[data-pending="true"][data-message-content="Please continue later"]');
     await expect(pendingMessage15).toBeVisible();
+    await expect(pendingMessage15).toHaveCSS('background-color', PENDING_BACKGROUND);
     await expect(page.locator('[data-message-content="Please continue later"]')).toHaveCount(1);
 
-    // After resume the loader belongs to a new call that includes the pending message,
-    // so the pending message now comes BEFORE the loader
+    // The loader still represents the interrupted call, which must finish before the
+    // daemon drains the queue, so the not-yet-sent message stays AFTER the loader
     const pendingBox15 = await pendingMessage15.boundingBox();
     const loaderBox15 = await loader15.boundingBox();
     expect(pendingBox15).not.toBeNull();
     expect(loaderBox15).not.toBeNull();
-    expect(pendingBox15!.y).toBeLessThan(loaderBox15!.y);
+    expect(pendingBox15!.y).toBeGreaterThan(loaderBox15!.y);
 
     // Step 16. User clicks "daemon response: streamFinished" step button
     const stepButton7 = page.locator('[data-testid="step-button-7"]');
     await stepButton7.click();
 
     // Step 17. System receives chatStreamFinished action
-    // Verify message order: first user message, AI response, pending message, loader
+    // The interrupted call has produced its result and the chat is resumed, so the
+    // queued message has been handed to the AI: it is now a regular user message
     const firstUserMessage17 = page.locator('[data-role="user"][data-message-content="Hello, can you help me?"]');
     const aiResponse17 = page.locator('[data-role="assistant"][data-message-content="AI response after resume"]');
-    const pendingMessage17 = page.locator('[data-pending="true"][data-message-content="Please continue later"]');
+    const promotedMessage17 = page.locator('[data-role="user"][data-message-content="Please continue later"]');
     const loader17 = page.locator('[data-testid="streaming-message"]');
 
     await expect(firstUserMessage17).toBeVisible();
     await expect(aiResponse17).toBeVisible();
-    await expect(pendingMessage17).toBeVisible();
+    await expect(promotedMessage17).toBeVisible();
     await expect(loader17).toBeVisible();
 
-    // Still exactly one copy of the pending message
+    // The promoted message is no longer pending: no data-pending attribute, no gray background
+    await expect(promotedMessage17).not.toHaveAttribute('data-pending');
+    await expect(promotedMessage17).not.toHaveCSS('background-color', PENDING_BACKGROUND);
+    await expect(page.locator('[data-pending="true"]')).toHaveCount(0);
+
+    // Still exactly one copy of the message
     await expect(page.locator('[data-message-content="Please continue later"]')).toHaveCount(1);
 
     // Verify order in DOM
     const firstBox17 = await firstUserMessage17.boundingBox();
     const aiBox17 = await aiResponse17.boundingBox();
-    const pendingBox17 = await pendingMessage17.boundingBox();
+    const promotedBox17 = await promotedMessage17.boundingBox();
     const loaderBox17 = await loader17.boundingBox();
 
     expect(firstBox17).not.toBeNull();
     expect(aiBox17).not.toBeNull();
-    expect(pendingBox17).not.toBeNull();
+    expect(promotedBox17).not.toBeNull();
     expect(loaderBox17).not.toBeNull();
 
     expect(firstBox17!.y).toBeLessThan(aiBox17!.y);
-    expect(aiBox17!.y).toBeLessThan(pendingBox17!.y);
-    expect(pendingBox17!.y).toBeLessThan(loaderBox17!.y);
+    expect(aiBox17!.y).toBeLessThan(promotedBox17!.y);
+    expect(promotedBox17!.y).toBeLessThan(loaderBox17!.y);
 
     // Step 18. User clicks "verify final state" step button
     const stepButton8 = page.locator('[data-testid="step-button-8"]');

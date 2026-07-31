@@ -1,6 +1,6 @@
 <script lang="ts">
   import { afterUpdate } from 'svelte';
-  import { messages, isStreaming, isPaused, isAborted, streamingContent, streamingThinkingContent, streamingMessageId, pendingMessages } from '@/lib/chatStores';
+  import { messages, isStreaming, isPaused, streamingContent, streamingThinkingContent, streamingMessageId, pendingMessages } from '@/lib/chatStores';
   import Message from './Message.svelte';
   import StreamingMessage from './StreamingMessage.svelte';
   import ToolCallMessage from './ToolCallMessage.svelte';
@@ -33,7 +33,6 @@
   }
 
   $: showLoader = ($isStreaming || $isPaused) && !$streamingMessageId;
-  $: loaderBelongsToInterruptedCall = $isPaused || $isAborted;
 </script>
 
 <div class="message-list" bind:this={listElement} on:scroll={handleScroll}>
@@ -52,21 +51,12 @@
       </div>
     {/if}
   {/each}
-  {#if loaderBelongsToInterruptedCall}
-    {#if showLoader}
-      <StreamingMessage content={$streamingContent} thinkingContent={$streamingThinkingContent} />
-    {/if}
-    {#each $pendingMessages as message (message.id)}
-      <Message {message} />
-    {/each}
-  {:else}
-    {#each $pendingMessages as message (message.id)}
-      <Message {message} />
-    {/each}
-    {#if showLoader}
-      <StreamingMessage content={$streamingContent} thinkingContent={$streamingThinkingContent} />
-    {/if}
+  {#if showLoader}
+    <StreamingMessage content={$streamingContent} thinkingContent={$streamingThinkingContent} />
   {/if}
+  {#each $pendingMessages as message (message.id)}
+    <Message {message} />
+  {/each}
 </div>
 
 <style>
