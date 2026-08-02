@@ -1,3 +1,8 @@
+---
+name: plans-archive
+description: Archives completed implementation plans and consolidates their knowledge into product feature documentation. Use when plans in plans/ are implemented and no longer active.
+---
+
 # Plans Archive
 
 ## Purpose

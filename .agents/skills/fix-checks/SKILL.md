@@ -1,3 +1,8 @@
+---
+name: fix-checks
+description: Runs static analysis checks (cargo and svelte) and systematically fixes warnings/errors. Use only when the codebase is in a clean, stable state, not during active sub-plan implementation.
+---
+
 # Fix Checks Skill
 
 ## Overview

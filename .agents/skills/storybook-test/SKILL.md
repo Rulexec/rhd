@@ -1,3 +1,8 @@
+---
+name: storybook-test
+description: Guides test-driven updates to Storybook tests and frontend implementation when users report issues after executing story steps. Use when test assertions and component implementation both need updating.
+---
+
 # Storybook Test-Driven Development Skill
 
 ## Purpose
