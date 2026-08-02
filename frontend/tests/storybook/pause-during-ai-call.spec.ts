@@ -76,9 +76,17 @@ test.describe('Pause During AI Call', () => {
     await stepButton5.click();
 
     // Step 13. System dispatches resumeChat action
-    // Verify UI updates: pause/abort buttons visible again, resume/queue buttons hidden
-    await expect(page.locator('[data-testid="pause-button"]')).toBeVisible();
-    await expect(page.locator('[data-testid="resume-button"]')).not.toBeVisible();
+    // resumeChat() no longer optimistically changes state, so the UI stays paused
+    // while waiting for the daemon's chatResumed event.
+    // Resume button is visible but disabled (pending state)
+    await expect(page.locator('[data-testid="resume-button"]')).toBeVisible();
+    await expect(page.locator('[data-testid="resume-button"]')).toBeDisabled();
+    // Pause/abort buttons NOT visible (isStreaming=false, isPaused=true)
+    await expect(page.locator('[data-testid="pause-button"]')).not.toBeVisible();
+    await expect(page.locator('[data-testid="abort-button"]')).not.toBeVisible();
+    // Queue button is visible but disabled (isResumePending)
+    await expect(page.locator('[data-testid="send-button"]')).toBeVisible();
+    await expect(page.locator('[data-testid="send-button"]')).toBeDisabled();
 
     // The interrupted call has not produced its result yet, so the message stays
     // queued: still gray, still below the loader of that interrupted call

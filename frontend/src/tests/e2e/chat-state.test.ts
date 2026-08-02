@@ -616,19 +616,14 @@ describe('Chat state logic (state-based testing)', () => {
     // Step 25. System receives `chatResumed` action
     // Step 26. System sets isPaused to false
     // Step 27. System sets isStreaming to true
+    // The aborted AI call was cancelled, so the queued message is promoted immediately
     await dispatch({ type: 'chatResumed' });
     
     expect(get(isPaused)).toBe(false);
     expect(get(isAborted)).toBe(false);
     expect(get(isStreaming)).toBe(true);
     
-    // The interrupted call has not finished, so the message stays queued and gray
-    expect(get(pendingMessages).length).toBe(1);
-    
-    // Step 28. System receives `chatStreamFinished` while resumed
-    // Step 29. System promotes the queued message into messages as a regular user message
-    await dispatch({ type: 'chatStreamFinished' });
-    
+    // The aborted call was cancelled, so promotion happens on chatResumed
     expect(get(pendingMessages).length).toBe(0);
     expect(get(messages).filter((m) => m.role === 'user' && m.content === 'Hello').length).toBe(1);
     
@@ -730,19 +725,14 @@ describe('Chat state logic (state-based testing)', () => {
     // Step 26. System receives `chatResumed` action
     // Step 27. System sets isPaused to false
     // Step 28. System sets isStreaming to true
+    // The aborted AI call was cancelled, so the queued message is promoted immediately
     await dispatch({ type: 'chatResumed' });
     
     expect(get(isPaused)).toBe(false);
     expect(get(isAborted)).toBe(false);
     expect(get(isStreaming)).toBe(true);
     
-    // The interrupted call has not finished, so the message stays queued and gray
-    expect(get(pendingMessages).length).toBe(1);
-    
-    // Step 29. System receives `chatStreamFinished` while resumed
-    // Step 30. System promotes the queued message into messages as a regular user message
-    await dispatch({ type: 'chatStreamFinished' });
-    
+    // The aborted call was cancelled, so promotion happens on chatResumed
     expect(get(pendingMessages).length).toBe(0);
     expect(get(messages).filter((m) => m.role === 'user' && m.content === 'Hello').length).toBe(1);
     

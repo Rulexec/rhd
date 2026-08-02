@@ -30,7 +30,7 @@ User aborts chat while tool calls are executing.
 15. User clicks Send button
 16. System dispatches `queueMessage` action
 17. System sends queue request to daemon
-18. System optimistically adds the message to pendingMessages store, rendered as a gray user message below the loader of the interrupted call
+18. System optimistically adds the message to pendingMessages store, rendered as a gray user message (no loader above it, because the aborted AI call was cancelled)
 19. Daemon stores message in message queue
 
 ### Resume Phase
@@ -44,9 +44,8 @@ User aborts chat while tool calls are executing.
 27. System receives `chatResumed` action
 28. System sets isPaused to false
 29. System sets isStreaming to true
-30. System keeps the gray pending message visible, still rendered below the loader, because the interrupted call has not produced its result yet
-31. System receives `chatStreamFinished` while resumed and promotes the queued message into the chat as a regular user message
-32. System receives `chatMessageAdded` with the confirmed user message, replacing the promoted message in place
+30. System promotes the queued message immediately on `chatResumed` because the aborted AI call was cancelled (no result to wait for)
+31. System receives `chatMessageAdded` with the confirmed user message, replacing the promoted message in place
 
 ## Expected Results
 - Abort: Non-finished tools return "Aborted" error, finished tools keep results, all results inserted

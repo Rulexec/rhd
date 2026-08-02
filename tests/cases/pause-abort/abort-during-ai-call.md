@@ -29,7 +29,7 @@ User aborts chat while AI is in thinking or streaming state.
 14. User clicks Send button
 15. System dispatches `queueMessage` action
 16. System sends queue request to daemon
-17. System optimistically adds the message to pendingMessages store, rendered as a gray user message below the loader of the interrupted call
+17. System optimistically adds the message to pendingMessages store, rendered as a gray user message (no loader above it, because the aborted AI call was cancelled)
 18. Daemon stores message in message queue
 
 ### Resume Phase
@@ -43,9 +43,8 @@ User aborts chat while AI is in thinking or streaming state.
 26. System receives `chatResumed` action
 27. System sets isPaused to false
 28. System sets isStreaming to true
-29. System keeps the gray pending message visible, still rendered below the loader, because the interrupted call has not produced its result yet
-30. System receives `chatStreamFinished` while resumed and promotes the queued message into the chat as a regular user message
-31. System receives `chatMessageAdded` with the confirmed user message, replacing the promoted message in place
+29. System promotes the queued message immediately on `chatResumed` because the aborted AI call was cancelled (no result to wait for)
+30. System receives `chatMessageAdded` with the confirmed user message, replacing the promoted message in place
 
 ## Expected Results
 - Abort: AI request cancelled, partial response discarded, no message saved
@@ -56,6 +55,9 @@ User aborts chat while AI is in thinking or streaming state.
 
 ### E2E Tests
 - [`chat-state.test.ts`](../../../frontend/src/tests/e2e/chat-state.test.ts) - `aborts during AI call and resumes without aborted message` (steps 2-31) - Line 531
+
+### Storybook Tests
+- [`abort-during-ai-call.spec.ts`](../../../frontend/tests/storybook/abort-during-ai-call.spec.ts) - `aborts during AI call and resumes without aborted message` (steps 1-31, incl. ordering, gray styling, aborted-while-finished guard, and promotion) - Line 7
 
 ### UI Tests
 - [`MessageInput.test.ts`](../../../frontend/src/tests/ui/MessageInput.test.ts) - `renders abort button when streaming` (step 1) - Line 54

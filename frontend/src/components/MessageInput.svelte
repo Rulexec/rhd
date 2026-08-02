@@ -8,6 +8,8 @@
   let input = '';
   let textareaElement: HTMLTextAreaElement;
   let isPausePending = false;
+  let isAbortPending = false;
+  let isResumePending = false;
 
   $: if ($availableModels.length > 0 && $selectedModel === null) {
     selectedModel.set($availableModels[0]);
@@ -15,6 +17,11 @@
 
   $: if ($isPaused) {
     isPausePending = false;
+    isAbortPending = false;
+  }
+
+  $: if (!$isPaused && !$isAborted) {
+    isResumePending = false;
   }
 
   $: hasMcpError = $chatProjects.length > 0 && $mcpStatuses.some(
@@ -52,6 +59,7 @@
   }
 
   function abort() {
+    isAbortPending = true;
     dispatch({ type: 'abortChat' });
   }
 
@@ -61,6 +69,7 @@
   }
 
   function resume() {
+    isResumePending = true;
     dispatch({ type: 'resumeChat' });
   }
 
@@ -113,19 +122,19 @@
       data-testid={TEST_IDS.MESSAGE_INPUT}
     ></textarea>
     {#if showPauseButton}
-      <button on:click={pause} class="pause-btn" data-testid={TEST_IDS.PAUSE_BUTTON} disabled={isPausePending}>Pause</button>
+      <button on:click={pause} class="pause-btn" data-testid={TEST_IDS.PAUSE_BUTTON} disabled={isPausePending || isAbortPending}>Pause</button>
     {/if}
     
     {#if showAbortButton}
-      <button on:click={abort} class="abort-btn">Abort</button>
+      <button on:click={abort} class="abort-btn" data-testid={TEST_IDS.ABORT_BUTTON} disabled={isAbortPending}>Abort</button>
     {/if}
     
     {#if showResumeButton}
-      <button on:click={resume} class="resume-btn" data-testid={TEST_IDS.RESUME_BUTTON}>Resume</button>
+      <button on:click={resume} class="resume-btn" data-testid={TEST_IDS.RESUME_BUTTON} disabled={isResumePending}>Resume</button>
     {/if}
     
     {#if canSend || canQueue}
-      <button on:click={handleSend} disabled={!input.trim() || !$currentChatId || hasMcpError} class="send-btn" data-testid={TEST_IDS.SEND_BUTTON}>
+      <button on:click={handleSend} disabled={!input.trim() || !$currentChatId || hasMcpError || isResumePending} class="send-btn" data-testid={TEST_IDS.SEND_BUTTON}>
         {canQueue ? 'Queue' : 'Send'}
       </button>
     {/if}
@@ -248,6 +257,11 @@
     color: white;
   }
 
+  .abort-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+
   .pause-btn {
     background: #f0ad4e;
     color: white;
@@ -261,5 +275,10 @@
   .resume-btn {
     background: #5cb85c;
     color: white;
+  }
+
+  .resume-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
   }
 </style>

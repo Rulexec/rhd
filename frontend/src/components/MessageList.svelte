@@ -1,6 +1,6 @@
 <script lang="ts">
   import { afterUpdate } from 'svelte';
-  import { messages, isStreaming, isPaused, streamingContent, streamingThinkingContent, streamingMessageId, pendingMessages } from '@/lib/chatStores';
+  import { messages, isStreaming, isPaused, isAborted, streamingContent, streamingThinkingContent, streamingMessageId, pendingMessages } from '@/lib/chatStores';
   import Message from './Message.svelte';
   import StreamingMessage from './StreamingMessage.svelte';
   import ToolCallMessage from './ToolCallMessage.svelte';
@@ -32,7 +32,7 @@
     return currentModel !== previousModel;
   }
 
-  $: showLoader = ($isStreaming || $isPaused) && !$streamingMessageId;
+  $: showLoader = ($isStreaming || ($isPaused && !$isAborted)) && !$streamingMessageId;
 </script>
 
 <div class="message-list" bind:this={listElement} on:scroll={handleScroll}>

@@ -9,7 +9,6 @@ import {
   streamingContent,
   streamingThinkingContent,
   isStreaming,
-  isPaused,
   streamError,
   availableModels,
   selectedModel,
@@ -249,17 +248,8 @@ export async function resumeChat(): Promise<WsResponse> {
   const chatId = get(currentChatId);
   if (!chatId) return { id: '', type: 'response', success: false, error: 'No chat selected' };
 
-  // Update state immediately to show pause/abort buttons
-  isPaused.set(false);
-  isStreaming.set(true);
-
   const id = generateRequestId();
   const response = await sendRequest({ type: 'resumeChat', id, chatId });
-  if (!response.success) {
-    // Revert state if the request failed
-    isPaused.set(true);
-    isStreaming.set(false);
-  }
   return response;
 }
 

@@ -355,9 +355,13 @@ export function handleChatEvent(event: string, data: unknown): void {
       break;
     }
     case 'chatResumed': {
+      const wasAborted = get(isAborted);
       isPaused.set(false);
       isAborted.set(false);
       isStreaming.set(true);
+      if (wasAborted) {
+        promotePendingMessagesToChat();
+      }
       break;
     }
     case 'streamAborted': {

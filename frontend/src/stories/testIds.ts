@@ -2,6 +2,7 @@ export const TEST_IDS = {
   MESSAGE_INPUT: 'message-input',
   SEND_BUTTON: 'send-button',
   PAUSE_BUTTON: 'pause-button',
+  ABORT_BUTTON: 'abort-button',
   RESUME_BUTTON: 'resume-button',
   STREAMING_MESSAGE: 'streaming-message',
 } as const;

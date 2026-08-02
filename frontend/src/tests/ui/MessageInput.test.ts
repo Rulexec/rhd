@@ -182,4 +182,30 @@ describe('MessageInput UI', () => {
     render(MessageInput);
     expect(screen.getByText('Queue')).toBeTruthy();
   });
+
+  // Covers abort-during-ai-call.md step 1 (button disabled state)
+  // After clicking abort, the abort button is disabled until the daemon responds
+  it('disables abort button after click until daemon responds', async () => {
+    isStreaming.set(true);
+    isPaused.set(false);
+    isAborted.set(false);
+    render(MessageInput);
+    const abortButton = screen.getByText('Abort') as HTMLButtonElement;
+    expect(abortButton.disabled).toBe(false);
+    await fireEvent.click(abortButton);
+    expect(abortButton.disabled).toBe(true);
+  });
+
+  // Covers abort-during-ai-call.md resume step (button disabled state)
+  // After clicking resume, the resume button is disabled until the daemon responds
+  it('disables resume button after click until daemon responds', async () => {
+    isStreaming.set(false);
+    isPaused.set(true);
+    isAborted.set(true);
+    render(MessageInput);
+    const resumeButton = screen.getByText('Resume') as HTMLButtonElement;
+    expect(resumeButton.disabled).toBe(false);
+    await fireEvent.click(resumeButton);
+    expect(resumeButton.disabled).toBe(true);
+  });
 });
