@@ -93,7 +93,7 @@ export function sendRequest(request: Record<string, unknown>): Promise<WsRespons
 function handleEvent(message: WsEvent): void {
   const { event, data } = message;
 
-  if (event.startsWith('chat') || event.startsWith('project')) {
+  if (event.startsWith('chat') || event.startsWith('project') || event === 'streamAborted' || event === 'messageQueued') {
     dispatch({ type: event, payload: data } as ChatAction);
     return;
   }

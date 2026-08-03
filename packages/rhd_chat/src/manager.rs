@@ -163,15 +163,22 @@ impl<P: ProjectProvider> ChatManager<P> {
 
     pub async fn resume_chat(&self, chat_id: i64) -> Option<ResumeInfo> {
         let mut active = self.active_streams.lock().await;
-        
+
         let resume_data = if let Some(StreamState::Paused { cancel_token, pause_notify, phase, pending_tool_calls, message_queue }) = active.get(&chat_id) {
-            Some((cancel_token.clone(), pause_notify.clone(), phase.clone(), pending_tool_calls.clone(), message_queue.clone()))
+            Some((cancel_token.clone(), pause_notify.clone(), phase.clone(), pending_tool_calls.clone(), message_queue.clone(), true))
+        } else if let Some(StreamState::Aborted { cancel_token, message_queue, .. }) = active.get(&chat_id) {
+            let cancel_token = cancel_token.clone();
+            let pause_notify = Arc::new(Notify::new());
+            let message_queue = message_queue.clone();
+            Some((cancel_token, pause_notify, ExecutionPhase::AiCall, Vec::new(), message_queue, false))
         } else {
             None
         };
-        
-        if let Some((cancel_token, pause_notify, phase, pending_tool_calls, message_queue)) = resume_data {
-            pause_notify.notify_one();
+
+        if let Some((cancel_token, pause_notify, phase, pending_tool_calls, message_queue, was_paused)) = resume_data {
+            if was_paused {
+                pause_notify.notify_one();
+            }
             active.insert(
                 chat_id,
                 StreamState::Running {
@@ -313,6 +320,27 @@ impl<P: ProjectProvider> ChatManager<P> {
         .await
     }
 
+    pub async fn resume_stream(
+        &self,
+        chat_id: i64,
+        model: &str,
+        models: &HashMap<String, ModelConfig>,
+        event_sender: broadcast::Sender<ChatEvent>,
+        reload_lock: &tokio::sync::RwLock<()>,
+        template_loader: &stream::TemplateLoaderRef,
+    ) -> Result<i64, ChatError> {
+        stream::resume_stream(
+            self,
+            chat_id,
+            model,
+            models,
+            event_sender,
+            reload_lock,
+            template_loader,
+        )
+        .await
+    }
+
     pub(crate) async fn register_stream(
         &self,
         chat_id: i64,
@@ -334,7 +362,7 @@ impl<P: ProjectProvider> ChatManager<P> {
         (cancel_token, pause_notify)
     }
 
-    pub(crate) async fn unregister_stream(&self, chat_id: i64) {
+    pub async fn unregister_stream(&self, chat_id: i64) {
         let mut active = self.active_streams.lock().await;
         active.remove(&chat_id);
     }

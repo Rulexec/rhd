@@ -90,10 +90,8 @@ pub async fn tool_loop<P: ProjectProvider>(
             if let Some(ref mut l) = loggers {
                 l.chat_log.log_stream_error("aborted");
             }
-            let _ = event_sender.send(ChatEvent::StreamError {
-                chat_id,
-                error: "aborted".to_string(),
-            });
+            let _ = event_sender.send(ChatEvent::StreamAborted { chat_id });
+            manager.abort_chat(chat_id, Vec::new()).await;
             return Err(ChatError::Ai(rhd_ai::client::AiError::Aborted {
                 model: model.to_string(),
             }));

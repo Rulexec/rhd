@@ -5,7 +5,7 @@ mod send;
 mod tests;
 
 pub use contract::inject_todo_tool_contract;
-pub use send::{edit_and_resend, send_message};
+pub use send::{edit_and_resend, resume_stream, send_message};
 
 use std::sync::Arc;
 

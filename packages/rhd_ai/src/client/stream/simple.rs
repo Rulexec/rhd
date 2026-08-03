@@ -190,12 +190,23 @@ impl StreamExecutor {
         let mut usage = None;
         let mut event_index = 0usize;
 
-        while let Some(chunk_result) = stream.next().await {
+        loop {
             if cancel.is_cancelled() {
                 return Err(AiError::Aborted {
                     model: model.to_string(),
                 });
             }
+            let chunk_result = tokio::select! {
+                chunk = stream.next() => match chunk {
+                    Some(c) => c,
+                    None => break,
+                },
+                _ = cancel.cancelled() => {
+                    return Err(AiError::Aborted {
+                        model: model.to_string(),
+                    });
+                }
+            };
 
             let chunk = chunk_result.map_err(|source| AiError::StreamError {
                 model: model.to_string(),

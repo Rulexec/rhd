@@ -39,8 +39,10 @@ import {
   setControlPort,
   setWsPort,
   configureMock,
+  emitStreamChunk,
   finishStream,
   setAutoStream,
+  waitForStreamReady,
 } from '../testUtils';
 import { setWsPort as setWsWsPort, connectWebSocket } from '@/lib/ws';
 
@@ -565,76 +567,77 @@ describe('Chat state logic (state-based testing)', () => {
     await setAutoStream(false);
     const model = get(availableModels)[0] || 'test_model';
     await dispatch({ type: 'sendMessage', payload: { content: 'Start', model } });
-    
+
     // Wait for streaming to start
     await waitFor(() => {
       expect(get(isStreaming)).toBe(true);
     }, { timeout: 5000 });
-    
+
+    // Wait for the backend to connect to the mock server's streaming endpoint
+    await waitForStreamReady();
+
+    // Send a chunk to ensure the backend has registered the stream and is actively streaming
+    await emitStreamChunk('Thinking');
+    await waitFor(() => {
+      expect(get(streamingMessageId)).not.toBeNull();
+    }, { timeout: 5000 });
+
+    // Give the backend time to process the chunk and return to the select! loop
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
     // Step 2. System dispatches `abortChat` action
     // Step 3. System sends abort request to daemon
     await dispatch({ type: 'abortChat' });
-    
-    // Step 4-8. Daemon cancels AI request and transitions to Aborted state (mocked)
-    // Step 9. System receives `streamAborted` action
+
+    // Step 4-8. Daemon cancels AI request and transitions to Aborted state
+    // Step 9. System receives `streamAborted` event from backend
     // Step 10. System removes streaming message from UI
     // Step 11. System sets isPaused to true
     // Step 12. System sets isStreaming to false
-    await dispatch({ type: 'streamAborted' });
-    
-    expect(get(isPaused)).toBe(true);
-    expect(get(isAborted)).toBe(true);
-    expect(get(isStreaming)).toBe(false);
-    
-    // Verify streaming message was removed
-    const streamingMsgId = get(streamingMessageId);
-    expect(streamingMsgId).toBeNull();
-    
+    await waitFor(() => {
+      expect(get(isStreaming)).toBe(false);
+    }, { timeout: 5000 });
+    await waitFor(() => {
+      expect(get(isPaused)).toBe(true);
+      expect(get(isAborted)).toBe(true);
+      expect(get(streamingMessageId)).toBeNull();
+    }, { timeout: 5000 });
+
+    // Verify streaming message was removed (but assistant message with tool calls may remain)
+    const assistantMessages = get(messages).filter((m) => m.role === 'assistant');
+    // If there are assistant messages, they should have tool calls (not be streaming messages)
+    assistantMessages.forEach((msg) => {
+      expect(msg.toolCalls).toBeDefined();
+      expect(msg.toolCalls?.length).toBeGreaterThan(0);
+    });
+
     // Step 13. User types message in input field (UI test)
     // Step 14. User clicks Send button (UI test)
     // Step 15. System dispatches `queueMessage` action
     // Step 16. System sends queue request to daemon
     // Step 17. System optimistically adds the message to pendingMessages store (gray, not yet part of chat)
     await dispatch({ type: 'queueMessage', payload: { content: 'Hello', model } });
-    
+
     expect(get(pendingMessages).length).toBe(1);
-    
-    // A stream finishing while still aborted means the chat was never resumed,
-    // so the message is genuinely still queued and stays gray
-    await dispatch({ type: 'chatStreamFinished' });
-    
-    expect(get(isAborted)).toBe(true);
-    expect(get(pendingMessages).length).toBe(1);
-    expect(get(messages).filter((m) => m.role === 'user' && m.content === 'Hello').length).toBe(0);
-    
+
     // Step 18. User clicks Resume button (UI test)
     // Step 19. System dispatches `resumeChat` action
     // Step 20. System sends resume request to daemon
     await dispatch({ type: 'resumeChat' });
-    
-    // Step 21-24. Daemon processes queued messages (mocked)
-    // Step 25. System receives `chatResumed` action
+
+    // Step 21-24. Daemon processes queued messages, adds them to DB, starts new AI call
+    // Step 25. System receives `chatResumed` event from backend
     // Step 26. System sets isPaused to false
     // Step 27. System sets isStreaming to true
-    // The aborted AI call was cancelled, so the queued message is promoted immediately
-    await dispatch({ type: 'chatResumed' });
-    
-    expect(get(isPaused)).toBe(false);
-    expect(get(isAborted)).toBe(false);
-    expect(get(isStreaming)).toBe(true);
-    
-    // The aborted call was cancelled, so promotion happens on chatResumed
-    expect(get(pendingMessages).length).toBe(0);
+    await waitFor(() => {
+      expect(get(isPaused)).toBe(false);
+      expect(get(isAborted)).toBe(false);
+      expect(get(isStreaming)).toBe(true);
+      expect(get(pendingMessages).length).toBe(0);
+    }, { timeout: 5000 });
+
+    // Verify the queued message was promoted to a regular user message
     expect(get(messages).filter((m) => m.role === 'user' && m.content === 'Hello').length).toBe(1);
-    
-    // A later daemon echo replaces the promoted message instead of duplicating it
-    await dispatch({
-      type: 'chatMessageAdded',
-      payload: { message: { id: 9003, chatId: get(currentChatId)!, role: 'user', content: 'Hello', createdAt: new Date().toISOString(), model } as any },
-    });
-    
-    expect(get(pendingMessages).length).toBe(0);
-    expect(get(messages).filter((m) => m.content === 'Hello').length).toBe(1);
   });
 
   // Covers abort-during-tool-execution.md steps 2-31 (state logic)

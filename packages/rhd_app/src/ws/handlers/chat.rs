@@ -179,8 +179,52 @@ pub async fn handle_pause_chat(id: String, chat_id: i64, state: &Arc<DaemonState
 }
 
 pub async fn handle_resume_chat(id: String, chat_id: i64, state: &Arc<DaemonState>) -> WsResponse {
-    let resumed = state.chat_manager.resume_chat(chat_id).await.is_some();
-    WsResponse::success(id, serde_json::json!({ "resumed": resumed }))
+    let resume_info = state.chat_manager.resume_chat(chat_id).await;
+
+    if let Some(info) = resume_info {
+        let event_sender = state.chat_event_sender.clone();
+
+        let _ = event_sender.send(rhd_chat::ChatEvent::ChatResumed { chat_id });
+
+        let queued = info.message_queue.messages;
+
+        if queued.is_empty() {
+            state.chat_manager.unregister_stream(chat_id).await;
+            return WsResponse::success(id, serde_json::json!({ "resumed": true }));
+        }
+
+        let chat_manager = Arc::clone(&state.chat_manager);
+        for qm in &queued {
+            let _ = chat_manager.add_message_and_notify(
+                chat_id,
+                "user",
+                &qm.content,
+                Some(&qm.model),
+                None,
+                &event_sender,
+            );
+        }
+
+        let last_model = queued.last().unwrap().model.clone();
+        let inner = state.inner.read().await;
+        let models = inner.models.clone();
+        drop(inner);
+        let template_loader = Arc::clone(&state.template_loader);
+        let state_clone = Arc::clone(state);
+
+        tokio::spawn(async move {
+            let template_loader_ref = rhd_chat::stream::TemplateLoaderRef::new(move |name| {
+                template_loader.get_template(name).map(|s| s.to_string())
+            });
+            let _ = chat_manager
+                .resume_stream(chat_id, &last_model, &models, event_sender, &state_clone.reload_lock, &template_loader_ref)
+                .await;
+        });
+
+        WsResponse::success(id, serde_json::json!({ "resumed": true }))
+    } else {
+        WsResponse::success(id, serde_json::json!({ "resumed": false }))
+    }
 }
 
 pub async fn handle_queue_message(
