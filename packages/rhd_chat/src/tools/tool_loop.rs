@@ -27,7 +27,7 @@ use super::utils::{extract_mcp_id_from_tool_name, split_tool_name};
 #[derive(Debug)]
 pub enum ToolLoopResult {
     Completed { message_id: i64 },
-    Paused { pending_tool_calls: Vec<PendingToolCall> },
+    Paused,
 }
 
 pub async fn collect_tools_from_projects<P: ProjectProvider>(
@@ -210,27 +210,6 @@ pub async fn tool_loop<P: ProjectProvider>(
             return Ok(ToolLoopResult::Completed { message_id: assistant_message_id });
         }
 
-        // Check if we should pause after AI call completes (before tool execution)
-        if let Some(state_info) = manager.get_stream_state(chat_id).await {
-            if state_info.is_paused {
-                // Store tool calls as pending and exit loop
-                let pending_tool_calls: Vec<PendingToolCall> = result.tool_calls
-                    .iter()
-                    .map(|tc| PendingToolCall {
-                        id: tc.id.clone(),
-                        name: tc.function.name.clone(),
-                        arguments: tc.function.arguments.clone(),
-                    })
-                    .collect();
-                
-                // Update state with pending tool calls
-                manager.set_pending_tool_calls(chat_id, pending_tool_calls.clone()).await;
-                
-                // Exit tool loop, wait for resume
-                return Ok(ToolLoopResult::Paused { pending_tool_calls });
-            }
-        }
-
         *iterations += 1;
 
         // Make tool call IDs globally unique using atomic counter
@@ -373,17 +352,17 @@ pub async fn tool_loop<P: ProjectProvider>(
             return Err(ChatError::Aborted);
         }
         
+        // Inject todo list message for next iteration
+        if let Err(e) = inject_todo_list_message(manager, chat_id, template_loader, event_sender) {
+            eprintln!("Failed to inject todo list message: {}", e);
+        }
+        
         // After all tools complete, check if we should pause
         if let Some(state_info) = manager.get_stream_state(chat_id).await {
             if state_info.is_paused {
                 // All tool results have been inserted, exit loop
-                return Ok(ToolLoopResult::Paused { pending_tool_calls: Vec::new() });
+                return Ok(ToolLoopResult::Paused);
             }
-        }
-        
-        // Inject todo list message for next iteration
-        if let Err(e) = inject_todo_list_message(manager, chat_id, template_loader, event_sender) {
-            eprintln!("Failed to inject todo list message: {}", e);
         }
         
         if let Some(content) = result.content {

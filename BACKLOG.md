@@ -35,3 +35,7 @@ User can add messages while chat is paused. Then after resume — they should be
 ## storybook-addon-vitest
 
 Replace `@storybook/test-runner` with `@storybook/addon-vitest` for running Storybook interaction tests.
+
+## roles-updated-zod-validation
+
+Frontend e2e tests emit "Invalid WebSocket message" errors for `rolesUpdated` events. The Zod schema expects `activeRoleProject` and `activeRoleName` to be strings, but the backend sends `null` when no role is active. Fix the Zod types on frontend or backend side, whichever is more appropriate.

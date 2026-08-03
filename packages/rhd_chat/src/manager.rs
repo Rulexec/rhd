@@ -138,7 +138,6 @@ impl<P: ProjectProvider> ChatManager<P> {
     pub async fn pause_chat(
         &self,
         chat_id: i64,
-        pending_tool_calls: Vec<PendingToolCall>,
     ) -> bool {
         let mut active = self.active_streams.lock().await;
         if let Some(StreamState::Running { cancel_token, pause_notify, phase }) = active.get(&chat_id) {
@@ -151,7 +150,6 @@ impl<P: ProjectProvider> ChatManager<P> {
                     cancel_token,
                     pause_notify,
                     phase,
-                    pending_tool_calls,
                     message_queue: MessageQueue::new(),
                 },
             );
@@ -164,18 +162,18 @@ impl<P: ProjectProvider> ChatManager<P> {
     pub async fn resume_chat(&self, chat_id: i64) -> Option<ResumeInfo> {
         let mut active = self.active_streams.lock().await;
 
-        let resume_data = if let Some(StreamState::Paused { cancel_token, pause_notify, phase, pending_tool_calls, message_queue }) = active.get(&chat_id) {
-            Some((cancel_token.clone(), pause_notify.clone(), phase.clone(), pending_tool_calls.clone(), message_queue.clone(), true))
+        let resume_data = if let Some(StreamState::Paused { cancel_token, pause_notify, phase, message_queue }) = active.get(&chat_id) {
+            Some((cancel_token.clone(), pause_notify.clone(), phase.clone(), message_queue.clone(), true))
         } else if let Some(StreamState::Aborted { cancel_token, message_queue, .. }) = active.get(&chat_id) {
             let cancel_token = cancel_token.clone();
             let pause_notify = Arc::new(Notify::new());
             let message_queue = message_queue.clone();
-            Some((cancel_token, pause_notify, ExecutionPhase::AiCall, Vec::new(), message_queue, false))
+            Some((cancel_token, pause_notify, ExecutionPhase::AiCall, message_queue, false))
         } else {
             None
         };
 
-        if let Some((cancel_token, pause_notify, phase, pending_tool_calls, message_queue, was_paused)) = resume_data {
+        if let Some((cancel_token, pause_notify, phase, message_queue, was_paused)) = resume_data {
             if was_paused {
                 pause_notify.notify_one();
             }
@@ -188,7 +186,6 @@ impl<P: ProjectProvider> ChatManager<P> {
                 },
             );
             Some(ResumeInfo {
-                pending_tool_calls,
                 previous_phase: phase,
                 message_queue,
             })
@@ -393,26 +390,6 @@ impl<P: ProjectProvider> ChatManager<P> {
         }
     }
 
-    pub async fn set_pending_tool_calls(&self, chat_id: i64, pending_tool_calls: Vec<PendingToolCall>) {
-        let mut active = self.active_streams.lock().await;
-        if let Some(StreamState::Paused { cancel_token, pause_notify, phase, message_queue, .. }) = active.get(&chat_id) {
-            let cancel_token = cancel_token.clone();
-            let pause_notify = pause_notify.clone();
-            let phase = phase.clone();
-            let message_queue = message_queue.clone();
-            active.insert(
-                chat_id,
-                StreamState::Paused {
-                    cancel_token,
-                    pause_notify,
-                    phase,
-                    pending_tool_calls,
-                    message_queue,
-                },
-            );
-        }
-    }
-
     pub(crate) async fn get_paused_notify(&self, chat_id: i64) -> Option<Arc<Notify>> {
         let active = self.active_streams.lock().await;
         if let Some(StreamState::Paused { pause_notify, .. }) = active.get(&chat_id) {
@@ -499,7 +476,6 @@ impl<P: ProjectProvider> ChatManager<P> {
 
 #[derive(Debug, Clone)]
 pub struct ResumeInfo {
-    pub pending_tool_calls: Vec<PendingToolCall>,
     pub previous_phase: ExecutionPhase,
     pub message_queue: MessageQueue,
 }
@@ -546,7 +522,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_pause_chat_with_pending_tools() {
+    async fn test_pause_chat() {
         let db = Arc::new(ChatDb::new(":memory:").unwrap());
         let project_provider = Arc::new(MockProjectProvider);
         let manager = ChatManager::new(db, project_provider, None, false);
@@ -554,19 +530,11 @@ mod tests {
         let chat_id = manager.create_chat("Test Chat").unwrap();
         let (_cancel_token, _) = manager.register_stream(chat_id).await;
 
-        let pending_tools = vec![PendingToolCall {
-            id: "call_1".to_string(),
-            name: "test_tool".to_string(),
-            arguments: "{}".to_string(),
-        }];
-
-        let result = manager.pause_chat(chat_id, pending_tools.clone()).await;
+        let result = manager.pause_chat(chat_id).await;
         assert!(result);
 
         let state = manager.get_stream_state(chat_id).await.unwrap();
         assert!(state.is_paused);
-        assert_eq!(state.pending_tool_calls.len(), 1);
-        assert_eq!(state.pending_tool_calls[0].id, "call_1");
     }
 
     #[tokio::test]
@@ -589,7 +557,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_resume_chat_returns_pending_tools() {
+    async fn test_resume_chat() {
         let db = Arc::new(ChatDb::new(":memory:").unwrap());
         let project_provider = Arc::new(MockProjectProvider);
         let manager = ChatManager::new(db, project_provider, None, false);
@@ -597,19 +565,11 @@ mod tests {
         let chat_id = manager.create_chat("Test Chat").unwrap();
         let (_cancel_token, _pause_notify) = manager.register_stream(chat_id).await;
 
-        let pending_tools = vec![PendingToolCall {
-            id: "call_1".to_string(),
-            name: "test_tool".to_string(),
-            arguments: "{}".to_string(),
-        }];
-
-        manager.pause_chat(chat_id, pending_tools.clone()).await;
+        manager.pause_chat(chat_id).await;
         let result = manager.resume_chat(chat_id).await;
         assert!(result.is_some());
 
         let resume_info = result.unwrap();
-        assert_eq!(resume_info.pending_tool_calls.len(), 1);
-        assert_eq!(resume_info.pending_tool_calls[0].id, "call_1");
         assert_eq!(resume_info.previous_phase, ExecutionPhase::AiCall);
 
         let state = manager.get_stream_state(chat_id).await.unwrap();
@@ -627,7 +587,7 @@ mod tests {
         let chat_id = manager.create_chat("Test Chat").unwrap();
         let (_cancel_token, _) = manager.register_stream(chat_id).await;
 
-        manager.pause_chat(chat_id, Vec::new()).await;
+        manager.pause_chat(chat_id).await;
 
         let result = manager.queue_message(
             chat_id,
@@ -671,7 +631,7 @@ mod tests {
         let chat_id = manager.create_chat("Test Chat").unwrap();
         let (_cancel_token, _) = manager.register_stream(chat_id).await;
 
-        manager.pause_chat(chat_id, Vec::new()).await;
+        manager.pause_chat(chat_id).await;
 
         manager.queue_message(chat_id, "First".to_string(), "gpt-4".to_string(), &event_sender).await.unwrap();
         manager.queue_message(chat_id, "Second".to_string(), "gpt-4".to_string(), &event_sender).await.unwrap();
@@ -695,7 +655,7 @@ mod tests {
         let chat_id = manager.create_chat("Test Chat").unwrap();
         let (_cancel_token, _) = manager.register_stream(chat_id).await;
 
-        manager.pause_chat(chat_id, Vec::new()).await;
+        manager.pause_chat(chat_id).await;
 
         manager.queue_message(chat_id, "Hello".to_string(), "gpt-4".to_string(), &event_sender).await.unwrap();
 

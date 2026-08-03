@@ -67,7 +67,6 @@ pub enum StreamState {
         cancel_token: CancellationToken,
         pause_notify: Arc<Notify>,
         phase: ExecutionPhase,
-        pending_tool_calls: Vec<PendingToolCall>,
         message_queue: MessageQueue,
     },
     Aborted {
@@ -98,12 +97,6 @@ impl StreamState {
         }
     }
 
-    pub fn pending_tool_calls(&self) -> Option<&Vec<PendingToolCall>> {
-        match self {
-            StreamState::Paused { pending_tool_calls, .. } => Some(pending_tool_calls),
-            _ => None,
-        }
-    }
 
     pub fn message_queue(&self) -> Option<&MessageQueue> {
         match self {
@@ -128,7 +121,6 @@ pub struct StreamStateInfo {
     pub is_paused: bool,
     pub is_aborted: bool,
     pub phase: Option<ExecutionPhase>,
-    pub pending_tool_calls: Vec<PendingToolCall>,
     pub aborted_tool_ids: Vec<String>,
     pub queued_messages: Vec<QueuedMessage>,
 }
@@ -141,16 +133,14 @@ impl From<&StreamState> for StreamStateInfo {
                 is_paused: false,
                 is_aborted: false,
                 phase: Some(phase.clone()),
-                pending_tool_calls: Vec::new(),
                 aborted_tool_ids: Vec::new(),
                 queued_messages: Vec::new(),
             },
-            StreamState::Paused { phase, pending_tool_calls, message_queue, .. } => StreamStateInfo {
+            StreamState::Paused { phase, message_queue, .. } => StreamStateInfo {
                 is_running: false,
                 is_paused: true,
                 is_aborted: false,
                 phase: Some(phase.clone()),
-                pending_tool_calls: pending_tool_calls.clone(),
                 aborted_tool_ids: Vec::new(),
                 queued_messages: message_queue.messages.clone(),
             },
@@ -159,7 +149,6 @@ impl From<&StreamState> for StreamStateInfo {
                 is_paused: false,
                 is_aborted: true,
                 phase: None,
-                pending_tool_calls: Vec::new(),
                 aborted_tool_ids: aborted_tool_ids.clone(),
                 queued_messages: message_queue.messages.clone(),
             },
@@ -203,24 +192,6 @@ mod tests {
         assert_eq!(running.phase(), Some(&ExecutionPhase::ToolExecution));
     }
 
-    #[test]
-    fn test_stream_state_pending_tool_calls() {
-        let cancel_token = CancellationToken::new();
-        let pause_notify = Arc::new(Notify::new());
-        let pending = vec![PendingToolCall {
-            id: "call_1".to_string(),
-            name: "test_tool".to_string(),
-            arguments: "{}".to_string(),
-        }];
-        let paused = StreamState::Paused {
-            cancel_token,
-            pause_notify,
-            phase: ExecutionPhase::AiCall,
-            pending_tool_calls: pending.clone(),
-            message_queue: MessageQueue::new(),
-        };
-        assert_eq!(paused.pending_tool_calls(), Some(&pending));
-    }
 
     #[test]
     fn test_message_queue_push_and_drain() {

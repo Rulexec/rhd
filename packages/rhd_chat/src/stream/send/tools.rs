@@ -61,9 +61,10 @@ pub(super) async fn send_message_with_tools<P: ProjectProvider>(
             manager.unregister_stream(chat_id).await;
             Ok(message_id)
         }
-        Ok(ToolLoopResult::Paused { pending_tool_calls: _ }) => {
+        Ok(ToolLoopResult::Paused) => {
             // Stream is paused, don't unregister
-            // The pending tool calls are stored in the state
+            // Tools have already been executed and their results persisted
+            // The assistant message with tool calls was already saved in the tool loop
             Ok(0) // Return dummy message_id
         }
         Err(ChatError::Aborted) => {

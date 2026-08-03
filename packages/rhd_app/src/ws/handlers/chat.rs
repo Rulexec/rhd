@@ -174,7 +174,10 @@ pub fn handle_dev_notification(id: String, state: &Arc<DaemonState>) -> WsRespon
 }
 
 pub async fn handle_pause_chat(id: String, chat_id: i64, state: &Arc<DaemonState>) -> WsResponse {
-    let paused = state.chat_manager.pause_chat(chat_id, Vec::new()).await;
+    let paused = state.chat_manager.pause_chat(chat_id).await;
+    if paused {
+        let _ = state.chat_event_sender.send(rhd_chat::ChatEvent::ChatPaused { chat_id });
+    }
     WsResponse::success(id, serde_json::json!({ "paused": paused }))
 }
 
