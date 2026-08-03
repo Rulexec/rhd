@@ -1,3 +1,8 @@
+---
+name: code-splitting
+description: Identifies and splits large source files (>400 lines) into smaller, logical modules to maintain readability. Use when files exceed the 400-line limit, including test files.
+---
+
 # Code Splitting Skill
 
 ## Overview

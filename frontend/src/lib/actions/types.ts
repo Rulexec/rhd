@@ -1,4 +1,4 @@
-import type { ChatMessage, RoleInfo } from '../types/index';
+import type { ChatMessage, RoleInfo } from '@/lib/types/index';
 
 export type ChatAction =
   | { type: 'createChat'; payload: { title: string } }
@@ -6,6 +6,7 @@ export type ChatAction =
   | { type: 'deleteChat'; payload: { chatId: number } }
   | { type: 'deleteAllChats' }
   | { type: 'sendMessage'; payload: { content: string; model: string } }
+  | { type: 'queueMessage'; payload: { content: string; model: string } }
   | { type: 'editMessage'; payload: { messageId: number; content: string; model: string } }
   | { type: 'abortChat' }
   | { type: 'pauseChat' }
@@ -20,9 +21,10 @@ export type ChatAction =
   | { type: 'chatMessageAdded'; payload: { message: ChatMessage } }
   | { type: 'chatUpdated'; payload: { chatId: number; title: string } }
   | { type: 'chatToolCallStarted'; payload: { chatId: number; toolCallId: string; toolName: string; arguments: string; mcpId: string } }
-  | { type: 'chatToolCallCompleted'; payload: { chatId: number; toolCallId: string; result: string } }
+  | { type: 'chatToolCallCompleted'; payload: { chatId: number; toolCallId: string; result: string; isError?: boolean } }
   | { type: 'chatPaused' }
   | { type: 'chatResumed' }
+  | { type: 'streamAborted' }
   | { type: 'projectMcpStatusChanged'; payload: unknown }
   | { type: 'projectAttached'; payload: unknown }
   | { type: 'projectDetached'; payload: unknown }
@@ -32,4 +34,4 @@ export type ChatAction =
   | { type: 'roleChanged'; payload: { chatId: number; projectName: string; roleName: string } }
   | { type: 'rolesUpdated'; payload: { chatId: number; roles: RoleInfo[]; activeRoleProject?: string; activeRoleName?: string } }
   | { type: 'activeRoleCleared'; payload: { chatId: number } }
-  | { type: 'todoListUpdated'; payload: { chatId: number; items: import('../types/index').TodoItem[] } };
+  | { type: 'todoListUpdated'; payload: { chatId: number; items: import('@/lib/types/index').TodoItem[] } };

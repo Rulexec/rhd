@@ -1,19 +1,38 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { isStreaming, streamError, currentChatId, availableModels, selectedModel, isPaused } from '../lib/chatStores';
-  import { chatProjects, mcpStatuses } from '../lib/projectStores';
-  import { dispatch } from '../lib/actions';
+  import { isStreaming, streamError, currentChatId, availableModels, selectedModel, isPaused, isAborted } from '@/lib/chatStores';
+  import { chatProjects, mcpStatuses } from '@/lib/projectStores';
+  import { dispatch } from '@/lib/actions';
+  import { TEST_IDS } from '@/stories/testIds';
 
   let input = '';
   let textareaElement: HTMLTextAreaElement;
+  let isPausePending = false;
+  let isAbortPending = false;
+  let isResumePending = false;
 
   $: if ($availableModels.length > 0 && $selectedModel === null) {
     selectedModel.set($availableModels[0]);
   }
 
+  $: if ($isPaused) {
+    isPausePending = false;
+    isAbortPending = false;
+  }
+
+  $: if (!$isPaused && !$isAborted) {
+    isResumePending = false;
+  }
+
   $: hasMcpError = $chatProjects.length > 0 && $mcpStatuses.some(
     (s) => $chatProjects.some((p) => p.name === s.projectName) && s.status === 'failed'
   );
+
+  $: canSend = $selectedModel && !$isStreaming;
+  $: canQueue = $selectedModel && ($isPaused || $isAborted);
+  $: showPauseButton = $isStreaming && !$isPaused;
+  $: showAbortButton = $isStreaming && !$isPaused;
+  $: showResumeButton = $isPaused || $isAborted;
 
   onMount(() => {
     dispatch({ type: 'loadAvailableModels' });
@@ -22,28 +41,35 @@
   function handleKeydown(event: KeyboardEvent) {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
-      send();
+      handleSend();
     }
   }
 
-  function send() {
-    if (!input.trim() || (!$isPaused && $isStreaming) || !$currentChatId || !$selectedModel || hasMcpError) return;
-    dispatch({ type: 'sendMessage', payload: { content: input.trim(), model: $selectedModel } });
-    input = '';
+  function handleSend() {
+    if (canQueue) {
+      dispatch({ type: 'queueMessage', payload: { content: input.trim(), model: $selectedModel! } });
+      input = '';
+    } else if (canSend) {
+      dispatch({ type: 'sendMessage', payload: { content: input.trim(), model: $selectedModel! } });
+      input = '';
+    }
     if (textareaElement) {
       textareaElement.style.height = 'auto';
     }
   }
 
   function abort() {
+    isAbortPending = true;
     dispatch({ type: 'abortChat' });
   }
 
   function pause() {
+    isPausePending = true;
     dispatch({ type: 'pauseChat' });
   }
 
   function resume() {
+    isResumePending = true;
     dispatch({ type: 'resumeChat' });
   }
 
@@ -89,26 +115,31 @@
       bind:value={input}
       on:keydown={handleKeydown}
       on:input={handleInput}
-      placeholder="Type a message..."
-      disabled={$isStreaming && !$isPaused}
+      placeholder={$isPaused || $isAborted ? 'Type a message to queue...' : 'Type a message...'}
+      disabled={!canSend && !canQueue}
       class="input-textarea"
       rows="1"
+      data-testid={TEST_IDS.MESSAGE_INPUT}
     ></textarea>
-    {#if $isPaused}
-      <button on:click={resume} class="resume-btn">Resume</button>
-      <button on:click={send} disabled={!input.trim() || !$currentChatId || hasMcpError} class="send-btn">
-        Send
-      </button>
-      <button on:click={abort} class="abort-btn">Abort</button>
-    {:else if $isStreaming}
-      <button on:click={pause} class="pause-btn">Pause</button>
-      <button on:click={abort} class="abort-btn">Abort</button>
-    {:else}
-      <button on:click={send} disabled={!input.trim() || !$currentChatId || hasMcpError} class="send-btn">
-        Send
+    {#if showPauseButton}
+      <button on:click={pause} class="pause-btn" data-testid={TEST_IDS.PAUSE_BUTTON} disabled={isPausePending || isAbortPending}>Pause</button>
+    {/if}
+    
+    {#if showAbortButton}
+      <button on:click={abort} class="abort-btn" data-testid={TEST_IDS.ABORT_BUTTON} disabled={isAbortPending}>Abort</button>
+    {/if}
+    
+    {#if showResumeButton}
+      <button on:click={resume} class="resume-btn" data-testid={TEST_IDS.RESUME_BUTTON} disabled={isResumePending}>Resume</button>
+    {/if}
+    
+    {#if canSend || canQueue}
+      <button on:click={handleSend} disabled={!input.trim() || !$currentChatId || hasMcpError || isResumePending} class="send-btn" data-testid={TEST_IDS.SEND_BUTTON}>
+        {canQueue ? 'Queue' : 'Send'}
       </button>
     {/if}
   </div>
+  
 </div>
 
 <style>
@@ -226,13 +257,28 @@
     color: white;
   }
 
+  .abort-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+
   .pause-btn {
     background: #f0ad4e;
     color: white;
+  }
+  
+  .pause-btn:disabled {
+    cursor: default;
+    opacity: 0.5;
   }
 
   .resume-btn {
     background: #5cb85c;
     color: white;
+  }
+
+  .resume-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
   }
 </style>

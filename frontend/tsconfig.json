@@ -12,7 +12,11 @@
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "types": ["vitest/globals", "node"]
+    "types": ["vitest/globals", "node"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    }
   },
   "include": ["src/**/*.ts", "src/**/*.svelte"]
 }

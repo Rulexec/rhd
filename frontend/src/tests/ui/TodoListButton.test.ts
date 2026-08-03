@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
-import TodoListButton from '../../lib/components/TodoListButton.svelte';
-import { todoList } from '../../lib/chatStores';
-import type { TodoItem } from '../../lib/types/index';
+import TodoListButton from '@/lib/components/TodoListButton.svelte';
+import { todoList } from '@/lib/chatStores';
+import type { TodoItem } from '@/lib/types/index';
 
 describe('TodoListButton', () => {
   beforeEach(() => {

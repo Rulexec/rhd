@@ -7,6 +7,7 @@ import {
   deleteChat,
   deleteAllChats,
   sendMessage,
+  queueMessage,
   editMessage,
   abortChat,
   pauseChat,
@@ -15,8 +16,8 @@ import {
   loadAvailableRoles,
   setRole,
   clearActiveRole,
-} from '../chatWs';
-import { selectedModel, availableRoles, activeRole } from '../chatStores';
+} from '@/lib/chatWs';
+import { selectedModel, availableRoles, activeRole } from '@/lib/chatStores';
 
 export async function processAction(action: ChatAction): Promise<void> {
   switch (action.type) {
@@ -40,6 +41,9 @@ export async function processAction(action: ChatAction): Promise<void> {
       break;
     case 'sendMessage':
       await sendMessage(action.payload.content, action.payload.model);
+      break;
+    case 'queueMessage':
+      await queueMessage(action.payload.content, action.payload.model);
       break;
     case 'editMessage':
       await editMessage(action.payload.messageId, action.payload.content, action.payload.model);
@@ -85,6 +89,9 @@ export async function processAction(action: ChatAction): Promise<void> {
       break;
     case 'chatResumed':
       handleChatEvent('chatResumed', undefined);
+      break;
+    case 'streamAborted':
+      handleChatEvent('streamAborted', undefined);
       break;
     case 'projectMcpStatusChanged':
       handleChatEvent('projectMcpStatusChanged', action.payload);

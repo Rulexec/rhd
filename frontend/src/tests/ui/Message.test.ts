@@ -2,17 +2,18 @@
  * Test cases covered:
  * - tests/cases/chat-edit-message.md (UI rendering steps)
  * - tests/cases/chat-streaming.md (UI rendering steps)
+ * - tests/cases/pause-abort/message-queue-during-pause-abort.md (UI rendering steps)
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
-import Message from '../../components/Message.svelte';
-import { streamingMessageId } from '../../lib/chatStores';
-import type { ChatMessage } from '../../lib/types/index';
-import { _testClearOverrides } from '../../lib/actions';
+import Message from '@/components/Message.svelte';
+import { streamingMessageId } from '@/lib/chatStores';
+import type { ChatMessage } from '@/lib/types/index';
+import { _testClearOverrides } from '@/lib/actions';
 
-vi.mock('../../lib/actions', async () => {
-  const actual = await vi.importActual('../../lib/actions');
+vi.mock('@/lib/actions', async () => {
+  const actual = await vi.importActual('@/lib/actions');
   return {
     ...actual,
     dispatch: vi.fn(),
@@ -134,5 +135,39 @@ describe('Message UI', () => {
     };
     render(Message, { props: { message } });
     expect(screen.getByText('System Prompt')).toBeTruthy();
+  });
+
+  // Covers message-queue-during-pause-abort.md step 5 (UI rendering)
+  // Step 5. System optimistically adds message to pendingMessages store (renders as a gray, not-yet-sent user message)
+  it('renders pending messages as gray user messages', () => {
+    const pendingMessage = {
+      id: 'pending-1',
+      content: 'Hello',
+      model: 'model1',
+      queuedAt: new Date().toISOString(),
+      status: 'queued' as const,
+    };
+    const { container } = render(Message, { props: { message: pendingMessage } });
+    const element = container.querySelector('[data-message-content="Hello"]');
+    expect(element).toBeTruthy();
+    expect(element?.getAttribute('data-pending')).toBe('true');
+    expect(element?.getAttribute('data-role')).toBe('user');
+    expect(element?.classList.contains('pending')).toBe(true);
+  });
+
+  it('does not mark regular messages as pending', () => {
+    const regularMessage: ChatMessage = {
+      id: 1,
+      chatId: 1,
+      role: 'user',
+      content: 'Hello',
+      createdAt: '',
+      model: 'model1',
+    };
+    const { container } = render(Message, { props: { message: regularMessage } });
+    const element = container.querySelector('[data-message-content="Hello"]');
+    expect(element).toBeTruthy();
+    expect(element?.getAttribute('data-pending')).toBeNull();
+    expect(element?.classList.contains('pending')).toBe(false);
   });
 });

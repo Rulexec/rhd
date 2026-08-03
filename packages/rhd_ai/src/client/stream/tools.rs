@@ -64,12 +64,23 @@ impl StreamExecutor {
         let mut accumulated_content = String::new();
         let mut tool_call_accumulators: Vec<ToolCallAccumulator> = Vec::new();
 
-        while let Some(chunk_result) = stream.next().await {
+        loop {
             if cancel.is_cancelled() {
                 return Err(AiError::Aborted {
                     model: model.to_string(),
                 });
             }
+            let chunk_result = tokio::select! {
+                chunk = stream.next() => match chunk {
+                    Some(c) => c,
+                    None => break,
+                },
+                _ = cancel.cancelled() => {
+                    return Err(AiError::Aborted {
+                        model: model.to_string(),
+                    });
+                }
+            };
 
             let chunk = chunk_result.map_err(|source| AiError::StreamError {
                 model: model.to_string(),

@@ -1,9 +1,9 @@
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/svelte';
-import { pausedScenarios, finishedScenarios, wsConnected } from '../lib/stores';
-import ScenariosTab from '../components/ScenariosTab.svelte';
-import { retryScenario } from '../lib/ws';
+import { pausedScenarios, finishedScenarios, wsConnected } from '@/lib/stores';
+import ScenariosTab from '@/components/ScenariosTab.svelte';
+import { retryScenario } from '@/lib/ws';
 
-vi.mock('../lib/ws', () => ({
+vi.mock('@/lib/ws', () => ({
   connectWebSocket: vi.fn(),
   subscribe: vi.fn().mockResolvedValue({ success: true, data: { activeExecutions: [], pausedExecutions: [] } }),
   getFinishedScenarios: vi.fn().mockResolvedValue({ success: true, data: [] }),
@@ -16,7 +16,7 @@ vi.mock('../lib/ws', () => ({
   sendRequest: vi.fn(),
 }));
 
-vi.mock('../lib/notifications', () => ({
+vi.mock('@/lib/notifications', () => ({
   showNotification: vi.fn(),
 }));
 

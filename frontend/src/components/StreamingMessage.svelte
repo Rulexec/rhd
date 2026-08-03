@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte';
+  import { TEST_IDS } from '@/stories/testIds';
 
   export let content: string;
   export let thinkingContent: string = '';
@@ -36,7 +37,7 @@
   $: thinkingContent, autoScrollThinking();
 </script>
 
-<div class="message assistant streaming">
+<div class="message assistant streaming" data-testid={TEST_IDS.STREAMING_MESSAGE}>
   {#if hasThinkingContent}
     <button class="thinking-header" on:click={toggleThinking}>
       <span class="toggle-icon">{thinkingExpanded ? '▼' : '▶'}</span>

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { afterUpdate } from 'svelte';
-  import { messages, isStreaming, streamingContent, streamingThinkingContent, streamingMessageId } from '../lib/chatStores';
+  import { messages, isStreaming, isPaused, isAborted, streamingContent, streamingThinkingContent, streamingMessageId, pendingMessages } from '@/lib/chatStores';
   import Message from './Message.svelte';
   import StreamingMessage from './StreamingMessage.svelte';
   import ToolCallMessage from './ToolCallMessage.svelte';
@@ -31,6 +31,8 @@
     const previousModel = $messages[index - 1].model;
     return currentModel !== previousModel;
   }
+
+  $: showLoader = ($isStreaming || ($isPaused && !$isAborted)) && !$streamingMessageId;
 </script>
 
 <div class="message-list" bind:this={listElement} on:scroll={handleScroll}>
@@ -41,7 +43,7 @@
       </div>
     {/if}
     <Message {message} />
-    {#if message.toolCalls && message.toolCalls.length > 0}
+    {#if 'toolCalls' in message && message.toolCalls && message.toolCalls.length > 0}
       <div class="tool-calls-container">
         {#each message.toolCalls as toolCall (toolCall.id)}
           <ToolCallMessage {toolCall} />
@@ -49,9 +51,12 @@
       </div>
     {/if}
   {/each}
-  {#if $isStreaming && !$streamingMessageId}
+  {#if showLoader}
     <StreamingMessage content={$streamingContent} thinkingContent={$streamingThinkingContent} />
   {/if}
+  {#each $pendingMessages as message (message.id)}
+    <Message {message} />
+  {/each}
 </div>
 
 <style>

@@ -3,9 +3,9 @@ use std::sync::Arc;
 use rhd_api::{
     ActiveRoleClearedEvent, ChatMessageAddedEvent, ChatMessageDto, ChatPausedEvent,
     ChatResumedEvent, ChatStreamChunkEvent, ChatStreamErrorEvent, ChatStreamFinishedEvent,
-    ChatThinkingChunkEvent, DevNotificationEvent, ProjectAttachedEvent,
-    ProjectDetachedEvent, RoleChangedEvent, RoleInfo, RolesUpdatedEvent, TodoItemDto,
-    TodoListUpdatedEvent, ToolCallCompletedEvent, ToolCallStartedEvent, WsEvent,
+    ChatThinkingChunkEvent, DevNotificationEvent, MessageQueuedEvent, ProjectAttachedEvent,
+    ProjectDetachedEvent, RoleChangedEvent, RoleInfo, RolesUpdatedEvent, StreamAbortedEvent,
+    TodoItemDto, TodoListUpdatedEvent, ToolCallCompletedEvent, ToolCallStartedEvent, WsEvent,
 };
 use rhd_chat::ChatEvent;
 
@@ -139,6 +139,14 @@ pub fn chat_event_to_ws_event(
                 }).collect(),
             };
             Some(WsEvent::new("todoListUpdated", serde_json::to_value(&payload).ok()?))
+        }
+        ChatEvent::StreamAborted { chat_id } => {
+            let payload = StreamAbortedEvent { chat_id };
+            Some(WsEvent::new("streamAborted", serde_json::to_value(&payload).ok()?))
+        }
+        ChatEvent::MessageQueued { chat_id, content, model } => {
+            let payload = MessageQueuedEvent { chat_id, content, model };
+            Some(WsEvent::new("messageQueued", serde_json::to_value(&payload).ok()?))
         }
     }
 }

@@ -53,7 +53,8 @@ pub async fn chat_completions(
 
     if body.stream {
         // Streaming response
-        if should_call_tool {
+        let use_auto_stream = *auto_stream.lock().unwrap();
+        if should_call_tool && use_auto_stream {
             // Check if MCP tools are present (tools with "/" in name like "mock1/echo")
             let tools = body.tools.as_ref().unwrap();
             let has_mcp_tools = tools.iter().any(|t| {

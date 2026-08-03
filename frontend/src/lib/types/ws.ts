@@ -231,6 +231,24 @@ export const TodoListUpdatedEventSchema = z.object({
   }),
 });
 
+export const StreamAbortedEventSchema = z.object({
+  type: z.literal('event'),
+  event: z.literal('streamAborted'),
+  data: z.object({
+    chatId: z.number(),
+  }),
+});
+
+export const MessageQueuedEventSchema = z.object({
+  type: z.literal('event'),
+  event: z.literal('messageQueued'),
+  data: z.object({
+    chatId: z.number(),
+    content: z.string(),
+    model: z.string(),
+  }),
+});
+
 export const WsEventSchema = z.discriminatedUnion('event', [
   ScenarioStartedEventSchema,
   StepStartedEventSchema,
@@ -255,6 +273,8 @@ export const WsEventSchema = z.discriminatedUnion('event', [
   RolesUpdatedEventSchema,
   ActiveRoleClearedEventSchema,
   TodoListUpdatedEventSchema,
+  StreamAbortedEventSchema,
+  MessageQueuedEventSchema,
 ]);
 export type WsEvent = z.infer<typeof WsEventSchema>;
 

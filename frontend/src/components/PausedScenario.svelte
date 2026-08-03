@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { pausedScenarios } from '../lib/stores';
-  import { retryScenario, abortScenarioWithError } from '../lib/ws';
-  import type { PausedScenario } from '../lib/types/index';
+  import { pausedScenarios } from '@/lib/stores';
+  import { retryScenario, abortScenarioWithError } from '@/lib/ws';
+  import type { PausedScenario } from '@/lib/types/index';
 
   let { scenario }: { scenario: PausedScenario } = $props();
 

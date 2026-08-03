@@ -94,10 +94,7 @@ pub(super) async fn handle_stream_result<P: ProjectProvider>(
             if let Some(sink) = chat_log {
                 sink.log_stream_error("aborted");
             }
-            let _ = event_sender.send(ChatEvent::StreamError {
-                chat_id,
-                error: "aborted".to_string(),
-            });
+            let _ = event_sender.send(ChatEvent::StreamAborted { chat_id });
             Err(ChatError::Ai(AiError::Aborted {
                 model: model.to_string(),
             }))

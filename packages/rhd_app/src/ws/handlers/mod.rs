@@ -52,6 +52,9 @@ pub async fn handle_ws_message(text: &str, state: &Arc<DaemonState>) -> WsRespon
         WsRequest::DevNotification { id } => chat::handle_dev_notification(id, state),
         WsRequest::PauseChat { id, chat_id } => chat::handle_pause_chat(id, chat_id, state).await,
         WsRequest::ResumeChat { id, chat_id } => chat::handle_resume_chat(id, chat_id, state).await,
+        WsRequest::QueueMessage { id, chat_id, content, model } => {
+            chat::handle_queue_message(id, chat_id, content, model, state).await
+        }
         WsRequest::ListProjects { id } => project::handle_list_projects(id, state).await,
         WsRequest::GetProjectMcpStatus { id, project_name } => {
             project::handle_get_project_mcp_status(id, project_name, state).await

@@ -45,6 +45,19 @@ The knowledge base is organized into two layers:
 
 **Pattern**: Features files describe "what it does" (product behavior), top-level files describe "how it's built" (implementation).
 
+## Planning Conventions
+
+**Plan File Naming**: Always use descriptive file names for plans in the `plans/` directory. Never use generic names like `plan.md`, `plan-1.md`, or `draft.md`. Instead, use short, meaningful names that describe the plan's purpose:
+
+- ✓ `path-alias-setup.md` — describes setting up `@` path aliases
+- ✓ `websocket-refactor.md` — describes WebSocket refactoring work
+- ✓ `chat-persistence.md` — describes chat persistence implementation
+- ✗ `plan.md` — too generic, doesn't indicate what the plan covers
+- ✗ `draft.md` — unclear purpose
+- ✗ `todo.md` — doesn't describe the actual work
+
+When creating a new plan, choose a name that captures the main feature or change being implemented. This makes it easy to identify plans at a glance and keeps the `plans/` directory organized.
+
 ## Knowledge Base Index
 
 **IMPORTANT**: Always read [development.md](development.md) before starting any work. It contains project conventions, testing practices, and commit guidelines.
@@ -64,6 +77,8 @@ Detailed documentation is split into topic-specific files. Read the relevant fil
 | [file-structure.md](file-structure.md) | When you need to find which file contains specific functionality or understand the project layout |
 | [frontend-e2e.md](frontend-e2e.md) | When working on frontend E2E tests, test utilities, or test infrastructure |
 | [backend-e2e.md](backend-e2e.md) | When working on backend E2E tests, rhd_test crate, mock server, or test scenarios |
+| [test-cases.md](test-cases.md) | When creating or modifying test cases, writing test step comments, or understanding test case format |
+| [storybook.md](storybook.md) | When creating Storybook stories, writing Storybook tests, or setting up interactive story controls |
 | [debugging.md](debugging.md) | When any test fails |
 
 ## Token Saving Guidelines

@@ -40,15 +40,15 @@ User sends a message in chat and receives AI response.
 ## Covered By
 
 ### E2E Tests
-- [`chat-state.test.ts`](frontend/src/tests/e2e/chat-state.test.ts) - `sends message and receives streaming response from daemon` (steps 3-14)
-- [`chat-state.test.ts`](frontend/src/tests/e2e/chat-state.test.ts) - `handles multiple messages in sequence` (steps 3-14, multiple iterations)
+- [`chat-state.test.ts`](../../frontend/src/tests/e2e/chat-state.test.ts) - `sends message and receives streaming response from daemon` (steps 3-14)
+- [`chat-state.test.ts`](../../frontend/src/tests/e2e/chat-state.test.ts) - `handles multiple messages in sequence` (steps 3-14, multiple iterations)
 
 ### UI Tests
-- [`MessageInput.test.ts`](frontend/src/tests/ui/MessageInput.test.ts) - `renders send button when not streaming` (step 2)
-- [`MessageInput.test.ts`](frontend/src/tests/ui/MessageInput.test.ts) - `disables send button when no chat selected` (preconditions)
-- [`MessageInput.test.ts`](frontend/src/tests/ui/MessageInput.test.ts) - `disables send button when no model selected` (preconditions)
-- [`MessageInput.test.ts`](frontend/src/tests/ui/MessageInput.test.ts) - `shows error message when streamError is set` (steps 12-13 area)
-- [`MessageInput.test.ts`](frontend/src/tests/ui/MessageInput.test.ts) - `renders model selector with available models` (preconditions)
+- [`MessageInput.test.ts`](../../frontend/src/tests/ui/MessageInput.test.ts) - `renders send button when not streaming` (step 2)
+- [`MessageInput.test.ts`](../../frontend/src/tests/ui/MessageInput.test.ts) - `disables send button when no chat selected` (preconditions)
+- [`MessageInput.test.ts`](../../frontend/src/tests/ui/MessageInput.test.ts) - `disables send button when no model selected` (preconditions)
+- [`MessageInput.test.ts`](../../frontend/src/tests/ui/MessageInput.test.ts) - `shows error message when streamError is set` (steps 12-13 area)
+- [`MessageInput.test.ts`](../../frontend/src/tests/ui/MessageInput.test.ts) - `renders model selector with available models` (preconditions)
 
 ### Coverage Notes
 - Step 1 (user types message) is not explicitly tested

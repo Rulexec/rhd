@@ -31,12 +31,12 @@ User creates a new chat with a title.
 ## Covered By
 
 ### E2E Tests
-- [`chat-state.test.ts`](frontend/src/tests/e2e/chat-state.test.ts) - `creates chat via daemon and updates state` (steps 5-9)
+- [`chat-state.test.ts`](../../frontend/src/tests/e2e/chat-state.test.ts) - `creates chat via daemon and updates state` (steps 5-9)
 
 ### UI Tests
-- [`ChatList.test.ts`](frontend/src/tests/ui/ChatList.test.ts) - `renders new chat button` (step 1)
-- [`ChatList.test.ts`](frontend/src/tests/ui/ChatList.test.ts) - `renders chat list items` (step 8)
-- [`ChatList.test.ts`](frontend/src/tests/ui/ChatList.test.ts) - `highlights selected chat` (step 9)
+- [`ChatList.test.ts`](../../frontend/src/tests/ui/ChatList.test.ts) - `renders new chat button` (step 1)
+- [`ChatList.test.ts`](../../frontend/src/tests/ui/ChatList.test.ts) - `renders chat list items` (step 8)
+- [`ChatList.test.ts`](../../frontend/src/tests/ui/ChatList.test.ts) - `highlights selected chat` (step 9)
 
 ### Coverage Notes
 - Steps 2-4, 10 (dialog UI) are not covered by tests

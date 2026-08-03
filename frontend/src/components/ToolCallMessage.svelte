@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ToolCall } from '../lib/types/index';
+  import type { ToolCall } from '@/lib/types/index';
 
   export let toolCall: ToolCall;
 

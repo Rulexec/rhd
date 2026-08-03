@@ -161,7 +161,7 @@ pub async fn handle_edit_message(
 }
 
 pub async fn handle_abort_chat(id: String, chat_id: i64, state: &Arc<DaemonState>) -> WsResponse {
-    let aborted = state.chat_manager.abort_chat(chat_id).await;
+    let aborted = state.chat_manager.abort_chat(chat_id, Vec::new()).await;
     WsResponse::success(id, serde_json::json!({ "aborted": aborted }))
 }
 
@@ -175,10 +175,89 @@ pub fn handle_dev_notification(id: String, state: &Arc<DaemonState>) -> WsRespon
 
 pub async fn handle_pause_chat(id: String, chat_id: i64, state: &Arc<DaemonState>) -> WsResponse {
     let paused = state.chat_manager.pause_chat(chat_id).await;
+    if paused {
+        let _ = state.chat_event_sender.send(rhd_chat::ChatEvent::ChatPaused { chat_id });
+    }
     WsResponse::success(id, serde_json::json!({ "paused": paused }))
 }
 
 pub async fn handle_resume_chat(id: String, chat_id: i64, state: &Arc<DaemonState>) -> WsResponse {
-    let resumed = state.chat_manager.resume_chat(chat_id).await;
-    WsResponse::success(id, serde_json::json!({ "resumed": resumed }))
+    let resume_info = state.chat_manager.resume_chat(chat_id).await;
+
+    if let Some(info) = resume_info {
+        let event_sender = state.chat_event_sender.clone();
+
+        let _ = event_sender.send(rhd_chat::ChatEvent::ChatResumed { chat_id });
+
+        let queued = info.message_queue.messages;
+
+        let chat_manager = Arc::clone(&state.chat_manager);
+        for qm in &queued {
+            let _ = chat_manager.add_message_and_notify(
+                chat_id,
+                "user",
+                &qm.content,
+                Some(&qm.model),
+                None,
+                &event_sender,
+            );
+        }
+
+        // Determine the model to use: prefer queued message's model, fall back to chat's active_model
+        let last_model: Option<String> = if let Some(last_queued) = queued.last() {
+            Some(last_queued.model.clone())
+        } else {
+            // Get the active_model from the chat
+            match state.chat_manager.db().get_chat(chat_id) {
+                Ok(Some(chat_info)) => chat_info.active_model,
+                _ => None,
+            }
+        };
+
+        // If we have a model, spawn the resume_stream task
+        if let Some(model) = last_model {
+            let inner = state.inner.read().await;
+            let models = inner.models.clone();
+            drop(inner);
+            let template_loader = Arc::clone(&state.template_loader);
+            let state_clone = Arc::clone(state);
+
+            tokio::spawn(async move {
+                let template_loader_ref = rhd_chat::stream::TemplateLoaderRef::new(move |name| {
+                    template_loader.get_template(name).map(|s| s.to_string())
+                });
+                let _ = chat_manager
+                    .resume_stream(chat_id, &model, &models, event_sender, &state_clone.reload_lock, &template_loader_ref)
+                    .await;
+            });
+        } else {
+            // No model available, unregister the stream
+            state.chat_manager.unregister_stream(chat_id).await;
+        }
+
+        WsResponse::success(id, serde_json::json!({ "resumed": true }))
+    } else {
+        WsResponse::success(id, serde_json::json!({ "resumed": false }))
+    }
+}
+
+pub async fn handle_queue_message(
+    id: String,
+    chat_id: i64,
+    content: String,
+    model: String,
+    state: &Arc<DaemonState>,
+) -> WsResponse {
+    match state
+        .chat_manager
+        .queue_message(chat_id, content, model, &state.chat_event_sender)
+        .await
+    {
+        Ok(()) => WsResponse::success(id, serde_json::json!({})),
+        Err(e) => WsResponse::error(
+            id,
+            ErrorCode::InternalError,
+            format!("failed to queue message: {}", e),
+        ),
+    }
 }

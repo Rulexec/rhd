@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { chatProjects, mcpStatuses } from '../lib/projectStores';
+  import { chatProjects, mcpStatuses } from '@/lib/projectStores';
   import { onMount, onDestroy } from 'svelte';
 
   export let visible: boolean = false;

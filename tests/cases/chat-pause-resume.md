@@ -1,3 +1,10 @@
+> **DEPRECATED**: This test case has been superseded by the more detailed test cases in `tests/cases/pause-abort/`. See:
+> - [`pause-during-ai-call.md`](pause-abort/pause-during-ai-call.md)
+> - [`pause-during-tool-execution.md`](pause-abort/pause-during-tool-execution.md)
+> - [`abort-during-ai-call.md`](pause-abort/abort-during-ai-call.md)
+> - [`abort-during-tool-execution.md`](pause-abort/abort-during-tool-execution.md)
+> - [`message-queue-during-pause-abort.md`](pause-abort/message-queue-during-pause-abort.md)
+
 # Test Case: Pause/Resume Chat
 
 ## Description
@@ -38,11 +45,11 @@ User pauses and resumes chat during tool loop execution.
 ## Covered By
 
 ### E2E Tests
-- [`chat-state.test.ts`](frontend/src/tests/e2e/chat-state.test.ts) - `pauses and resumes streaming chat` (pause steps 2-7, resume steps 2-7) - **SKIPPED**
+- [`chat-state.test.ts`](../../frontend/src/tests/e2e/chat-state.test.ts) - `pauses and resumes streaming chat` (pause steps 2-7, resume steps 2-7) - **SKIPPED**
 
 ### UI Tests
-- [`MessageInput.test.ts`](frontend/src/tests/ui/MessageInput.test.ts) - `renders pause button when streaming and not paused` (pause step 1)
-- [`MessageInput.test.ts`](frontend/src/tests/ui/MessageInput.test.ts) - `renders resume button when paused` (resume step 1)
+- [`MessageInput.test.ts`](../../frontend/src/tests/ui/MessageInput.test.ts) - `renders pause button when streaming and not paused` (pause step 1)
+- [`MessageInput.test.ts`](../../frontend/src/tests/ui/MessageInput.test.ts) - `renders resume button when paused` (resume step 1)
 
 ### Coverage Notes
 - E2E test is skipped (`it.skip`), so pause steps 2-7 and resume steps 2-7 are not actually covered

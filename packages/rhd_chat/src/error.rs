@@ -34,4 +34,13 @@ pub enum ChatError {
 
     #[error("internal error: {0}")]
     Internal(String),
+
+    #[error("chat was paused by user")]
+    Paused,
+
+    #[error("chat was aborted by user")]
+    Aborted,
+
+    #[error("invalid state: {0}")]
+    InvalidState(String),
 }

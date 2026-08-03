@@ -30,10 +30,10 @@ User deletes a chat from the chat list.
 ## Covered By
 
 ### E2E Tests
-- [`chat-state.test.ts`](frontend/src/tests/e2e/chat-state.test.ts) - `deletes chat and updates state` (steps 4-8)
+- [`chat-state.test.ts`](../../frontend/src/tests/e2e/chat-state.test.ts) - `deletes chat and updates state` (steps 4-8)
 
 ### UI Tests
-- [`ChatList.test.ts`](frontend/src/tests/ui/ChatList.test.ts) - `renders delete button for each chat` (step 1)
+- [`ChatList.test.ts`](../../frontend/src/tests/ui/ChatList.test.ts) - `renders delete button for each chat` (step 1)
 
 ### Coverage Notes
 - Steps 2-3 (confirmation dialog) are not covered by tests

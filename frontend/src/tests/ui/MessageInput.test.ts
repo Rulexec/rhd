@@ -3,25 +3,31 @@
  * - tests/cases/chat-send-message.md (UI rendering steps)
  * - tests/cases/chat-abort.md (UI rendering steps)
  * - tests/cases/chat-pause-resume.md (UI rendering steps)
+ * - tests/cases/pause-abort/pause-during-ai-call.md (UI rendering steps)
+ * - tests/cases/pause-abort/pause-during-tool-execution.md (UI rendering steps)
+ * - tests/cases/pause-abort/abort-during-ai-call.md (UI rendering steps)
+ * - tests/cases/pause-abort/abort-during-tool-execution.md (UI rendering steps)
+ * - tests/cases/pause-abort/message-queue-during-pause-abort.md (UI rendering steps)
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
-import MessageInput from '../../components/MessageInput.svelte';
+import MessageInput from '@/components/MessageInput.svelte';
 import {
   currentChatId,
   availableModels,
   selectedModel,
   isStreaming,
   isPaused,
+  isAborted,
   streamError,
-} from '../../lib/chatStores';
-import { chatProjects, mcpStatuses } from '../../lib/projectStores';
-import { _testOverrideAction, _testClearOverrides } from '../../lib/actions';
-import type { ChatAction } from '../../lib/actions';
+} from '@/lib/chatStores';
+import { chatProjects, mcpStatuses } from '@/lib/projectStores';
+import { _testOverrideAction, _testClearOverrides } from '@/lib/actions';
+import type { ChatAction } from '@/lib/actions';
 
-vi.mock('../../lib/actions', async () => {
-  const actual = await vi.importActual('../../lib/actions');
+vi.mock('@/lib/actions', async () => {
+  const actual = await vi.importActual('@/lib/actions');
   return {
     ...actual,
     dispatch: vi.fn(),
@@ -113,5 +119,93 @@ describe('MessageInput UI', () => {
     );
     expect(options).toContain('model1');
     expect(options).toContain('model2');
+  });
+
+  // Covers pause-during-ai-call.md step 1 (UI rendering)
+  // Step 1. User clicks Pause button (renders pause button when streaming and not paused)
+  it('renders pause button when streaming and not paused', () => {
+    isStreaming.set(true);
+    isPaused.set(false);
+    isAborted.set(false);
+    render(MessageInput);
+    expect(screen.getByText('Pause')).toBeTruthy();
+    expect(screen.getByText('Abort')).toBeTruthy();
+    expect(screen.queryByText('Resume')).toBeNull();
+  });
+
+  // Covers pause-during-ai-call.md step 17 (UI rendering)
+  // Step 17. User clicks Resume button (renders resume button when paused)
+  it('renders resume button when paused', () => {
+    isStreaming.set(false);
+    isPaused.set(true);
+    isAborted.set(false);
+    render(MessageInput);
+    expect(screen.queryByText('Pause')).toBeNull();
+    expect(screen.queryByText('Abort')).toBeNull();
+    expect(screen.getByText('Resume')).toBeTruthy();
+  });
+
+  // Covers abort-during-ai-call.md step 20 (UI rendering)
+  // Step 20. User clicks Resume button (renders resume button when aborted)
+  it('renders resume button when aborted', () => {
+    isStreaming.set(false);
+    isPaused.set(true);
+    isAborted.set(true);
+    render(MessageInput);
+    expect(screen.queryByText('Pause')).toBeNull();
+    expect(screen.queryByText('Abort')).toBeNull();
+    expect(screen.getByText('Resume')).toBeTruthy();
+  });
+
+  // Covers pause-during-ai-call.md step 10 (UI rendering)
+  // Step 10. User types message in input field (allows message input when paused)
+  it('allows message input when paused', async () => {
+    isStreaming.set(false);
+    isPaused.set(true);
+    isAborted.set(false);
+    render(MessageInput);
+    
+    const textarea = screen.getByPlaceholderText('Type a message to queue...');
+    expect(textarea).toBeTruthy();
+    expect(textarea.hasAttribute('disabled')).toBe(false);
+    
+    await fireEvent.input(textarea, { target: { value: 'Hello' } });
+    expect((textarea as HTMLTextAreaElement).value).toBe('Hello');
+  });
+
+  // Covers pause-during-ai-call.md step 11 (UI rendering)
+  // Step 11. User clicks Send button (shows queue button when paused)
+  it('shows queue button when paused', () => {
+    isStreaming.set(false);
+    isPaused.set(true);
+    isAborted.set(false);
+    render(MessageInput);
+    expect(screen.getByText('Queue')).toBeTruthy();
+  });
+
+  // Covers abort-during-ai-call.md step 1 (button disabled state)
+  // After clicking abort, the abort button is disabled until the daemon responds
+  it('disables abort button after click until daemon responds', async () => {
+    isStreaming.set(true);
+    isPaused.set(false);
+    isAborted.set(false);
+    render(MessageInput);
+    const abortButton = screen.getByText('Abort') as HTMLButtonElement;
+    expect(abortButton.disabled).toBe(false);
+    await fireEvent.click(abortButton);
+    expect(abortButton.disabled).toBe(true);
+  });
+
+  // Covers abort-during-ai-call.md resume step (button disabled state)
+  // After clicking resume, the resume button is disabled until the daemon responds
+  it('disables resume button after click until daemon responds', async () => {
+    isStreaming.set(false);
+    isPaused.set(true);
+    isAborted.set(true);
+    render(MessageInput);
+    const resumeButton = screen.getByText('Resume') as HTMLButtonElement;
+    expect(resumeButton.disabled).toBe(false);
+    await fireEvent.click(resumeButton);
+    expect(resumeButton.disabled).toBe(true);
   });
 });

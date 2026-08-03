@@ -105,3 +105,11 @@ export interface TodoItem {
   content: string;
   status: 'pending' | 'in_progress' | 'completed' | 'discarded';
 }
+
+export interface QueuedMessage {
+  id: string;
+  content: string;
+  model: string;
+  queuedAt: string;
+  status: 'queued';
+}

@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { currentChatId } from '../lib/chatStores';
-  import { wsConnected } from '../lib/stores';
-  import { dispatch } from '../lib/actions';
-  import { parseHash } from '../lib/router';
+  import { currentChatId } from '@/lib/chatStores';
+  import { wsConnected } from '@/lib/stores';
+  import { dispatch } from '@/lib/actions';
+  import { parseHash } from '@/lib/router';
   import ChatList from './ChatList.svelte';
   import ChatView from './ChatView.svelte';
 

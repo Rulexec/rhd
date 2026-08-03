@@ -126,6 +126,20 @@ pub struct ChatResumedEvent {
     pub chat_id: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StreamAbortedEvent {
+    pub chat_id: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageQueuedEvent {
+    pub chat_id: i64,
+    pub content: String,
+    pub model: String,
+}
+
 // ============================================================================
 // Scenario pause/resume event types
 // ============================================================================

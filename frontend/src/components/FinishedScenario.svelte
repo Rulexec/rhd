@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { formatDateTime, formatDuration, formatCost } from '../lib/utils';
-  import type { FinishedScenario } from '../lib/types/index';
+  import { formatDateTime, formatDuration, formatCost } from '@/lib/utils';
+  import type { FinishedScenario } from '@/lib/types/index';
 
   let { scenario }: { scenario: FinishedScenario } = $props();
 

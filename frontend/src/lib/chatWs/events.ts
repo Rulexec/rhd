@@ -9,17 +9,48 @@ import {
   selectedModel,
   streamingMessageId,
   isPaused,
+  isAborted,
   pendingToolCalls,
   availableRoles,
   activeRole,
   todoList,
-} from '../chatStores';
+  pendingMessages,
+} from '@/lib/chatStores';
 import {
   handleMcpStatusEvent,
   handleProjectAttachedEvent,
   handleProjectDetachedEvent,
-} from '../projectStores';
+} from '@/lib/projectStores';
 import { parseAssistantMessage, parseToolResult } from './parsers';
+
+function promotePendingMessagesToChat(): void {
+  const chatId = get(currentChatId);
+  if (!chatId) return;
+
+  const queued = get(pendingMessages);
+  if (queued.length === 0) return;
+
+  messages.update((list) => {
+    const highestNumericId = list.reduce(
+      (highest, m) => (typeof m.id === 'number' && m.id > highest ? m.id : highest),
+      0
+    );
+    // A numeric Date.now()-style id lets a later chatMessageAdded echo replace the
+    // promoted message in place instead of rendering a second copy. Staying above
+    // every existing id keeps keys unique in the rendered list.
+    let promotedId = Math.max(Date.now(), highestNumericId + 1);
+    const promoted = queued.map((entry) => ({
+      id: promotedId++,
+      chatId,
+      role: 'user' as const,
+      content: entry.content,
+      createdAt: entry.queuedAt,
+      model: entry.model,
+    }));
+    return [...list, ...(promoted as any[])];
+  });
+  pendingMessages.set([]);
+}
 
 export function handleChatEvent(event: string, data: unknown): void {
   switch (event) {
@@ -69,7 +100,13 @@ export function handleChatEvent(event: string, data: unknown): void {
     case 'chatStreamFinished': {
       isStreaming.set(false);
       streamError.set(null);
+      streamingMessageId.set(null);
       streamingThinkingContent.set('');
+      // The interrupted call has ended. While the chat is resumed the daemon now
+      // drains the message queue, so queued messages are no longer waiting to be sent
+      if (!get(isPaused) && !get(isAborted)) {
+        promotePendingMessagesToChat();
+      }
       break;
     }
     case 'chatStreamError': {
@@ -83,6 +120,14 @@ export function handleChatEvent(event: string, data: unknown): void {
     case 'chatMessageAdded': {
       const added = data as { message: { id: number; role: string; content: string; thinkingContent?: string } };
       const tempId = get(streamingMessageId);
+      if (added.message.role === 'user') {
+        // The daemon confirmed this message, so drop the optimistic gray copy
+        pendingMessages.update((list) => {
+          const pendingIdx = list.findIndex((m) => m.content === added.message.content);
+          if (pendingIdx === -1) return list;
+          return list.filter((_, idx) => idx !== pendingIdx);
+        });
+      }
       messages.update((list) => {
         const getNumericId = (id: number | string): number => {
           if (typeof id === 'number') return id;
@@ -305,12 +350,41 @@ export function handleChatEvent(event: string, data: unknown): void {
     }
     case 'chatPaused': {
       isPaused.set(true);
+      isAborted.set(false);
       isStreaming.set(false);
       break;
     }
     case 'chatResumed': {
+      const wasAborted = get(isAborted);
       isPaused.set(false);
+      isAborted.set(false);
       isStreaming.set(true);
+      if (wasAborted) {
+        promotePendingMessagesToChat();
+      }
+      break;
+    }
+    case 'streamAborted': {
+      const tempId = get(streamingMessageId);
+      if (tempId) {
+        // Only remove the message if it doesn't have tool calls
+        // (messages with tool calls should be preserved even on abort)
+        messages.update((list) => {
+          const msg = list.find(m => m.id === tempId);
+          if (msg && msg.toolCalls && msg.toolCalls.length > 0) {
+            // Keep the message if it has tool calls
+            return list;
+          }
+          // Otherwise, remove it
+          return list.filter((m) => m.id !== tempId);
+        });
+        streamingMessageId.set(null);
+      }
+      
+      isPaused.set(true);
+      isAborted.set(true);
+      isStreaming.set(false);
+      streamingThinkingContent.set('');
       break;
     }
     case 'roleChanged': {

@@ -13,6 +13,7 @@ use crate::chat_log::ChatLoggers;
 use crate::error::ChatError;
 use crate::event::ChatEvent;
 use crate::manager::ChatManager;
+use crate::state::PendingToolCall;
 use crate::stream::TemplateLoaderRef;
 use crate::ProjectProvider;
 
@@ -22,6 +23,12 @@ use super::builtin::{
 };
 use super::messages::build_chat_messages_for_tools;
 use super::utils::{extract_mcp_id_from_tool_name, split_tool_name};
+
+#[derive(Debug)]
+pub enum ToolLoopResult {
+    Completed { message_id: i64 },
+    Paused,
+}
 
 pub async fn collect_tools_from_projects<P: ProjectProvider>(
     db: &Arc<ChatDb>,
@@ -77,16 +84,14 @@ pub async fn tool_loop<P: ProjectProvider>(
     max_iterations: u32,
     mut loggers: Option<ChatLoggers>,
     template_loader: &crate::stream::TemplateLoaderRef,
-) -> Result<i64, ChatError> {
+) -> Result<ToolLoopResult, ChatError> {
     loop {
         if cancel_token.is_cancelled() {
             if let Some(ref mut l) = loggers {
                 l.chat_log.log_stream_error("aborted");
             }
-            let _ = event_sender.send(ChatEvent::StreamError {
-                chat_id,
-                error: "aborted".to_string(),
-            });
+            let _ = event_sender.send(ChatEvent::StreamAborted { chat_id });
+            manager.abort_chat(chat_id, Vec::new()).await;
             return Err(ChatError::Ai(rhd_ai::client::AiError::Aborted {
                 model: model.to_string(),
             }));
@@ -99,8 +104,6 @@ pub async fn tool_loop<P: ProjectProvider>(
                 body: format!("max tool iterations ({}) exceeded", max_iterations),
             }));
         }
-
-        manager.check_pause_state(chat_id, event_sender).await;
 
         crate::projects::inject_pending_role_prompt(manager, chat_id, event_sender, template_loader)?;
 
@@ -150,7 +153,24 @@ pub async fn tool_loop<P: ProjectProvider>(
                 },
                 raw_log_ref,
             )
-            .await?;
+            .await;
+
+        // Check if the AI call was aborted
+        let result = match result {
+            Ok(r) => r,
+            Err(e) => {
+                if let rhd_ai::client::AiError::Aborted { .. } = e {
+                    // Emit StreamAborted event
+                    let _ = event_sender.send(ChatEvent::StreamAborted { chat_id });
+                    
+                    // Transition to Aborted state
+                    manager.abort_chat(chat_id, Vec::new()).await;
+                    
+                    return Err(ChatError::Ai(e));
+                }
+                return Err(ChatError::Ai(e));
+            }
+        };
 
         if result.tool_calls.is_empty() {
             let final_content: String = accumulated_content.lock().await.clone();
@@ -187,7 +207,7 @@ pub async fn tool_loop<P: ProjectProvider>(
                 message_id: assistant_message_id,
                 finish_reason,
             });
-            return Ok(assistant_message_id);
+            return Ok(ToolLoopResult::Completed { message_id: assistant_message_id });
         }
 
         *iterations += 1;
@@ -246,18 +266,44 @@ pub async fn tool_loop<P: ProjectProvider>(
         let _intermediate_msg_id = intermediate_message.id;
         
         // Execute tools and send completion events
+        let mut aborted_tool_ids = Vec::new();
+        
         for tool_call in &tool_calls_with_unique_ids {
+            // Check if cancelled before starting tool
             if cancel_token.is_cancelled() {
-                if let Some(ref mut l) = loggers {
-                    l.chat_log.log_stream_error("aborted");
-                }
-                let _ = event_sender.send(ChatEvent::StreamError {
+                aborted_tool_ids.push(tool_call.id.clone());
+                
+                let aborted_result = ToolResult {
+                    content: "Aborted".to_string(),
+                    is_error: Some(true),
+                    raw_response: None,
+                };
+                
+                let _ = event_sender.send(ChatEvent::ToolCallCompleted {
                     chat_id,
-                    error: "aborted".to_string(),
+                    tool_call_id: tool_call.id.clone(),
+                    result: aborted_result.content.clone(),
+                    is_error: true,
                 });
-                return Err(ChatError::Ai(rhd_ai::client::AiError::Aborted {
-                    model: model.to_string(),
-                }));
+                
+                let tool_result_json = serde_json::json!({
+                    "toolCallId": tool_call.id,
+                    "name": tool_call.function.name,
+                    "result": aborted_result.content,
+                    "isError": true,
+                })
+                .to_string();
+                
+                let _ = manager.add_message_and_notify(
+                    chat_id,
+                    "tool",
+                    &tool_result_json,
+                    None,
+                    None,
+                    event_sender,
+                )?;
+                
+                continue;
             }
 
             let (tool_result, _) = execute_tool_call(manager, chat_id, tool_call, mcp_clients, event_sender).await;
@@ -300,9 +346,23 @@ pub async fn tool_loop<P: ProjectProvider>(
             let _tool_msg_id = tool_message.id;
         }
         
+        // If any tools were aborted, transition to Aborted state
+        if !aborted_tool_ids.is_empty() {
+            manager.abort_chat(chat_id, aborted_tool_ids).await;
+            return Err(ChatError::Aborted);
+        }
+        
         // Inject todo list message for next iteration
         if let Err(e) = inject_todo_list_message(manager, chat_id, template_loader, event_sender) {
             eprintln!("Failed to inject todo list message: {}", e);
+        }
+        
+        // After all tools complete, check if we should pause
+        if let Some(state_info) = manager.get_stream_state(chat_id).await {
+            if state_info.is_paused {
+                // All tool results have been inserted, exit loop
+                return Ok(ToolLoopResult::Paused);
+            }
         }
         
         if let Some(content) = result.content {

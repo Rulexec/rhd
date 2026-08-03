@@ -25,6 +25,8 @@ See `frontend/src/lib/stateExport.ts` for the full implementation and `frontend/
 - Build with `npm run build`
 - Connects to daemon WebSocket server (default port 9876, configurable via `VITE_WS_PORT` env var)
 
+**IMPORTANT**: Agents should NEVER run `npm run storybook` directly. This command starts an interactive dev server and should only be run manually by the user.
+
 ## Testing
 
 - UI tests use Vitest with happy-dom environment
@@ -169,6 +171,7 @@ Invalid WebSocket messages are logged and ignored via `safeParse`.
 - `selectedModel`: writable string|null, currently selected model for the active chat
 - `isPaused`: writable boolean indicating chat paused during tool loop
 - `pendingToolCalls`: writable array of active tool calls
+- `pendingMessages`: writable array of not-yet-sent messages queued while paused/aborted (see "Pending Messages" below)
 - `isToolLoopRunning`: derived store (isStreaming && !isPaused)
 - `resetAllStores()`: resets all stores to initial state (for testing)
 
@@ -198,6 +201,31 @@ Invalid WebSocket messages are logged and ignored via `safeParse`.
 - **`MessageInput.svelte`**: Textarea with send/abort buttons, error display with retry, model selector dropdown
 - **`StreamingMessage.svelte`**: Loading dots animation shown before first streaming chunk arrives
 
+### Pending Messages (queued while paused/aborted)
+
+When the chat is paused or aborted, a sent message is not yet part of the conversation. It is held in the `pendingMessages` store (type `QueuedMessage`, `status: 'queued'`) as the **single source of truth** — there is exactly one representation, so the message can never render twice.
+
+**Lifecycle:**
+- `queueMessage()` inserts the message optimistically into `pendingMessages` with id `pending-<timestamp>`; it is **not** added to `messages`. On request failure the entry is rolled back.
+- The entry is **not** cleared on `chatResumed` — resuming only hands the preserved queue back to the interrupted stream; the daemon drains it later.
+- **Promotion on `chatStreamFinished`**: when a stream finishes while the chat is **neither paused nor aborted**, every `pendingMessages` entry is *moved* into `messages` as a normal user message and `pendingMessages` is cleared. The interrupted call has ended, so the daemon is draining the queue — the message has been sent and must stop rendering gray. While paused/aborted the guard skips promotion and the message stays gray and queued.
+- Promoted messages get a numeric `Date.now()`-style id kept above every existing numeric id, so a later `chatMessageAdded` echo replaces them **in place** (the reconciliation matches a user message with numeric id `> 1000000000000` and identical content) instead of duplicating, and keys in the rendered list stay unique.
+- `chatMessageAdded` with `role === 'user'` also removes the first `pendingMessages` entry whose `content` matches. Since promotion already empties the store, this is a fallback for the paused-forever case.
+
+**Ordering rule** in `MessageList.svelte` — **unconditional**: a not-yet-sent message always renders *after* the loader of the in-flight call, because the interrupted call must finish before the queue is drained.
+
+```
+$messages  →  loader (if shown)  →  $pendingMessages
+```
+
+The loader condition remains `($isStreaming || $isPaused) && !$streamingMessageId`. Do not reintroduce an `isPaused`/`isAborted` branch here: `resumeChat()` optimistically flips `isPaused` to false, which used to make the pending message jump above the loader on resume.
+
+**Styling convention:** a pending message renders as a user message with a gray background (`.message.pending`, `#f5f5f5`) and muted text, meaning "not yet part of the chat". There is no "Queued" badge and no opacity change.
+
+**Test attributes:** `data-role="user"` plus `data-pending="true"` (a pending message *is* a user message that simply is not committed yet). There is no `data-role="queued"`.
+
+**Note:** the backend still emits a `messageQueued` event and `MessageQueuedEventSchema` is retained for validation, but the frontend intentionally has **no handler** for it — it is a no-op on the client. Do not reintroduce one, or queued messages will render twice.
+
 ### Model Selection UI
 
 The `MessageInput` component includes a model selector dropdown that:
@@ -211,3 +239,32 @@ The `MessageList` component displays model indicators:
 - Shows a visual divider when the model changes between messages
 - Indicators are purely visual and not sent to the AI
 - Helps users track which model was used for each part of the conversation
+
+## Import Convention
+
+All imports in frontend code should use the `@/` alias instead of relative paths (`../`). This ensures consistency and makes imports more maintainable across the entire codebase.
+
+**Correct:**
+```typescript
+import { TEST_IDS } from '@/stories/testIds';
+import StoryExecutionControls from '@/stories/StoryExecutionControls.svelte';
+import { dispatch } from '@/lib/actions';
+```
+
+**Incorrect:**
+```typescript
+import { TEST_IDS } from '../testIds';
+import StoryExecutionControls from '../StoryExecutionControls.svelte';
+import { dispatch } from '../lib/actions';
+```
+
+This convention applies to:
+- Components
+- Stories
+- Tests
+- Utilities
+- Any other frontend code
+
+### Test IDs
+
+Test IDs are centralized in `frontend/src/stories/testIds.ts` to prevent duplicates and ensure consistency across components and tests.

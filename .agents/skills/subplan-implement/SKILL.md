@@ -1,3 +1,8 @@
+---
+name: subplan-implement
+description: Implements a single phase sub-plan from a milestone plan and commits changes following project conventions. Use when given a milestone plan and a specific phase sub-plan to implement.
+---
+
 # Subplan Implementation Skill
 
 ## Overview

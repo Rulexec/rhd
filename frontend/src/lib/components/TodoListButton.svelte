@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { todoList, hasTodoList, todoListStats } from '../chatStores';
-  import type { TodoItem } from '../types/index';
+  import { todoList, hasTodoList, todoListStats } from '@/lib/chatStores';
+  import type { TodoItem } from '@/lib/types/index';
 
   let isExpanded = $state(false);
 

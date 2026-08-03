@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { _testOverrideAction, _testClearOverrides } from '../lib/actions';
-import { availableRoles, activeRole, resetAllStores } from '../lib/chatStores';
+import { _testOverrideAction, _testClearOverrides } from '@/lib/actions';
+import { availableRoles, activeRole, resetAllStores } from '@/lib/chatStores';
 import { get } from 'svelte/store';
-import type { ChatAction } from '../lib/actions/types';
+import type { ChatAction } from '@/lib/actions/types';
 
 describe('Role Actions', () => {
   beforeEach(() => {
@@ -19,7 +19,7 @@ describe('Role Actions', () => {
       });
     });
 
-    const { dispatch } = await import('../lib/actions');
+    const { dispatch } = await import('@/lib/actions');
     await dispatch({
       type: 'roleChanged',
       payload: {
@@ -47,7 +47,7 @@ describe('Role Actions', () => {
       }
     });
 
-    const { dispatch } = await import('../lib/actions');
+    const { dispatch } = await import('@/lib/actions');
     await dispatch({
       type: 'rolesUpdated',
       payload: {

@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
+import { aliases } from './aliases.ts';
 
 export default defineConfig({
   plugins: [svelte()],
@@ -7,6 +8,7 @@ export default defineConfig({
     port: 5173,
   },
   resolve: {
+    alias: aliases,
     conditions: ['browser'],
   },
   test: {

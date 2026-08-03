@@ -9,6 +9,7 @@ use crate::error::ChatError;
 use crate::event::ChatEvent;
 use crate::manager::ChatManager;
 use crate::tools;
+use crate::tools::tool_loop::ToolLoopResult;
 use crate::ProjectProvider;
 
 use crate::stream::TemplateLoaderRef;
@@ -55,7 +56,27 @@ pub(super) async fn send_message_with_tools<P: ProjectProvider>(
     )
     .await;
 
-    manager.unregister_stream(chat_id).await;
-
-    result
+    match result {
+        Ok(ToolLoopResult::Completed { message_id }) => {
+            manager.unregister_stream(chat_id).await;
+            Ok(message_id)
+        }
+        Ok(ToolLoopResult::Paused) => {
+            // Stream is paused, don't unregister
+            // Tools have already been executed and their results persisted
+            // The assistant message with tool calls was already saved in the tool loop
+            Ok(0) // Return dummy message_id
+        }
+        Err(ChatError::Aborted) => {
+            // StreamAborted already emitted by tool_loop; keep Aborted state for resume
+            Err(ChatError::Aborted)
+        }
+        Err(e) => {
+            let is_aborted = manager.is_aborted(chat_id).await;
+            if !is_aborted {
+                manager.unregister_stream(chat_id).await;
+            }
+            Err(e)
+        }
+    }
 }
