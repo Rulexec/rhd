@@ -191,11 +191,6 @@ pub async fn handle_resume_chat(id: String, chat_id: i64, state: &Arc<DaemonStat
 
         let queued = info.message_queue.messages;
 
-        if queued.is_empty() {
-            state.chat_manager.unregister_stream(chat_id).await;
-            return WsResponse::success(id, serde_json::json!({ "resumed": true }));
-        }
-
         let chat_manager = Arc::clone(&state.chat_manager);
         for qm in &queued {
             let _ = chat_manager.add_message_and_notify(
@@ -208,21 +203,37 @@ pub async fn handle_resume_chat(id: String, chat_id: i64, state: &Arc<DaemonStat
             );
         }
 
-        let last_model = queued.last().unwrap().model.clone();
-        let inner = state.inner.read().await;
-        let models = inner.models.clone();
-        drop(inner);
-        let template_loader = Arc::clone(&state.template_loader);
-        let state_clone = Arc::clone(state);
+        // Determine the model to use: prefer queued message's model, fall back to chat's active_model
+        let last_model: Option<String> = if let Some(last_queued) = queued.last() {
+            Some(last_queued.model.clone())
+        } else {
+            // Get the active_model from the chat
+            match state.chat_manager.db().get_chat(chat_id) {
+                Ok(Some(chat_info)) => chat_info.active_model,
+                _ => None,
+            }
+        };
 
-        tokio::spawn(async move {
-            let template_loader_ref = rhd_chat::stream::TemplateLoaderRef::new(move |name| {
-                template_loader.get_template(name).map(|s| s.to_string())
+        // If we have a model, spawn the resume_stream task
+        if let Some(model) = last_model {
+            let inner = state.inner.read().await;
+            let models = inner.models.clone();
+            drop(inner);
+            let template_loader = Arc::clone(&state.template_loader);
+            let state_clone = Arc::clone(state);
+
+            tokio::spawn(async move {
+                let template_loader_ref = rhd_chat::stream::TemplateLoaderRef::new(move |name| {
+                    template_loader.get_template(name).map(|s| s.to_string())
+                });
+                let _ = chat_manager
+                    .resume_stream(chat_id, &model, &models, event_sender, &state_clone.reload_lock, &template_loader_ref)
+                    .await;
             });
-            let _ = chat_manager
-                .resume_stream(chat_id, &last_model, &models, event_sender, &state_clone.reload_lock, &template_loader_ref)
-                .await;
-        });
+        } else {
+            // No model available, unregister the stream
+            state.chat_manager.unregister_stream(chat_id).await;
+        }
 
         WsResponse::success(id, serde_json::json!({ "resumed": true }))
     } else {
