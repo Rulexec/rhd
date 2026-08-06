@@ -8,6 +8,7 @@ members = [
     "packages/rhd_chat",
     "packages/rhd_app",
     "packages/rhd_test",
+    "packages/rhd_fsm",
 ]
 resolver = "2"
 

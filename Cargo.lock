@@ -1411,6 +1411,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rhd_fsm"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "rhd_mcp_client"
 version = "0.1.0"
 dependencies = [
