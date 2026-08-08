@@ -1,6 +1,10 @@
+use std::sync::Arc;
+
 mod action;
 mod error;
+mod event;
 mod input;
+mod listener;
 mod state;
 
 #[cfg(test)]
@@ -8,7 +12,9 @@ mod tests;
 
 pub use action::ToolLoopAction;
 pub use error::FsmError;
+pub use event::ToolLoopFsmEvent;
 pub use input::ToolLoopInput;
+pub use listener::{ToolLoopListenerCallback, ToolLoopListenerId, ToolLoopListenerManager};
 pub use state::{ChatMessage, PendingToolCall, State, ToolCall, ToolDefinition, ToolResult};
 
 
@@ -18,17 +24,41 @@ pub struct ToolLoopFsm {
     messages: Vec<ChatMessage>,
     tools: Vec<ToolDefinition>,
     tool_call_id_counter: u64,
+    message_id_counter: i64,
+    listener_manager: ToolLoopListenerManager,
 }
 
 impl ToolLoopFsm {
     /// Create a new FSM in Idle state
     pub fn new() -> Self {
+        Self::with_message_id_counter(1_000_000)
+    }
+
+    /// Create a new FSM with a specific initial message ID counter
+    pub fn with_message_id_counter(initial_message_id: i64) -> Self {
         Self {
             state: State::Idle,
             messages: Vec::new(),
             tools: Vec::new(),
             tool_call_id_counter: 0,
+            message_id_counter: initial_message_id,
+            listener_manager: ToolLoopListenerManager::new(),
         }
+    }
+
+    /// Register a listener for FSM events
+    pub fn add_listener(&mut self, callback: ToolLoopListenerCallback) -> ToolLoopListenerId {
+        self.listener_manager.add_listener(callback)
+    }
+
+    /// Remove a listener by its ID
+    pub fn remove_listener(&mut self, id: ToolLoopListenerId) -> bool {
+        self.listener_manager.remove_listener(id)
+    }
+
+    /// Emit an event to all registered listeners
+    fn emit_event(&self, event: ToolLoopFsmEvent) {
+        self.listener_manager.emit(event);
     }
 
     /// Get current state
@@ -150,10 +180,16 @@ impl ToolLoopFsm {
 
     /// Handle Run input - start the tool loop
     fn handle_run(&mut self) -> Result<Vec<ToolLoopAction>, FsmError> {
+        let old_state = self.state.clone();
         let sent_messages = self.messages.clone();
         let tools = self.tools.clone();
 
         self.state = State::AwaitingAiResponse { sent_messages };
+
+        self.emit_event(ToolLoopFsmEvent::StateChanged {
+            from: old_state,
+            to: self.state.clone(),
+        });
 
         Ok(vec![ToolLoopAction::SendToAi {
             messages: self.messages.clone(),
@@ -163,7 +199,8 @@ impl ToolLoopFsm {
 
     /// Handle InsertMessage input
     fn handle_insert_message(&mut self, message: ChatMessage) -> Result<Vec<ToolLoopAction>, FsmError> {
-        self.messages.push(message);
+        self.messages.push(message.clone());
+        self.emit_event(ToolLoopFsmEvent::MessageInserted { message });
         Ok(Vec::new())
     }
 
@@ -176,13 +213,15 @@ impl ToolLoopFsm {
             return Err(FsmError::MessageNotFound { message_id });
         }
 
+        self.emit_event(ToolLoopFsmEvent::MessageRemoved { message_id });
         Ok(Vec::new())
     }
 
     /// Handle ReplaceMessage input
     fn handle_replace_message(&mut self, message_id: i64, new_message: ChatMessage) -> Result<Vec<ToolLoopAction>, FsmError> {
         if let Some(msg) = self.messages.iter_mut().find(|m| m.id == message_id) {
-            *msg = new_message;
+            *msg = new_message.clone();
+            self.emit_event(ToolLoopFsmEvent::MessageReplaced { message_id, new_message });
             Ok(Vec::new())
         } else {
             Err(FsmError::MessageNotFound { message_id })
@@ -191,7 +230,8 @@ impl ToolLoopFsm {
 
     /// Handle ReplaceAllMessages input
     fn handle_replace_all_messages(&mut self, messages: Vec<ChatMessage>) -> Result<Vec<ToolLoopAction>, FsmError> {
-        self.messages = messages;
+        self.messages = messages.clone();
+        self.emit_event(ToolLoopFsmEvent::AllMessagesReplaced { messages });
         Ok(Vec::new())
     }
 
@@ -199,6 +239,7 @@ impl ToolLoopFsm {
     fn handle_request_tool_call_id(&mut self) -> Result<Vec<ToolLoopAction>, FsmError> {
         let tool_call_id = format!("call_{}", self.tool_call_id_counter);
         self.tool_call_id_counter += 1;
+        self.emit_event(ToolLoopFsmEvent::ToolCallIdGenerated { tool_call_id: tool_call_id.clone() });
         Ok(vec![ToolLoopAction::GenerateToolCallId { tool_call_id }])
     }
 
@@ -228,6 +269,8 @@ impl ToolLoopFsm {
         tool_calls: Vec<ToolCall>,
         _finish_reason: String,
     ) -> Result<Vec<ToolLoopAction>, FsmError> {
+        let old_state = self.state.clone();
+
         // Extract sent_messages from current state
         let State::AwaitingAiResponse { sent_messages: _ } = &self.state else {
             return Err(FsmError::InvalidTransition {
@@ -235,6 +278,13 @@ impl ToolLoopFsm {
                 input: "ProvideAiResponse".to_string(),
             });
         };
+
+        // Emit AI response event
+        self.emit_event(ToolLoopFsmEvent::AiResponseReceived {
+            content: content.clone(),
+            thinking_content: thinking_content.clone(),
+            tool_calls: tool_calls.clone(),
+        });
 
         if tool_calls.is_empty() {
             // Final response - complete the loop
@@ -249,6 +299,12 @@ impl ToolLoopFsm {
 
             self.messages.push(final_message.clone());
             self.state = State::Completed { message_id };
+
+            self.emit_event(ToolLoopFsmEvent::StateChanged {
+                from: old_state,
+                to: self.state.clone(),
+            });
+            self.emit_event(ToolLoopFsmEvent::MessageInserted { message: final_message.clone() });
 
             Ok(vec![ToolLoopAction::Completed { message: final_message }])
         } else {
@@ -265,7 +321,8 @@ impl ToolLoopFsm {
                 thinking_content,
                 tool_calls: Some(tool_calls.clone()),
             };
-            self.messages.push(assistant_message);
+            self.messages.push(assistant_message.clone());
+            self.emit_event(ToolLoopFsmEvent::MessageInserted { message: assistant_message });
 
             // Create pending tool calls and emit ExecuteToolCall actions
             for tool_call in tool_calls {
@@ -275,13 +332,28 @@ impl ToolLoopFsm {
                     arguments: tool_call.arguments.clone(),
                 });
 
-                actions.push(ToolLoopAction::ExecuteToolCall { tool_call });
+                // Emit ToolCallRequested event with propagate flag
+                let propagate = Arc::new(std::sync::atomic::AtomicBool::new(true));
+                self.emit_event(ToolLoopFsmEvent::ToolCallRequested {
+                    tool_call: tool_call.clone(),
+                    propagate: propagate.clone(),
+                });
+
+                // Only add ExecuteToolCall action if propagate is still true
+                if propagate.load(std::sync::atomic::Ordering::SeqCst) {
+                    actions.push(ToolLoopAction::ExecuteToolCall { tool_call });
+                }
             }
 
             self.state = State::AwaitingToolResults {
                 pending_tool_calls,
                 collected_results: Vec::new(),
             };
+
+            self.emit_event(ToolLoopFsmEvent::StateChanged {
+                from: old_state,
+                to: self.state.clone(),
+            });
 
             Ok(actions)
         }
@@ -293,6 +365,8 @@ impl ToolLoopFsm {
         tool_call_id: String,
         result: ToolResult,
     ) -> Result<Vec<ToolLoopAction>, FsmError> {
+        let old_state = self.state.clone();
+
         // Extract needed data from state first
         let (tool_name, pending_count) = match &self.state {
             State::AwaitingToolResults { pending_tool_calls, collected_results } => {
@@ -325,7 +399,19 @@ impl ToolLoopFsm {
             thinking_content: None,
             tool_calls: None,
         };
-        self.messages.push(tool_message);
+        self.messages.push(tool_message.clone());
+        self.emit_event(ToolLoopFsmEvent::MessageInserted { message: tool_message });
+
+        // Emit ToolCallExecuted event
+        let tool_call = ToolCall {
+            id: result.tool_call_id.clone(),
+            name: tool_name,
+            arguments: String::new(), // Arguments not available at this point
+        };
+        self.emit_event(ToolLoopFsmEvent::ToolCallExecuted {
+            tool_call,
+            result: result.clone(),
+        });
 
         // Update state
         let (pending_count, _collected_count) = pending_count;
@@ -342,6 +428,11 @@ impl ToolLoopFsm {
 
             self.state = State::AwaitingAiResponse { sent_messages };
 
+            self.emit_event(ToolLoopFsmEvent::StateChanged {
+                from: old_state,
+                to: self.state.clone(),
+            });
+
             Ok(vec![ToolLoopAction::SendToAi {
                 messages: self.messages.clone(),
                 tools,
@@ -353,6 +444,8 @@ impl ToolLoopFsm {
 
     /// Handle Pause input
     fn handle_pause(&mut self) -> Result<Vec<ToolLoopAction>, FsmError> {
+        let old_state = self.state.clone();
+
         let (pending_tool_calls, collected_results) = match &self.state {
             State::AwaitingAiResponse { .. } => (Vec::new(), Vec::new()),
             State::AwaitingToolResults {
@@ -372,11 +465,18 @@ impl ToolLoopFsm {
             collected_results,
         };
 
+        self.emit_event(ToolLoopFsmEvent::StateChanged {
+            from: old_state,
+            to: self.state.clone(),
+        });
+
         Ok(vec![ToolLoopAction::Paused])
     }
 
     /// Handle Resume input
     fn handle_resume(&mut self) -> Result<Vec<ToolLoopAction>, FsmError> {
+        let old_state = self.state.clone();
+
         let State::Paused {
             pending_tool_calls,
             collected_results,
@@ -397,6 +497,11 @@ impl ToolLoopFsm {
 
             self.state = State::AwaitingAiResponse { sent_messages };
 
+            self.emit_event(ToolLoopFsmEvent::StateChanged {
+                from: old_state,
+                to: self.state.clone(),
+            });
+
             Ok(vec![ToolLoopAction::SendToAi {
                 messages: self.messages.clone(),
                 tools,
@@ -407,6 +512,11 @@ impl ToolLoopFsm {
             let tools = self.tools.clone();
 
             self.state = State::AwaitingAiResponse { sent_messages };
+
+            self.emit_event(ToolLoopFsmEvent::StateChanged {
+                from: old_state,
+                to: self.state.clone(),
+            });
 
             Ok(vec![ToolLoopAction::SendToAi {
                 messages: self.messages.clone(),
@@ -419,22 +529,31 @@ impl ToolLoopFsm {
                 collected_results,
             };
 
+            self.emit_event(ToolLoopFsmEvent::StateChanged {
+                from: old_state,
+                to: self.state.clone(),
+            });
+
             Ok(Vec::new())
         }
     }
 
     /// Handle Abort input
     fn handle_abort(&mut self) -> Result<Vec<ToolLoopAction>, FsmError> {
+        let old_state = self.state.clone();
         self.state = State::Aborted;
+        self.emit_event(ToolLoopFsmEvent::StateChanged {
+            from: old_state,
+            to: self.state.clone(),
+        });
         Ok(vec![ToolLoopAction::Aborted])
     }
 
-    /// Generate a unique message ID
+    /// Generate a unique message ID using the instance counter
     fn generate_message_id(&mut self) -> i64 {
-        // Use a simple counter starting from a high number to avoid conflicts
-        // In real usage, message IDs come from the database
-        static COUNTER: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(1_000_000);
-        COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+        let id = self.message_id_counter;
+        self.message_id_counter += 1;
+        id
     }
 }
 

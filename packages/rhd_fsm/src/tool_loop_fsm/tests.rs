@@ -1,4 +1,4 @@
-use crate::*;
+use super::*;
 
 fn create_test_message(id: i64, role: &str, content: &str) -> ChatMessage {
     ChatMessage {
@@ -497,4 +497,100 @@ fn test_complete_tool_loop_scenario() {
 
     // Verify messages were added correctly
     assert_eq!(fsm.messages().len(), 4); // user, assistant with tool call, tool result, final assistant
+}
+
+mod listener_tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn test_add_and_remove_listener() {
+        let mut fsm = ToolLoopFsm::new();
+
+        let event_log = Arc::new(Mutex::new(Vec::new()));
+        let event_log_clone = event_log.clone();
+
+        let listener_id = fsm.add_listener(Arc::new(move |event| {
+            event_log_clone.lock().unwrap().push(event.name().to_string());
+        }));
+
+        assert_eq!(fsm.listener_manager.listener_count(), 1);
+
+        let removed = fsm.remove_listener(listener_id);
+        assert!(removed);
+        assert_eq!(fsm.listener_manager.listener_count(), 0);
+    }
+
+    #[test]
+    fn test_listener_receives_message_events() {
+        let mut fsm = ToolLoopFsm::new();
+
+        let event_log = Arc::new(Mutex::new(Vec::new()));
+        let event_log_clone = event_log.clone();
+
+        fsm.add_listener(Arc::new(move |event| {
+            event_log_clone.lock().unwrap().push(event.name().to_string());
+        }));
+
+        let message = ChatMessage {
+            id: 1,
+            role: "user".to_string(),
+            content: "Hello".to_string(),
+            thinking_content: None,
+            tool_calls: None,
+        };
+
+        let mut inputs = vec![ToolLoopInput::InsertMessage { message }];
+        let _ = fsm.run(&mut inputs).unwrap();
+
+        let events = event_log.lock().unwrap();
+        assert!(events.contains(&"MessageInserted".to_string()));
+    }
+
+    #[test]
+    fn test_listener_receives_state_changed_events() {
+        let mut fsm = ToolLoopFsm::new();
+
+        let event_log = Arc::new(Mutex::new(Vec::new()));
+        let event_log_clone = event_log.clone();
+
+        fsm.add_listener(Arc::new(move |event| {
+            event_log_clone.lock().unwrap().push(event.name().to_string());
+        }));
+
+        let mut inputs = vec![ToolLoopInput::Run];
+        let _ = fsm.run(&mut inputs).unwrap();
+
+        let events = event_log.lock().unwrap();
+        assert!(events.contains(&"StateChanged".to_string()));
+    }
+
+    #[test]
+    fn test_message_id_counter() {
+        let mut fsm = ToolLoopFsm::with_message_id_counter(100);
+
+        let id1 = fsm.generate_message_id();
+        let id2 = fsm.generate_message_id();
+
+        assert_eq!(id1, 100);
+        assert_eq!(id2, 101);
+    }
+
+    #[test]
+    fn test_tool_call_id_generated_event() {
+        let mut fsm = ToolLoopFsm::new();
+
+        let event_log = Arc::new(Mutex::new(Vec::new()));
+        let event_log_clone = event_log.clone();
+
+        fsm.add_listener(Arc::new(move |event| {
+            event_log_clone.lock().unwrap().push(event.name().to_string());
+        }));
+
+        let mut inputs = vec![ToolLoopInput::RequestToolCallId];
+        let _ = fsm.run(&mut inputs).unwrap();
+
+        let events = event_log.lock().unwrap();
+        assert!(events.contains(&"ToolCallIdGenerated".to_string()));
+    }
 }
