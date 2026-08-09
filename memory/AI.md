@@ -71,6 +71,7 @@ Detailed documentation is split into topic-specific files. Read the relevant fil
 | [configuration.md](configuration.md) | When working on model configs, credentials, CLI arguments, `rhd.yaml`, env var substitution, or model aliases |
 | [protocols.md](protocols.md) | When working on IPC (Unix socket), WebSocket protocol, CWD propagation, or client-daemon communication |
 | [chat.md](chat.md) | When working on ChatManager, chat persistence, chat events, streaming, or chat-related WebSocket handlers |
+| [fsm.md](fsm.md) | When working on ToolLoopFsm, helper FSMs (TodoListFsm, RolesFsm), async wrapper, DB sync listener, or event interception |
 | [logging.md](logging.md) | When working on execution logs, `meta.json` format, log output format, or step timing/tracking |
 | [frontend.md](frontend.md) | When working on the Svelte web UI, chat stores, WebSocket client, or frontend components |
 | [development.md](development.md) | When planning features, running tests, committing code, or needing to understand project conventions and error handling |
@@ -111,7 +112,7 @@ Instead of scanning directories or reading files to find where the tool loop is 
 tokensave_search(query="tool loop")
 ```
 
-This immediately returns that the tool loop code is in [`packages/rhd_chat/src/tools.rs`](packages/rhd_chat/src/tools.rs), along with related test functions and documentation references — no file scanning required.
+This immediately returns that the tool loop code is in [`packages/rhd_chat/src/tools/tool_loop.rs`](packages/rhd_chat/src/tools/tool_loop.rs) (FSM-driven, delegates to `FsmToolLoop`), along with related FSM files in `packages/rhd_fsm/src/` and test functions — no file scanning required.
 
 ### When to Use File Reads
 

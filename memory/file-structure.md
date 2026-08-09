@@ -137,18 +137,22 @@ packages/rhd_chat/src/
 │   │   └── utils.rs  # Stream utilities
 │   └── tests.rs      # Stream tests
 ├── tools/
-│   ├── mod.rs        # Tools module exports
-│   ├── builtin.rs    # Built-in tools (rhd_set_flag, rhd_set_todo_list, rhd_set_role)
-│   ├── messages.rs   # Message building for tool loop
-│   ├── tool_loop.rs  # Tool loop implementation
-│   ├── utils.rs      # Tool utilities
+│   ├── mod.rs              # Tools module exports
+│   ├── builtin.rs          # Built-in tools (rhd_set_flag, rhd_set_todo_list, rhd_set_role)
+│   ├── builtin_fsms.rs     # BuiltinFsmManager coordinating helper FSMs
+│   ├── db_sync_listener.rs # DB synchronization listener for FSM events
+│   ├── fsm_wrapper.rs      # FsmToolLoop async wrapper driving ToolLoopFsm
+│   ├── messages.rs         # Message building for tool loop
+│   ├── tool_loop.rs        # Tool loop entry point (delegates to FsmToolLoop)
+│   ├── utils.rs            # Tool utilities
 │   └── tests/
 │       ├── mod.rs
 │       ├── helpers.rs
 │       ├── mock_mcp.rs
 │       ├── message_tests.rs
 │       ├── role_tests.rs
-│       └── todo_list.rs
+│       ├── todo_list.rs
+│       └── fsm_integration_tests.rs  # FSM and DB sync listener integration tests
 └── projects/
     └── tests.rs      # Project tests
 

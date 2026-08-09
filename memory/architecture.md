@@ -46,11 +46,14 @@
 **rhd_chat**:
 - `ChatManager`: Handles all chat operations with streaming AI responses
 - `ChatEvent`: Enum for chat events (StreamChunk, ThinkingChunk, StreamFinished, StreamError, MessageAdded, ToolCallStarted, ToolCallCompleted, ChatPaused, ChatResumed, etc.)
-- `tool_loop()`: Implements the MCP tool call loop with streaming support
+- `tool_loop()`: FSM-driven tool loop implementation (delegates to `FsmToolLoop` and `ToolLoopFsm`)
+- `FsmToolLoop`: Async wrapper that drives the FSM and handles I/O
+- `BuiltinFsmManager`: Coordinates helper FSMs for built-in tools (todo list, roles)
+- `create_db_sync_listener()`: Synchronizes FSM state to database via event listeners
 - `collect_tools_from_projects()`: Gathers tools from attached projects' MCP clients
 - `ChatLoggers`: Logging infrastructure for chat interactions
 - `ProjectProvider`: Trait for accessing project MCP clients
-- Tool call IDs are made globally unique using atomic counter
+- Tool call IDs are made globally unique using FSM's `tool_call_id_counter`
 - Event ordering: ToolCallStarted sent BEFORE MessageAdded (intermediate assistant) to ensure frontend creates temp message first
 
 **rhd_app**:

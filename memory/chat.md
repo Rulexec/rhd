@@ -21,9 +21,17 @@ Access tool name via `tool_call.function.name`, arguments via `tool_call.functio
 
 ## Tool Loop Streaming
 
-The `tool_loop()` in `packages/rhd_chat/src/tools.rs` streams the **final agent message** with tool call support:
+The tool loop is now implemented using an FSM-driven architecture (see [fsm.md](fsm.md) for details). The `tool_loop()` function in `packages/rhd_chat/src/tools/tool_loop.rs` delegates to `FsmToolLoop` which drives the `ToolLoopFsm` state machine.
+
+**Key components**:
+- `ToolLoopFsm`: Synchronous state machine managing the tool loop lifecycle
+- `FsmToolLoop`: Async wrapper that drives the FSM and handles I/O (AI calls, tool executions)
+- `BuiltinFsmManager`: Coordinates helper FSMs for built-in tools
+- `DB Sync Listener`: Synchronizes FSM state to database via event listeners
+
+**Streaming behavior**:
 1. Streaming `chat_stream_with_tools()` calls during tool loop (content and thinking streamed)
-2. Tool calls are made globally unique using atomic counter
+2. Tool calls are made globally unique using FSM's `tool_call_id_counter`
 3. Event ordering: `ToolCallStarted` sent BEFORE `MessageAdded` (intermediate assistant) to ensure frontend creates temp message first
 4. When final response received (no tool calls): emit `StreamFinished` when complete
 
