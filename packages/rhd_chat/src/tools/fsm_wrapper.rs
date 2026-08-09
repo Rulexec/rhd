@@ -503,6 +503,15 @@ impl<'a, P: ProjectProvider> FsmToolLoop<'a, P> {
         self.manager.abort_chat(self.chat_id, Vec::new()).await;
         Ok(())
     }
+    /// Register a listener for FSM events
+    pub fn add_listener(&mut self, callback: rhd_fsm::tool_loop_fsm::ToolLoopListenerCallback) {
+        self.fsm.add_listener(callback);
+    }
+
+    /// Get the current iteration count
+    pub fn iterations(&self) -> u32 {
+        self.iterations
+    }
 }
 
 /// Internal struct for AI response data

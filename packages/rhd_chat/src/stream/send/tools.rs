@@ -32,7 +32,7 @@ pub(super) async fn send_message_with_tools<P: ProjectProvider>(
 ) -> Result<i64, ChatError> {
     const MAX_ITERATIONS: u32 = 20;
 
-    let (cancel_token, _pause_notify) = manager.register_stream(chat_id).await;
+    let (cancel_token, pause_notify) = manager.register_stream(chat_id).await;
 
     let client = OpenAiClient::new(&model_config.base_url, &model_config.api_key);
     let mut iterations = 0u32;
@@ -48,6 +48,7 @@ pub(super) async fn send_message_with_tools<P: ProjectProvider>(
         &mcp_clients,
         &cancel_token,
         &event_sender,
+        pause_notify,
         &mut iterations,
         &mut current_content,
         MAX_ITERATIONS,
