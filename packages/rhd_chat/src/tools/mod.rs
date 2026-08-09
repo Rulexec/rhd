@@ -1,4 +1,5 @@
 mod builtin;
+pub mod builtin_fsms;
 pub mod db_sync_listener;
 pub mod fsm_wrapper;
 mod messages;
@@ -13,6 +14,7 @@ pub use builtin::{
     handle_rhd_set_role, handle_rhd_set_todo_list, inject_todo_list_message, parse_todo_list,
     rhd_set_role_tool_definition, rhd_set_todo_list_tool_definition,
 };
+pub use builtin_fsms::BuiltinFsmManager;
 pub use db_sync_listener::create_db_sync_listener;
 pub use fsm_wrapper::FsmToolLoop;
 pub use messages::{build_chat_messages, build_chat_messages_for_tools};

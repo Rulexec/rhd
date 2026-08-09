@@ -17,12 +17,14 @@ use crate::manager::ChatManager;
 use crate::stream::TemplateLoaderRef;
 use crate::ProjectProvider;
 
+use super::builtin_fsms::BuiltinFsmManager;
 use super::tool_loop::{collect_tools_from_projects, execute_tool_call, ToolLoopResult};
 use super::utils::extract_mcp_id_from_tool_name;
 
 /// Async wrapper that drives the FSM-based tool loop
 pub struct FsmToolLoop<'a, P: ProjectProvider> {
     fsm: ToolLoopFsm,
+    builtin_fsm_manager: BuiltinFsmManager,
     manager: &'a ChatManager<P>,
     chat_id: i64,
     model: String,
@@ -62,10 +64,15 @@ impl<'a, P: ProjectProvider> FsmToolLoop<'a, P> {
             Err(_) => 1_000_000,
         };
 
-        let fsm = ToolLoopFsm::with_message_id_counter(initial_message_id);
+        let mut fsm = ToolLoopFsm::with_message_id_counter(initial_message_id);
+        let mut builtin_fsm_manager = BuiltinFsmManager::new();
+        
+        // Register helper FSMs with the tool loop FSM
+        builtin_fsm_manager.register(&mut fsm);
 
         Self {
             fsm,
+            builtin_fsm_manager,
             manager,
             chat_id,
             model,
@@ -118,6 +125,7 @@ impl<'a, P: ProjectProvider> FsmToolLoop<'a, P> {
                 match action {
                     ToolLoopAction::SendToAi { messages, tools } => {
                         let result = self.handle_send_to_ai(&messages, &tools).await?;
+                        let tool_calls = result.tool_calls.clone();
                         let mut next_inputs = vec![ToolLoopInput::ProvideAiResponse {
                             content: result.content,
                             thinking_content: result.thinking_content,
@@ -125,6 +133,20 @@ impl<'a, P: ProjectProvider> FsmToolLoop<'a, P> {
                             finish_reason: result.finish_reason.unwrap_or_else(|| "stop".to_string()),
                         }];
                         actions = self.fsm.run(&mut next_inputs).map_err(|e| ChatError::Internal(e.to_string()))?;
+                        
+                        // Handle intercepted builtin tools
+                        // The FSM doesn't emit ExecuteToolCall for intercepted tools,
+                        // but it still expects results for them
+                        for tool_call in &tool_calls {
+                            if self.builtin_fsm_manager.is_tool_intercepted(&tool_call.id) {
+                                let builtin_result = self.handle_builtin_tool(tool_call).await?;
+                                let mut builtin_inputs = vec![ToolLoopInput::ProvideToolResult {
+                                    tool_call_id: tool_call.id.clone(),
+                                    result: builtin_result,
+                                }];
+                                actions = self.fsm.run(&mut builtin_inputs).map_err(|e| ChatError::Internal(e.to_string()))?;
+                            }
+                        }
                     }
                     ToolLoopAction::ExecuteToolCall { tool_call } => {
                         let result = self.handle_execute_tool_call(&tool_call).await?;
@@ -465,6 +487,70 @@ impl<'a, P: ProjectProvider> FsmToolLoop<'a, P> {
             &self.event_sender,
         )
         .await;
+
+        // Log tool result
+        if let Some(ref mut l) = self.loggers {
+            l.chat_log.log_tool_result(&tool_call.name, &tool_call.id, &tool_result.content);
+            if let Some(ref mut raw_log) = l.raw_log {
+                if let Some(ref raw_response) = tool_result.raw_response {
+                    let raw_json = serde_json::to_string_pretty(raw_response)
+                        .unwrap_or_else(|_| raw_response.to_string());
+                    raw_log.log_tool_result_raw(&tool_call.name, &tool_call.id, &raw_json);
+                }
+            }
+        }
+
+        // Emit ToolCallCompleted event
+        let _ = self.event_sender.send(ChatEvent::ToolCallCompleted {
+            chat_id: self.chat_id,
+            tool_call_id: tool_call.id.clone(),
+            result: tool_result.content.clone(),
+            is_error: tool_result.is_error.unwrap_or(false),
+        });
+
+        // Convert to FSM tool result
+        Ok(FsmToolResult {
+            tool_call_id: tool_call.id.clone(),
+            content: tool_result.content,
+            is_error: tool_result.is_error.unwrap_or(false),
+        })
+    }
+
+    /// Handle a builtin tool call that was intercepted by the helper FSMs
+    async fn handle_builtin_tool(
+        &mut self,
+        tool_call: &FsmToolCall,
+    ) -> Result<FsmToolResult, ChatError> {
+        // Log tool call
+        if let Some(ref mut l) = self.loggers {
+            l.chat_log.log_tool_call(&tool_call.name, &tool_call.id, &tool_call.arguments);
+        }
+
+        // Emit ToolCallStarted event
+        let mcp_id = extract_mcp_id_from_tool_name(&tool_call.name);
+        let _ = self.event_sender.send(ChatEvent::ToolCallStarted {
+            chat_id: self.chat_id,
+            tool_call_id: tool_call.id.clone(),
+            tool_name: tool_call.name.clone(),
+            arguments: tool_call.arguments.clone(),
+            mcp_id: mcp_id.clone(),
+        });
+
+        // Convert FSM tool call to AI tool call for BuiltinFsmManager
+        let ai_tool_call = ToolCall {
+            id: tool_call.id.clone(),
+            call_type: "function".to_string(),
+            function: rhd_ai::client::FunctionCall {
+                name: tool_call.name.clone(),
+                arguments: tool_call.arguments.clone(),
+            },
+        };
+
+        // Handle the builtin tool
+        let tool_result = self
+            .builtin_fsm_manager
+            .handle_builtin_tool(self.manager, self.chat_id, &ai_tool_call, &self.event_sender)
+            .await?;
 
         // Log tool result
         if let Some(ref mut l) = self.loggers {
