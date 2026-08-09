@@ -7,6 +7,8 @@ pub enum ChatEvent {
     StreamFinished { chat_id: i64, message_id: i64, finish_reason: String },
     StreamError { chat_id: i64, error: String },
     MessageAdded { chat_id: i64, message: Message },
+    MessageRemoved { chat_id: i64, message_id: i64 },
+    MessageReplaced { chat_id: i64, message: Message },
     DevNotification { title: String, message: String },
     ProjectAttached { chat_id: i64, project_name: String },
     ProjectDetached { chat_id: i64, project_name: String },

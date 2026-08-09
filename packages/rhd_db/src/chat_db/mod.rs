@@ -34,6 +34,21 @@ pub struct Message {
     pub created_at: String,
     pub model: Option<String>,
     pub thinking_content: Option<String>,
+    pub tool_calls: Option<Vec<ToolCall>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCall {
+    pub id: String,
+    pub function: FunctionCall,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FunctionCall {
+    pub name: String,
+    pub arguments: String,
 }
 
 pub struct ChatDb {
@@ -150,6 +165,26 @@ impl ChatDb {
 
     pub fn update_message(&self, message_id: i64, content: &str) -> DbResult<()> {
         messages::update_message(&self.conn, message_id, content)
+    }
+
+    pub fn insert_message(&self, message: &Message) -> DbResult<Message> {
+        messages::insert_message(&self.conn, message)
+    }
+
+    pub fn update_message_full(&self, message: &Message) -> DbResult<Message> {
+        messages::update_message_full(&self.conn, message)
+    }
+
+    pub fn delete_message(&self, message_id: i64) -> DbResult<()> {
+        messages::delete_message(&self.conn, message_id)
+    }
+
+    pub fn delete_all_messages(&self, chat_id: i64) -> DbResult<()> {
+        messages::delete_all_messages(&self.conn, chat_id)
+    }
+
+    pub fn get_next_message_id(&self, chat_id: i64) -> DbResult<i64> {
+        messages::get_next_message_id(&self.conn, chat_id)
     }
 
     pub fn attach_project(&self, chat_id: i64, project_name: &str) -> DbResult<()> {

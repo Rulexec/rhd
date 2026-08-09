@@ -75,6 +75,7 @@ impl<P: ProjectProvider> ChatManager<P> {
             created_at: chrono::Utc::now().to_rfc3339(),
             model: model.map(|s| s.to_string()),
             thinking_content: thinking_content.map(|s| s.to_string()),
+            tool_calls: None,
         };
         let _ = event_sender.send(ChatEvent::MessageAdded {
             chat_id,

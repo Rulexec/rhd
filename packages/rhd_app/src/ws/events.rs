@@ -148,5 +148,27 @@ pub fn chat_event_to_ws_event(
             let payload = MessageQueuedEvent { chat_id, content, model };
             Some(WsEvent::new("messageQueued", serde_json::to_value(&payload).ok()?))
         }
+        ChatEvent::MessageRemoved { chat_id, message_id } => {
+            let payload = serde_json::json!({
+                "chatId": chat_id,
+                "messageId": message_id
+            });
+            Some(WsEvent::new("chatMessageRemoved", payload))
+        }
+        ChatEvent::MessageReplaced { chat_id, message } => {
+            let payload = serde_json::json!({
+                "chatId": chat_id,
+                "message": {
+                    "id": message.id,
+                    "chatId": message.chat_id,
+                    "role": message.role,
+                    "content": message.content,
+                    "createdAt": message.created_at,
+                    "model": message.model,
+                    "thinkingContent": message.thinking_content
+                }
+            });
+            Some(WsEvent::new("chatMessageReplaced", payload))
+        }
     }
 }

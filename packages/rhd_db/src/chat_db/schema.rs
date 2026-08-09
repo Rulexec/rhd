@@ -129,5 +129,15 @@ fn migrate(conn: &Connection) -> DbResult<()> {
         conn.execute_batch("ALTER TABLE chats ADD COLUMN todo_list TEXT")?;
     }
 
+    // Check if tool_calls column exists in messages table
+    let has_tool_calls: bool = conn
+        .prepare("SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name='tool_calls'")?
+        .query_row([], |row| row.get::<_, i64>(0))?
+        > 0;
+
+    if !has_tool_calls {
+        conn.execute_batch("ALTER TABLE messages ADD COLUMN tool_calls TEXT")?;
+    }
+
     Ok(())
 }

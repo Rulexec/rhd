@@ -21,6 +21,7 @@ fn test_build_chat_messages() {
             created_at: "2024-01-01T00:00:00Z".to_string(),
             model: None,
             thinking_content: None,
+            tool_calls: None,
         },
         Message {
             id: 2,
@@ -30,6 +31,7 @@ fn test_build_chat_messages() {
             created_at: "2024-01-01T00:00:01Z".to_string(),
             model: None,
             thinking_content: None,
+            tool_calls: None,
         },
         Message {
             id: 3,
@@ -39,6 +41,7 @@ fn test_build_chat_messages() {
             created_at: "2024-01-01T00:00:02Z".to_string(),
             model: None,
             thinking_content: None,
+            tool_calls: None,
         },
     ];
 
@@ -57,6 +60,7 @@ fn test_build_chat_messages_for_tools_simple() {
             created_at: "2024-01-01T00:00:00Z".to_string(),
             model: None,
             thinking_content: None,
+            tool_calls: None,
         },
     ];
 
@@ -92,6 +96,7 @@ fn test_build_chat_messages_for_tools_with_tool_calls() {
             created_at: "2024-01-01T00:00:00Z".to_string(),
             model: None,
             thinking_content: None,
+            tool_calls: None,
         },
         Message {
             id: 2,
@@ -101,6 +106,7 @@ fn test_build_chat_messages_for_tools_with_tool_calls() {
             created_at: "2024-01-01T00:00:01Z".to_string(),
             model: None,
             thinking_content: None,
+            tool_calls: None,
         },
         Message {
             id: 3,
@@ -110,6 +116,7 @@ fn test_build_chat_messages_for_tools_with_tool_calls() {
             created_at: "2024-01-01T00:00:02Z".to_string(),
             model: None,
             thinking_content: None,
+            tool_calls: None,
         },
     ];
 

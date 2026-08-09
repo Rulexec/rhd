@@ -216,6 +216,7 @@ pub async fn edit_and_resend<P: ProjectProvider>(
         created_at: chrono::Utc::now().to_rfc3339(),
         model: Some(model.to_string()),
         thinking_content: None,
+        tool_calls: None,
     };
     let _ = event_sender.send(ChatEvent::MessageAdded {
         chat_id,
