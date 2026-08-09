@@ -1392,6 +1392,7 @@ dependencies = [
  "rhd_ai",
  "rhd_api",
  "rhd_db",
+ "rhd_fsm",
  "rhd_mcp_client",
  "serde",
  "serde_json",

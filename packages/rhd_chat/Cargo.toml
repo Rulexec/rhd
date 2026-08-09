@@ -15,3 +15,4 @@ rhd_db = { path = "../rhd_db" }
 rhd_ai = { path = "../rhd_ai" }
 rhd_api = { path = "../rhd_api" }
 rhd_mcp_client = { path = "../rhd_mcp_client" }
+rhd_fsm = { path = "../rhd_fsm" }
