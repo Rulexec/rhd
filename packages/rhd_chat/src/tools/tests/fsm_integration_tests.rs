@@ -3,6 +3,7 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::fs;
+    use std::path::PathBuf;
 
     use rhd_db::ChatDb;
     use rhd_fsm::tool_loop_fsm::{
@@ -22,11 +23,13 @@ mod tests {
         let _ = fs::remove_file(format!("{}-shm", path));
     }
 
-    /// Test helper: Create a test database
+    /// Test helper: Create a test database in temporary directory
     fn create_test_db(test_name: &str) -> Arc<ChatDb> {
-        let db_path = format!("test_fsm_{}.db", test_name);
-        cleanup(&db_path);
-        Arc::new(ChatDb::new(&db_path).unwrap())
+        let temp_dir = std::env::temp_dir();
+        let db_path: PathBuf = temp_dir.join(format!("test_fsm_{}.db", test_name));
+        let db_path_str = db_path.to_str().unwrap();
+        cleanup(db_path_str);
+        Arc::new(ChatDb::new(db_path_str).unwrap())
     }
 
     /// Test helper: Create a test chat and return its ID
