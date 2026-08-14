@@ -90,12 +90,18 @@ impl<'a, P: ProjectProvider> FsmToolLoop<'a, P> {
     }
 
     /// Run the tool loop until completion, pause, or abort
-    pub async fn run(&mut self) -> Result<ToolLoopResult, ChatError> {
+    pub async fn run(&mut self, db_sync_listener: Option<rhd_fsm::tool_loop_fsm::ToolLoopListenerCallback>) -> Result<ToolLoopResult, ChatError> {
         // Load initial messages from DB
         self.load_initial_messages()?;
 
         // Load tools
         self.load_tools().await?;
+
+        // Register DB sync listener AFTER loading initial messages
+        // to avoid duplicate insert errors
+        if let Some(listener) = db_sync_listener {
+            self.fsm.add_listener(listener);
+        }
 
         // Start the FSM
         let mut inputs = vec![ToolLoopInput::Run];
@@ -132,7 +138,7 @@ impl<'a, P: ProjectProvider> FsmToolLoop<'a, P> {
                             tool_calls: result.tool_calls,
                             finish_reason: result.finish_reason.unwrap_or_else(|| "stop".to_string()),
                         }];
-                        actions = self.fsm.run(&mut next_inputs).map_err(|e| ChatError::Internal(e.to_string()))?;
+                        let mut accumulated_actions = self.fsm.run(&mut next_inputs).map_err(|e| ChatError::Internal(e.to_string()))?;
                         
                         // Handle intercepted builtin tools
                         // The FSM doesn't emit ExecuteToolCall for intercepted tools,
@@ -144,9 +150,10 @@ impl<'a, P: ProjectProvider> FsmToolLoop<'a, P> {
                                     tool_call_id: tool_call.id.clone(),
                                     result: builtin_result,
                                 }];
-                                actions = self.fsm.run(&mut builtin_inputs).map_err(|e| ChatError::Internal(e.to_string()))?;
+                                accumulated_actions.extend(self.fsm.run(&mut builtin_inputs).map_err(|e| ChatError::Internal(e.to_string()))?);
                             }
                         }
+                        actions = accumulated_actions;
                     }
                     ToolLoopAction::ExecuteToolCall { tool_call } => {
                         let result = self.handle_execute_tool_call(&tool_call).await?;

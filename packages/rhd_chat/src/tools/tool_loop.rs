@@ -109,11 +109,9 @@ pub async fn tool_loop<P: ProjectProvider>(
         template_loader,
     );
 
-    // Register DB sync listener with FSM
-    fsm_loop.add_listener(db_sync_listener);
-
-    // Run the FSM loop
-    let result = fsm_loop.run().await;
+    // Run the FSM loop with DB sync listener
+    // Listener is registered after loading initial messages to avoid duplicate insert errors
+    let result = fsm_loop.run(Some(db_sync_listener)).await;
 
     // Update iterations counter from FSM state
     *iterations = fsm_loop.iterations();

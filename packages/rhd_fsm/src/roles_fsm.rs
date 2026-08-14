@@ -16,7 +16,7 @@ pub enum RoleState {
 pub struct RolesFsm {
     state: RoleState,
     listener_id: Option<ToolLoopListenerId>,
-    intercepted_tool_calls: Vec<ToolCall>,
+    intercepted_tool_calls: Arc<std::sync::Mutex<Vec<ToolCall>>>,
 }
 
 impl RolesFsm {
@@ -25,7 +25,7 @@ impl RolesFsm {
         Self {
             state: RoleState::None,
             listener_id: None,
-            intercepted_tool_calls: Vec::new(),
+            intercepted_tool_calls: Arc::new(std::sync::Mutex::new(Vec::new())),
         }
     }
 
@@ -52,14 +52,13 @@ impl RolesFsm {
     /// This callback intercepts `ToolCallRequested` events for `rhd_set_role` tool
     /// and sets `propagate` to false to prevent the tool call from being executed by MCP.
     pub fn create_listener(&mut self) -> Arc<dyn Fn(ToolLoopFsmEvent) + Send + Sync> {
-        let intercepted = Arc::new(std::sync::Mutex::new(Vec::new()));
-        let intercepted_clone = intercepted.clone();
+        let intercepted = self.intercepted_tool_calls.clone();
 
         Arc::new(move |event: ToolLoopFsmEvent| {
             if let ToolLoopFsmEvent::ToolCallRequested { tool_call, propagate } = event {
                 if tool_call.name == "rhd_set_role" {
                     // Track the intercepted tool call
-                    let mut intercepted_guard = intercepted_clone.lock().unwrap();
+                    let mut intercepted_guard = intercepted.lock().unwrap();
                     intercepted_guard.push(tool_call.clone());
 
                     // Prevent propagation to MCP
@@ -90,12 +89,12 @@ impl RolesFsm {
 
     /// Take and clear the list of intercepted tool calls
     pub fn take_intercepted_tool_calls(&mut self) -> Vec<ToolCall> {
-        std::mem::take(&mut self.intercepted_tool_calls)
+        std::mem::take(&mut *self.intercepted_tool_calls.lock().unwrap())
     }
 
     /// Check if a tool call was intercepted by this FSM
     pub fn is_intercepted(&self, tool_call_id: &str) -> bool {
-        self.intercepted_tool_calls.iter().any(|tc| tc.id == tool_call_id)
+        self.intercepted_tool_calls.lock().unwrap().iter().any(|tc| tc.id == tool_call_id)
     }
 
     /// Handle the role switch directly
@@ -120,7 +119,7 @@ impl RolesFsm {
 
     /// Record an intercepted tool call (called by the listener)
     pub fn record_intercepted_tool_call(&mut self, tool_call: ToolCall) {
-        self.intercepted_tool_calls.push(tool_call);
+        self.intercepted_tool_calls.lock().unwrap().push(tool_call);
     }
 }
 
