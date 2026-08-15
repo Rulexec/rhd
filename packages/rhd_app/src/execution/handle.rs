@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use rhd_api::{EventData, EventType, ExecutionEvent, LogSection, ScenarioMeta, ScenarioStatus, StepTiming, StepType, TokenUsage};
 use tokio::sync::watch;
 
-use super::{ExecutionHandle, ExecutionState, FinishedExecution, ResumeAction};
+use super::{ExecutionHandle, ExecutionHandleState, FinishedExecution, ResumeAction};
 
 impl ExecutionHandle {
     pub fn id(&self) -> u64 {
@@ -110,7 +110,7 @@ impl ExecutionHandle {
         }
     }
 
-    fn finalize_current_step(state: &mut ExecutionState, now: DateTime<Utc>) {
+    fn finalize_current_step(state: &mut ExecutionHandleState, now: DateTime<Utc>) {
         if let (Some(start), Some(name), Some(step_type)) = (
             state.current_step_start.take(),
             state.current_step_name.take(),

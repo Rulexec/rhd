@@ -3,6 +3,7 @@ pub mod event;
 pub mod state;
 pub mod manager;
 pub mod stream;
+pub mod stream_fsm;
 pub mod tools;
 pub mod projects;
 pub mod chat_log;

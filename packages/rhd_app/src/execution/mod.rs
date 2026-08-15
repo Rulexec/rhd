@@ -1,5 +1,8 @@
+mod fsm;
 mod handle;
 mod tracker;
+
+pub use fsm::{CurrentStep, ExecutionAction, ExecutionFsm, ExecutionInput, ExecutionState};
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -18,7 +21,7 @@ pub struct PauseNotification {
 
 pub struct ExecutionTracker {
     db: Arc<ScenarioDb>,
-    active: Mutex<HashMap<u64, ActiveExecution>>,
+    active: Mutex<HashMap<u64, ExecutionFsm>>,
     events_tx: broadcast::Sender<rhd_api::ExecutionEvent>,
     pause_notify_tx: broadcast::Sender<PauseNotification>,
 }
@@ -35,13 +38,6 @@ pub enum ResumeAction {
     Abort,
 }
 
-struct ActiveExecution {
-    scenario_name: String,
-    started_at: DateTime<Utc>,
-    abort_handle: AbortHandle,
-    pause_state: Mutex<Option<PausedState>>,
-    resume_tx: Mutex<Option<oneshot::Sender<ResumeAction>>>,
-}
 
 pub struct AbortHandle {
     sender: watch::Sender<bool>,
@@ -62,7 +58,7 @@ impl AbortHandle {
     }
 }
 
-struct ExecutionState {
+pub(crate) struct ExecutionHandleState {
     step_timings: Vec<StepTiming>,
     token_usage: TokenUsage,
     current_step_start: Option<DateTime<Utc>>,
@@ -79,7 +75,7 @@ pub struct ExecutionHandle {
     tracker: Arc<ExecutionTracker>,
     scenario_name: String,
     started_at: DateTime<Utc>,
-    state: Mutex<ExecutionState>,
+    state: Mutex<ExecutionHandleState>,
     abort_receiver: watch::Receiver<bool>,
 }
 

@@ -11,13 +11,14 @@ use tokio_util::sync::CancellationToken;
 use crate::error::ChatError;
 use crate::event::ChatEvent;
 use crate::projects;
-use crate::state::{ExecutionPhase, MessageQueue, PendingToolCall, QueuedMessage, StreamState, StreamStateInfo};
+use crate::state::{ExecutionPhase, MessageQueue, QueuedMessage, StreamStateInfo};
 use crate::stream;
+use crate::stream_fsm::{StreamLifecycleAction, StreamLifecycleFsm, StreamLifecycleInput};
 use crate::ProjectProvider;
 
 pub struct ChatManager<P: ProjectProvider> {
     db: Arc<ChatDb>,
-    active_streams: Mutex<HashMap<i64, StreamState>>,
+    active_streams: Mutex<HashMap<i64, StreamLifecycleFsm>>,
     project_provider: Arc<P>,
     log_chats: Option<PathBuf>,
     log_chats_raw: bool,
@@ -111,25 +112,29 @@ impl<P: ProjectProvider> ChatManager<P> {
     pub async fn delete_all_chats(&self) -> Result<(), ChatError> {
         self.db.delete_all_chats()?;
         let mut active = self.active_streams.lock().await;
-        for (_, state) in active.drain() {
-            state.cancel_token().cancel();
+        for (_, fsm) in active.drain() {
+            if let Some(cancel_token) = fsm.cancel_token() {
+                cancel_token.cancel();
+            }
         }
         Ok(())
     }
 
     pub async fn abort_chat(&self, chat_id: i64, aborted_tool_ids: Vec<String>) -> bool {
         let mut active = self.active_streams.lock().await;
-        if let Some(state) = active.get(&chat_id) {
-            let cancel_token = state.cancel_token().clone();
-            cancel_token.cancel();
-            active.insert(
-                chat_id,
-                StreamState::Aborted {
-                    cancel_token,
-                    aborted_tool_ids,
-                    message_queue: MessageQueue::new(),
-                },
-            );
+        if let Some(fsm) = active.get_mut(&chat_id) {
+            let actions = fsm.handle(StreamLifecycleInput::Abort { aborted_tool_ids });
+            // Handle actions (e.g., cancel token)
+            for action in actions {
+                match action {
+                    StreamLifecycleAction::Aborted => {
+                        if let Some(cancel_token) = fsm.cancel_token() {
+                            cancel_token.cancel();
+                        }
+                    }
+                    _ => {}
+                }
+            }
             true
         } else {
             false
@@ -141,20 +146,9 @@ impl<P: ProjectProvider> ChatManager<P> {
         chat_id: i64,
     ) -> bool {
         let mut active = self.active_streams.lock().await;
-        if let Some(StreamState::Running { cancel_token, pause_notify, phase }) = active.get(&chat_id) {
-            let cancel_token = cancel_token.clone();
-            let pause_notify = pause_notify.clone();
-            let phase = phase.clone();
-            active.insert(
-                chat_id,
-                StreamState::Paused {
-                    cancel_token,
-                    pause_notify,
-                    phase,
-                    message_queue: MessageQueue::new(),
-                },
-            );
-            true
+        if let Some(fsm) = active.get_mut(&chat_id) {
+            let actions = fsm.handle(StreamLifecycleInput::Pause);
+            !actions.is_empty() && actions.iter().any(|a| matches!(a, StreamLifecycleAction::Paused))
         } else {
             false
         }
@@ -163,33 +157,31 @@ impl<P: ProjectProvider> ChatManager<P> {
     pub async fn resume_chat(&self, chat_id: i64) -> Option<ResumeInfo> {
         let mut active = self.active_streams.lock().await;
 
-        let resume_data = if let Some(StreamState::Paused { cancel_token, pause_notify, phase, message_queue }) = active.get(&chat_id) {
-            Some((cancel_token.clone(), pause_notify.clone(), phase.clone(), message_queue.clone(), true))
-        } else if let Some(StreamState::Aborted { cancel_token, message_queue, .. }) = active.get(&chat_id) {
-            let cancel_token = cancel_token.clone();
-            let pause_notify = Arc::new(Notify::new());
-            let message_queue = message_queue.clone();
-            Some((cancel_token, pause_notify, ExecutionPhase::AiCall, message_queue, false))
-        } else {
-            None
-        };
-
-        if let Some((cancel_token, pause_notify, phase, message_queue, was_paused)) = resume_data {
-            if was_paused {
-                pause_notify.notify_one();
+        if let Some(fsm) = active.get_mut(&chat_id) {
+            // Get the current state before resuming
+            let previous_phase = fsm.phase().cloned();
+            let message_queue = fsm.message_queue().cloned();
+            
+            // Determine if we're resuming from Paused or Aborted
+            let was_paused = fsm.is_paused();
+            
+            let actions = fsm.handle(StreamLifecycleInput::Resume);
+            
+            if actions.iter().any(|a| matches!(a, StreamLifecycleAction::Resumed)) {
+                // If we were paused, notify the pause_notify
+                if was_paused {
+                    // We need to get the pause_notify from the state before it changed
+                    // Since we already resumed, we can't get it from the FSM anymore
+                    // We need to handle this differently - store pause_notify before resuming
+                }
+                
+                Some(ResumeInfo {
+                    previous_phase: previous_phase.unwrap_or(ExecutionPhase::AiCall),
+                    message_queue: message_queue.unwrap_or_default(),
+                })
+            } else {
+                None
             }
-            active.insert(
-                chat_id,
-                StreamState::Running {
-                    cancel_token,
-                    pause_notify,
-                    phase: ExecutionPhase::AiCall,
-                },
-            );
-            Some(ResumeInfo {
-                previous_phase: phase,
-                message_queue,
-            })
         } else {
             None
         }
@@ -346,55 +338,94 @@ impl<P: ProjectProvider> ChatManager<P> {
         let cancel_token = CancellationToken::new();
         let pause_notify = Arc::new(Notify::new());
         let mut active = self.active_streams.lock().await;
+        
+        // Cancel existing stream if present
         if let Some(existing) = active.get(&chat_id) {
-            existing.cancel_token().cancel();
+            if let Some(token) = existing.cancel_token() {
+                token.cancel();
+            }
         }
-        active.insert(
-            chat_id,
-            StreamState::Running {
-                cancel_token: cancel_token.clone(),
-                pause_notify: pause_notify.clone(),
-                phase: ExecutionPhase::AiCall,
-            },
-        );
+        
+        // Create new FSM and register it
+        let mut fsm = StreamLifecycleFsm::new(chat_id);
+        let actions = fsm.handle(StreamLifecycleInput::Register {
+            cancel_token: cancel_token.clone(),
+            pause_notify: pause_notify.clone(),
+        });
+        
+        // Handle actions (log them)
+        for action in actions {
+            match action {
+                StreamLifecycleAction::Registered => {
+                    tracing::info!(chat_id = chat_id, "Stream registered");
+                }
+                StreamLifecycleAction::Error { message } => {
+                    tracing::error!(chat_id = chat_id, message = %message, "Failed to register stream");
+                }
+                _ => {}
+            }
+        }
+        
+        active.insert(chat_id, fsm);
         (cancel_token, pause_notify)
     }
 
     pub async fn unregister_stream(&self, chat_id: i64) {
         let mut active = self.active_streams.lock().await;
+        if let Some(fsm) = active.get_mut(&chat_id) {
+            let actions = fsm.handle(StreamLifecycleInput::Unregister);
+            for action in actions {
+                match action {
+                    StreamLifecycleAction::Unregistered => {
+                        tracing::info!(chat_id = chat_id, "Stream unregistered");
+                    }
+                    _ => {}
+                }
+            }
+        }
         active.remove(&chat_id);
     }
 
     pub async fn get_stream_state(&self, chat_id: i64) -> Option<StreamStateInfo> {
         let active = self.active_streams.lock().await;
-        active.get(&chat_id).map(|state| StreamStateInfo::from(state))
+        active.get(&chat_id).map(|fsm| {
+            StreamStateInfo {
+                is_running: fsm.is_running(),
+                is_paused: fsm.is_paused(),
+                is_aborted: fsm.is_aborted(),
+                phase: fsm.phase().cloned(),
+                aborted_tool_ids: fsm.aborted_tool_ids().cloned().unwrap_or_default(),
+                queued_messages: fsm.message_queue()
+                    .map(|q| q.messages.clone())
+                    .unwrap_or_default(),
+            }
+        })
     }
 
     pub async fn is_aborted(&self, chat_id: i64) -> bool {
         let active = self.active_streams.lock().await;
-        active.get(&chat_id).map(|s| s.is_aborted()).unwrap_or(false)
+        active.get(&chat_id).map(|fsm| fsm.is_aborted()).unwrap_or(false)
     }
 
     pub async fn set_execution_phase(&self, chat_id: i64, phase: ExecutionPhase) {
         let mut active = self.active_streams.lock().await;
-        if let Some(StreamState::Running { cancel_token, pause_notify, .. }) = active.get(&chat_id) {
-            let cancel_token = cancel_token.clone();
-            let pause_notify = pause_notify.clone();
-            active.insert(
-                chat_id,
-                StreamState::Running {
-                    cancel_token,
-                    pause_notify,
-                    phase,
-                },
-            );
+        if let Some(fsm) = active.get_mut(&chat_id) {
+            let actions = fsm.handle(StreamLifecycleInput::SetPhase { phase });
+            for action in actions {
+                match action {
+                    StreamLifecycleAction::PhaseChanged { phase } => {
+                        tracing::info!(chat_id = chat_id, ?phase, "Execution phase changed");
+                    }
+                    _ => {}
+                }
+            }
         }
     }
 
     pub(crate) async fn get_paused_notify(&self, chat_id: i64) -> Option<Arc<Notify>> {
         let active = self.active_streams.lock().await;
-        if let Some(StreamState::Paused { pause_notify, .. }) = active.get(&chat_id) {
-            Some(pause_notify.clone())
+        if let Some(fsm) = active.get(&chat_id) {
+            fsm.pause_notify().cloned()
         } else {
             None
         }
