@@ -1,0 +1,1250 @@
+[cargo-build] $ cargo build
+warning: unused import: `FunctionCall`
+ --> packages/rhd_db/src/chat_db/messages.rs:5:13
+  |
+5 | use super::{FunctionCall, Message, ToolCall};
+  |             ^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `rhd_db` (lib) generated 1 warning (run `cargo fix --lib -p rhd_db` to apply 1 suggestion)
+warning: unused import: `std::sync::Arc`
+ --> packages/rhd_chat/src/tools/builtin_fsms.rs:1:5
+  |
+1 | use std::sync::Arc;
+  |     ^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `event_sender`
+   --> packages/rhd_chat/src/manager.rs:226:9
+    |
+226 |         event_sender: &broadcast::Sender<ChatEvent>,
+    |         ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_event_sender`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `tools`
+  --> packages/rhd_chat/src/tools/tool_loop.rs:78:5
+   |
+78 |     tools: &[ToolDefinition],
+   |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_tools`
+
+warning: unused variable: `current_content`
+  --> packages/rhd_chat/src/tools/tool_loop.rs:84:5
+   |
+84 |     current_content: &mut String,
+   |     ^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_current_content`
+
+warning: unused variable: `message_id`
+   --> packages/rhd_chat/src/tools/db_sync_listener.rs:126:5
+    |
+126 |     message_id: i64,
+    |     ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_message_id`
+
+warning: `rhd_chat` (lib) generated 5 warnings (run `cargo fix --lib -p rhd_chat` to apply 5 suggestions)
+warning: unused import: `tokio::sync::mpsc`
+ --> packages/rhd_test/src/mock_server/mod.rs:6:5
+  |
+6 | use tokio::sync::mpsc;
+  |     ^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `tokio::process::Command`
+ --> packages/rhd_test/src/standard_test/setup.rs:2:5
+  |
+2 | use tokio::process::Command;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `Arc` and `Mutex`
+ --> packages/rhd_test/src/standard_test/execution.rs:1:17
+  |
+1 | use std::sync::{Arc, Mutex};
+  |                 ^^^  ^^^^^
+
+warning: unused imports: `Arc` and `Mutex`
+ --> packages/rhd_test/src/standard_test/validation.rs:1:17
+  |
+1 | use std::sync::{Arc, Mutex};
+  |                 ^^^  ^^^^^
+
+warning: unused imports: `Arc` and `Mutex`
+ --> packages/rhd_test/src/standard_test/mod.rs:5:17
+  |
+5 | use std::sync::{Arc, Mutex};
+  |                 ^^^  ^^^^^
+  |
+help: if this is a test module, consider adding a `#[cfg(test)]` to the containing module
+ --> packages/rhd_test/src/main.rs:9:1
+  |
+9 | mod standard_test;
+  | ^^^^^^^^^^^^^^^^^^
+
+warning: variable does not need to be mutable
+  --> packages/rhd_test/src/standard_test/setup.rs:53:9
+   |
+53 |     let mut daemon = spawned.daemon;
+   |         ----^^^^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `rhd_bin`
+  --> packages/rhd_test/src/standard_test/setup.rs:21:9
+   |
+21 |     let rhd_bin = workspace_root.join("target/debug/rhd");
+   |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_rhd_bin`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `execution_result`
+ --> packages/rhd_test/src/standard_test/validation.rs:9:5
+  |
+9 |     execution_result: &ExecutionResult,
+  |     ^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_execution_result`
+
+warning: unused variable: `random_response`
+  --> packages/rhd_test/src/standard_test/validation.rs:23:5
+   |
+23 |     random_response: &str,
+   |     ^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_random_response`
+
+warning: fields `exit_code`, `stdout`, and `stderr` are never read
+ --> packages/rhd_test/src/standard_test/execution.rs:7:9
+  |
+6 | pub struct ExecutionResult {
+  |            --------------- fields in this struct
+7 |     pub exit_code: i32,
+  |         ^^^^^^^^^
+8 |     pub stdout: String,
+  |         ^^^^^^
+9 |     pub stderr: String,
+  |         ^^^^^^
+  |
+  = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `PausedState`
+ --> packages/rhd_app/src/execution/fsm.rs:5:26
+  |
+5 | use super::{AbortHandle, PausedState, ResumeAction};
+  |                          ^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `CurrentStep`
+ --> packages/rhd_app/src/execution/mod.rs:5:15
+  |
+5 | pub use fsm::{CurrentStep, ExecutionAction, ExecutionFsm, ExecutionInput, ExecutionState};
+  |               ^^^^^^^^^^^
+
+warning: unused import: `oneshot`
+  --> packages/rhd_app/src/execution/mod.rs:13:30
+   |
+13 | use tokio::sync::{broadcast, oneshot, watch};
+   |                              ^^^^^^^
+
+warning: unused variable: `tx`
+   --> packages/rhd_app/src/execution/tracker.rs:113:18
+    |
+113 |             let (tx, rx) = oneshot::channel();
+    |                  ^^ help: if this is intentional, prefix it with an underscore: `_tx`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `model_override` is never read
+  --> packages/rhd_app/src/execution/fsm.rs:62:9
+   |
+61 |     Resume {
+   |     ------ field in this variant
+62 |         model_override: Option<String>,
+   |         ^^^^^^^^^^^^^^
+   |
+   = note: `ExecutionInput` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: variants `StepStarted`, `AddTokenUsage`, `AddSection`, `SetStepExitCode`, `SetStepModel`, and `Finish` are never constructed
+  --> packages/rhd_app/src/execution/fsm.rs:67:5
+   |
+49 | pub enum ExecutionInput {
+   |          -------------- variants in this enum
+...
+67 |     StepStarted {
+   |     ^^^^^^^^^^^
+...
+73 |     AddTokenUsage {
+   |     ^^^^^^^^^^^^^
+...
+77 |     AddSection {
+   |     ^^^^^^^^^^
+...
+81 |     SetStepExitCode {
+   |     ^^^^^^^^^^^^^^^
+...
+85 |     SetStepModel {
+   |     ^^^^^^^^^^^^
+...
+89 |     Finish {
+   |     ^^^^^^
+   |
+   = note: `ExecutionInput` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: `rhd_test` (bin "rhd_test") generated 10 warnings (run `cargo fix --bin "rhd_test" -p rhd_test` to apply 9 suggestions)
+warning: `rhd_app` (bin "rhd") generated 6 warnings (run `cargo fix --bin "rhd" -p rhd_app` to apply 4 suggestions)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.09s
+[test-frontend-e2e] $ npm run test:e2e
+
+> rhd-frontend@0.0.0 test:e2e
+> vitest run --config vitest.config.e2e.ts
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.9 [39m[90m/Users/ruliov/projects/offwork/rhd/frontend[39m
+
+[90mstdout[2m | src/tests/e2e/chat-state.test.ts
+[22m[39m[rhd_test] Mock AI server started on port 65147
+
+
+[90mstdout[2m | src/tests/e2e/chat-state.test.ts
+[22m[39m[rhd_test] Control server started on port 65150
+
+
+[90mstdout[2m | src/tests/e2e/chat-mcp-tools.test.ts
+[22m[39m[rhd_test] Mock AI server started on port 65148
+
+
+[90mstdout[2m | src/tests/e2e/chat-mcp-tools.test.ts
+[22m[39m[rhd_test] Control server started on port 65151
+
+
+[90mstdout[2m | src/tests/e2e/roles-integration.test.ts
+[22m[39m[rhd_test] Mock AI server started on port 65149
+
+
+[90mstdout[2m | src/tests/e2e/roles-integration.test.ts
+[22m[39m[rhd_test] Control server started on port 65152
+
+
+[90mstdout[2m | src/tests/e2e/roles-integration.test.ts
+[22m[39m[rhd_test] Daemon spawned (PID: Some(46475))
+WebSocket server started on port 65155
+Daemon ready
+Press Ctrl+C to stop
+
+
+[90mstdout[2m | src/tests/e2e/chat-state.test.ts
+[22m[39m[rhd_test] Daemon spawned (PID: Some(46473))
+WebSocket server started on port 65153
+Daemon ready
+Press Ctrl+C to stop
+
+
+[90mstdout[2m | src/tests/e2e/chat-mcp-tools.test.ts
+[22m[39m[rhd_test] Daemon spawned (PID: Some(46474))
+WebSocket server started on port 65154
+Daemon ready
+Press Ctrl+C to stop
+
+
+[90mstderr[2m | src/tests/e2e/roles-integration.test.ts[2m > [22m[2mroles-integration.md[2m > [22m[2mScenario 1: Basic Role Selection
+[22m[39mInvalid WebSocket message: {
+  "type": "event",
+  "event": "rolesUpdated",
+  "data": {
+    "activeRoleName": null,
+    "activeRoleProject": null,
+    "chatId": 1,
+    "roles": [
+      {
+        "projectName": "test-project-roles",
+        "roleName": "developer",
+        "whenToUse": "Use this role when the user needs help with coding, debugging, or development tasks.\n"
+      },
+      {
+        "projectName": "test-project-roles",
+        "roleName": "reviewer",
+        "whenToUse": "Use this role when the user needs code review or feedback on their implementation.\n"
+      }
+    ]
+  }
+}
+Validation errors: [
+  {
+    "code": "invalid_union",
+    "unionErrors": [
+      {
+        "issues": [
+          {
+            "code": "invalid_type",
+            "expected": "string",
+            "received": "undefined",
+            "path": [
+              "id"
+            ],
+            "message": "Required"
+          },
+          {
+            "received": "event",
+            "code": "invalid_literal",
+            "expected": "response",
+            "path": [
+              "type"
+            ],
+            "message": "Invalid literal value, expected \"response\""
+          },
+          {
+            "code": "invalid_type",
+            "expected": "boolean",
+            "received": "undefined",
+            "path": [
+              "success"
+            ],
+            "message": "Required"
+          }
+        ],
+        "name": "ZodError"
+      },
+      {
+        "issues": [
+          {
+            "code": "invalid_type",
+            "expected": "string",
+            "received": "null",
+            "path": [
+              "data",
+              "activeRoleProject"
+            ],
+            "message": "Expected string, received null"
+          },
+          {
+            "code": "invalid_type",
+            "expected": "string",
+            "received": "null",
+            "path": [
+              "data",
+              "activeRoleName"
+            ],
+            "message": "Expected string, received null"
+          }
+        ],
+        "name": "ZodError"
+      }
+    ],
+    "path": [],
+    "message": "Invalid input"
+  }
+]
+
+[90mstderr[2m | src/tests/e2e/roles-integration.test.ts[2m > [22m[2mroles-integration.md[2m > [22m[2mScenario 2: Role Switching via Tool
+[22m[39mInvalid WebSocket message: {
+  "type": "event",
+  "event": "rolesUpdated",
+  "data": {
+    "activeRoleName": null,
+    "activeRoleProject": null,
+    "chatId": 2,
+    "roles": [
+      {
+        "projectName": "test-project-roles",
+        "roleName": "developer",
+        "whenToUse": "Use this role when the user needs help with coding, debugging, or development tasks.\n"
+      },
+      {
+        "projectName": "test-project-roles",
+        "roleName": "reviewer",
+        "whenToUse": "Use this role when the user needs code review or feedback on their implementation.\n"
+      }
+    ]
+  }
+}
+Validation errors: [
+  {
+    "code": "invalid_union",
+    "unionErrors": [
+      {
+        "issues": [
+          {
+            "code": "invalid_type",
+            "expected": "string",
+            "received": "undefined",
+            "path": [
+              "id"
+            ],
+            "message": "Required"
+          },
+          {
+            "received": "event",
+            "code": "invalid_literal",
+            "expected": "response",
+            "path": [
+              "type"
+            ],
+            "message": "Invalid literal value, expected \"response\""
+          },
+          {
+            "code": "invalid_type",
+            "expected": "boolean",
+            "received": "undefined",
+            "path": [
+              "success"
+            ],
+            "message": "Required"
+          }
+        ],
+        "name": "ZodError"
+      },
+      {
+        "issues": [
+          {
+            "code": "invalid_type",
+            "expected": "string",
+            "received": "null",
+            "path": [
+              "data",
+              "activeRoleProject"
+            ],
+            "message": "Expected string, received null"
+          },
+          {
+            "code": "invalid_type",
+            "expected": "string",
+            "received": "null",
+            "path": [
+              "data",
+              "activeRoleName"
+            ],
+            "message": "Expected string, received null"
+          }
+        ],
+        "name": "ZodError"
+      }
+    ],
+    "path": [],
+    "message": "Invalid input"
+  }
+]
+
+[90mstderr[2m | src/tests/e2e/roles-integration.test.ts[2m > [22m[2mroles-integration.md[2m > [22m[2mScenario 3: Project Detachment with Active Role
+[22m[39mInvalid WebSocket message: {
+  "type": "event",
+  "event": "rolesUpdated",
+  "data": {
+    "activeRoleName": null,
+    "activeRoleProject": null,
+    "chatId": 3,
+    "roles": [
+      {
+        "projectName": "test-project-roles",
+        "roleName": "developer",
+        "whenToUse": "Use this role when the user needs help with coding, debugging, or development tasks.\n"
+      },
+      {
+        "projectName": "test-project-roles",
+        "roleName": "reviewer",
+        "whenToUse": "Use this role when the user needs code review or feedback on their implementation.\n"
+      }
+    ]
+  }
+}
+Validation errors: [
+  {
+    "code": "invalid_union",
+    "unionErrors": [
+      {
+        "issues": [
+          {
+            "code": "invalid_type",
+            "expected": "string",
+            "received": "undefined",
+            "path": [
+              "id"
+            ],
+            "message": "Required"
+          },
+          {
+            "received": "event",
+            "code": "invalid_literal",
+            "expected": "response",
+            "path": [
+              "type"
+            ],
+            "message": "Invalid literal value, expected \"response\""
+          },
+          {
+            "code": "invalid_type",
+            "expected": "boolean",
+            "received": "undefined",
+            "path": [
+              "success"
+            ],
+            "message": "Required"
+          }
+        ],
+        "name": "ZodError"
+      },
+      {
+        "issues": [
+          {
+            "code": "invalid_type",
+            "expected": "string",
+            "received": "null",
+            "path": [
+              "data",
+              "activeRoleProject"
+            ],
+            "message": "Expected string, received null"
+          },
+          {
+            "code": "invalid_type",
+            "expected": "string",
+            "received": "null",
+            "path": [
+              "data",
+              "activeRoleName"
+            ],
+            "message": "Expected string, received null"
+          }
+        ],
+        "name": "ZodError"
+      }
+    ],
+    "path": [],
+    "message": "Invalid input"
+  }
+]
+
+[90mstderr[2m | src/tests/e2e/roles-integration.test.ts[2m > [22m[2mroles-integration.md[2m > [22m[2mScenario 3: Project Detachment with Active Role
+[22m[39mInvalid WebSocket message: {
+  "type": "event",
+  "event": "rolesUpdated",
+  "data": {
+    "activeRoleName": null,
+    "activeRoleProject": null,
+    "chatId": 3,
+    "roles": []
+  }
+}
+Validation errors: [
+  {
+    "code": "invalid_union",
+    "unionErrors": [
+      {
+        "issues": [
+          {
+            "code": "invalid_type",
+            "expected": "string",
+            "received": "undefined",
+            "path": [
+              "id"
+            ],
+            "message": "Required"
+          },
+          {
+            "received": "event",
+            "code": "invalid_literal",
+            "expected": "response",
+            "path": [
+              "type"
+            ],
+            "message": "Invalid literal value, expected \"response\""
+          },
+          {
+            "code": "invalid_type",
+            "expected": "boolean",
+            "received": "undefined",
+            "path": [
+              "success"
+            ],
+            "message": "Required"
+          }
+        ],
+        "name": "ZodError"
+      },
+      {
+        "issues": [
+          {
+            "code": "invalid_type",
+            "expected": "string",
+            "received": "null",
+            "path": [
+              "data",
+              "activeRoleProject"
+            ],
+            "message": "Expected string, received null"
+          },
+          {
+            "code": "invalid_type",
+            "expected": "string",
+            "received": "null",
+            "path": [
+              "data",
+              "activeRoleName"
+            ],
+            "message": "Expected string, received null"
+          }
+        ],
+        "name": "ZodError"
+      }
+    ],
+    "path": [],
+    "message": "Invalid input"
+  }
+]
+
+[90mstderr[2m | src/tests/e2e/roles-integration.test.ts[2m > [22m[2mroles-integration.md[2m > [22m[2mScenario 4: Role Name Conflict
+[22m[39mInvalid WebSocket message: {
+  "type": "event",
+  "event": "rolesUpdated",
+  "data": {
+    "activeRoleName": null,
+    "activeRoleProject": null,
+    "chatId": 4,
+    "roles": [
+      {
+        "projectName": "test-project-roles",
+        "roleName": "developer",
+        "whenToUse": "Use this role when the user needs help with coding, debugging, or development tasks.\n"
+      },
+      {
+        "projectName": "test-project-roles",
+        "roleName": "reviewer",
+        "whenToUse": "Use this role when the user needs code review or feedback on their implementation.\n"
+      }
+    ]
+  }
+}
+Validation errors: [
+  {
+    "code": "invalid_union",
+    "unionErrors": [
+      {
+        "issues": [
+          {
+            "code": "invalid_type",
+            "expected": "string",
+            "received": "undefined",
+            "path": [
+              "id"
+            ],
+            "message": "Required"
+          },
+          {
+            "received": "event",
+            "code": "invalid_literal",
+            "expected": "response",
+            "path": [
+              "type"
+            ],
+            "message": "Invalid literal value, expected \"response\""
+          },
+          {
+            "code": "invalid_type",
+            "expected": "boolean",
+            "received": "undefined",
+            "path": [
+              "success"
+            ],
+            "message": "Required"
+          }
+        ],
+        "name": "ZodError"
+      },
+      {
+        "issues": [
+          {
+            "code": "invalid_type",
+            "expected": "string",
+            "received": "null",
+            "path": [
+              "data",
+              "activeRoleProject"
+            ],
+            "message": "Expected string, received null"
+          },
+          {
+            "code": "invalid_type",
+            "expected": "string",
+            "received": "null",
+            "path": [
+              "data",
+              "activeRoleName"
+            ],
+            "message": "Expected string, received null"
+          }
+        ],
+        "name": "ZodError"
+      }
+    ],
+    "path": [],
+    "message": "Invalid input"
+  }
+]
+
+[90mstderr[2m | src/tests/e2e/roles-integration.test.ts[2m > [22m[2mroles-integration.md[2m > [22m[2mScenario 7: Multiple Projects with Roles
+[22m[39mInvalid WebSocket message: {
+  "type": "event",
+  "event": "rolesUpdated",
+  "data": {
+    "activeRoleName": null,
+    "activeRoleProject": null,
+    "chatId": 7,
+    "roles": [
+      {
+        "projectName": "test-project-roles",
+        "roleName": "developer",
+        "whenToUse": "Use this role when the user needs help with coding, debugging, or development tasks.\n"
+      },
+      {
+        "projectName": "test-project-roles",
+        "roleName": "reviewer",
+        "whenToUse": "Use this role when the user needs code review or feedback on their implementation.\n"
+      }
+    ]
+  }
+}
+Validation errors: [
+  {
+    "code": "invalid_union",
+    "unionErrors": [
+      {
+        "issues": [
+          {
+            "code": "invalid_type",
+            "expected": "string",
+            "received": "undefined",
+            "path": [
+              "id"
+            ],
+            "message": "Required"
+          },
+          {
+            "received": "event",
+            "code": "invalid_literal",
+            "expected": "response",
+            "path": [
+              "type"
+            ],
+            "message": "Invalid literal value, expected \"response\""
+          },
+          {
+            "code": "invalid_type",
+            "expected": "boolean",
+            "received": "undefined",
+            "path": [
+              "success"
+            ],
+            "message": "Required"
+          }
+        ],
+        "name": "ZodError"
+      },
+      {
+        "issues": [
+          {
+            "code": "invalid_type",
+            "expected": "string",
+            "received": "null",
+            "path": [
+              "data",
+              "activeRoleProject"
+            ],
+            "message": "Expected string, received null"
+          },
+          {
+            "code": "invalid_type",
+            "expected": "string",
+            "received": "null",
+            "path": [
+              "data",
+              "activeRoleName"
+            ],
+            "message": "Expected string, received null"
+          }
+        ],
+        "name": "ZodError"
+      }
+    ],
+    "path": [],
+    "message": "Invalid input"
+  }
+]
+
+[90mstderr[2m | src/tests/e2e/roles-integration.test.ts[2m > [22m[2mroles-integration.md[2m > [22m[2mScenario 7: Multiple Projects with Roles
+[22m[39mInvalid WebSocket message: {
+  "type": "event",
+  "event": "rolesUpdated",
+  "data": {
+    "activeRoleName": null,
+    "activeRoleProject": null,
+    "chatId": 7,
+    "roles": [
+      {
+        "projectName": "test-project-roles",
+        "roleName": "developer",
+        "whenToUse": "Use this role when the user needs help with coding, debugging, or development tasks.\n"
+      },
+      {
+        "projectName": "test-project-roles",
+        "roleName": "reviewer",
+        "whenToUse": "Use this role when the user needs code review or feedback on their implementation.\n"
+      },
+      {
+        "projectName": "test-project-roles-2",
+        "roleName": "architect",
+        "whenToUse": "Use this role when the user needs help with system design or architecture decisions.\n"
+      },
+      {
+        "projectName": "test-project-roles-2",
+        "roleName": "tester",
+        "whenToUse": "Use this role when the user needs help with testing or quality assurance tasks.\n"
+      }
+    ]
+  }
+}
+Validation errors: [
+  {
+    "code": "invalid_union",
+    "unionErrors": [
+      {
+        "issues": [
+          {
+            "code": "invalid_type",
+            "expected": "string",
+            "received": "undefined",
+            "path": [
+              "id"
+            ],
+            "message": "Required"
+          },
+          {
+            "received": "event",
+            "code": "invalid_literal",
+            "expected": "response",
+            "path": [
+              "type"
+            ],
+            "message": "Invalid literal value, expected \"response\""
+          },
+          {
+            "code": "invalid_type",
+            "expected": "boolean",
+            "received": "undefined",
+            "path": [
+              "success"
+            ],
+            "message": "Required"
+          }
+        ],
+        "name": "ZodError"
+      },
+      {
+        "issues": [
+          {
+            "code": "invalid_type",
+            "expected": "string",
+            "received": "null",
+            "path": [
+              "data",
+              "activeRoleProject"
+            ],
+            "message": "Expected string, received null"
+          },
+          {
+            "code": "invalid_type",
+            "expected": "string",
+            "received": "null",
+            "path": [
+              "data",
+              "activeRoleName"
+            ],
+            "message": "Expected string, received null"
+          }
+        ],
+        "name": "ZodError"
+      }
+    ],
+    "path": [],
+    "message": "Invalid input"
+  }
+]
+
+[90mstderr[2m | src/tests/e2e/roles-integration.test.ts[2m > [22m[2mroles-integration.md[2m > [22m[2mScenario 8: State Export/Import with Roles
+[22m[39mInvalid WebSocket message: {
+  "type": "event",
+  "event": "rolesUpdated",
+  "data": {
+    "activeRoleName": null,
+    "activeRoleProject": null,
+    "chatId": 8,
+    "roles": [
+      {
+        "projectName": "test-project-roles",
+        "roleName": "developer",
+        "whenToUse": "Use this role when the user needs help with coding, debugging, or development tasks.\n"
+      },
+      {
+        "projectName": "test-project-roles",
+        "roleName": "reviewer",
+        "whenToUse": "Use this role when the user needs code review or feedback on their implementation.\n"
+      }
+    ]
+  }
+}
+Validation errors: [
+  {
+    "code": "invalid_union",
+    "unionErrors": [
+      {
+        "issues": [
+          {
+            "code": "invalid_type",
+            "expected": "string",
+            "received": "undefined",
+            "path": [
+              "id"
+            ],
+            "message": "Required"
+          },
+          {
+            "received": "event",
+            "code": "invalid_literal",
+            "expected": "response",
+            "path": [
+              "type"
+            ],
+            "message": "Invalid literal value, expected \"response\""
+          },
+          {
+            "code": "invalid_type",
+            "expected": "boolean",
+            "received": "undefined",
+            "path": [
+              "success"
+            ],
+            "message": "Required"
+          }
+        ],
+        "name": "ZodError"
+      },
+      {
+        "issues": [
+          {
+            "code": "invalid_type",
+            "expected": "string",
+            "received": "null",
+            "path": [
+              "data",
+              "activeRoleProject"
+            ],
+            "message": "Expected string, received null"
+          },
+          {
+            "code": "invalid_type",
+            "expected": "string",
+            "received": "null",
+            "path": [
+              "data",
+              "activeRoleName"
+            ],
+            "message": "Expected string, received null"
+          }
+        ],
+        "name": "ZodError"
+      }
+    ],
+    "path": [],
+    "message": "Invalid input"
+  }
+]
+
+ [31m❯[39m src/tests/e2e/roles-integration.test.ts [2m([22m[2m8 tests[22m[2m | [22m[31m2 failed[39m[2m)[22m[33m 11181[2mms[22m[39m
+[31m     [31m×[31m Scenario 1: Basic Role Selection[39m[33m 5041[2mms[22m[39m
+     [32m✓[39m Scenario 2: Role Switching via Tool[32m 5[2mms[22m[39m
+     [32m✓[39m Scenario 3: Project Detachment with Active Role[32m 4[2mms[22m[39m
+     [32m✓[39m Scenario 4: Role Name Conflict[32m 2[2mms[22m[39m
+[31m     [31m×[31m Scenario 5: Project Attached After Chat Started[39m[33m 5006[2mms[22m[39m
+     [32m✓[39m Scenario 6: No Roles Available[32m 4[2mms[22m[39m
+     [32m✓[39m Scenario 7: Multiple Projects with Roles[32m 4[2mms[22m[39m
+     [32m✓[39m Scenario 8: State Export/Import with Roles[32m 3[2mms[22m[39m
+ [31m❯[39m src/tests/e2e/chat-state.test.ts [2m([22m[2m14 tests[22m[2m | [22m[31m4 failed[39m[2m | [22m[33m1 skipped[39m[2m)[22m[33m 21546[2mms[22m[39m
+     [32m✓[39m loads available models from daemon[32m 20[2mms[22m[39m
+     [32m✓[39m creates chat via daemon and updates state[32m 1[2mms[22m[39m
+[31m     [31m×[31m sends message and receives streaming response from daemon[39m[33m 5020[2mms[22m[39m
+[31m     [31m×[31m handles multiple messages in sequence[39m[33m 5007[2mms[22m[39m
+     [32m✓[39m auto-selects first model when available[32m 2[2mms[22m[39m
+     [32m✓[39m aborts streaming chat and updates state[32m 13[2mms[22m[39m
+     [32m✓[39m deletes chat and updates state[32m 1[2mms[22m[39m
+[31m     [31m×[31m edits message and re-streams response[39m[33m 5005[2mms[22m[39m
+     [2m[90m↓[39m[22m pauses and resumes streaming chat
+     [32m✓[39m pauses during AI call and resumes with pending tool calls[32m 12[2mms[22m[39m
+     [32m✓[39m pauses during tool execution and resumes[32m 8[2mms[22m[39m
+[31m     [31m×[31m aborts during AI call and resumes without aborted message[39m[33m 5324[2mms[22m[39m
+     [32m✓[39m aborts during tool execution and resumes with error results[32m 14[2mms[22m[39m
+     [32m✓[39m queues multiple messages during pause and sends on resume[32m 7[2mms[22m[39m
+ [31m❯[39m src/tests/e2e/chat-mcp-tools.test.ts [2m([22m[2m3 tests[22m[2m | [22m[31m3 failed[39m[2m)[22m[33m 46328[2mms[22m[39m
+[31m     [31m×[31m attaches project with MCP and streams final response after tool call[39m[33m 15086[2mms[22m[39m
+[31m     [31m×[31m handles multiple tool calls with different results[39m[33m 15059[2mms[22m[39m
+[31m     [31m×[31m maintains unique tool call ids across multiple iterations[39m[33m 15066[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 9 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m src/tests/e2e/chat-mcp-tools.test.ts[2m > [22mChat with MCP tools[2m > [22mattaches project with MCP and streams final response after tool call
+[31m[1mAssertionError[22m: expected true to be false // Object.is equality
+
+Ignored nodes: comments, script, style
+[36m<html>[31m
+  [36m<head />[31m
+  [36m<body />[31m
+[36m</html>[31m[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- false[39m
+[31m+ true[39m
+
+[36m [2m❯[22m timeout src/tests/e2e/chat-mcp-tools.test.ts:[2m153:32[22m[39m
+    [90m151|[39m     [90m// Step 18. System emits `StreamFinished` event[39m
+    [90m152|[39m     [35mawait[39m [34mwaitFor[39m(() [33m=>[39m {
+    [90m153|[39m       [34mexpect[39m([35mget[39m(isStreaming))[33m.[39m[34mtoBe[39m([35mfalse[39m)[33m;[39m
+    [90m   |[39m                                [31m^[39m
+    [90m154|[39m     }[33m,[39m { timeout[33m:[39m [34m15000[39m })[33m;[39m
+    [90m155|[39m
+[90m [2m❯[22m runWithExpensiveErrorDiagnosticsDisabled node_modules/@testing-library/dom/dist/config.js:[2m47:12[22m[39m
+[90m [2m❯[22m checkCallback node_modules/@testing-library/dom/dist/wait-for.js:[2m124:77[22m[39m
+[90m [2m❯[22m Timeout.checkRealTimersCallback node_modules/@testing-library/dom/dist/wait-for.js:[2m118:16[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/9]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/tests/e2e/chat-mcp-tools.test.ts[2m > [22mChat with MCP tools[2m > [22mhandles multiple tool calls with different results
+[31m[1mAssertionError[22m: expected true to be false // Object.is equality
+
+Ignored nodes: comments, script, style
+[36m<html>[31m
+  [36m<head />[31m
+  [36m<body />[31m
+[36m</html>[31m[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- false[39m
+[31m+ true[39m
+
+[36m [2m❯[22m timeout src/tests/e2e/chat-mcp-tools.test.ts:[2m249:32[22m[39m
+    [90m247|[39m
+    [90m248|[39m     [35mawait[39m [34mwaitFor[39m(() [33m=>[39m {
+    [90m249|[39m       [34mexpect[39m([35mget[39m(isStreaming))[33m.[39m[34mtoBe[39m([35mfalse[39m)[33m;[39m
+    [90m   |[39m                                [31m^[39m
+    [90m250|[39m     }[33m,[39m { timeout[33m:[39m [34m15000[39m })[33m;[39m
+    [90m251|[39m
+[90m [2m❯[22m runWithExpensiveErrorDiagnosticsDisabled node_modules/@testing-library/dom/dist/config.js:[2m47:12[22m[39m
+[90m [2m❯[22m checkCallback node_modules/@testing-library/dom/dist/wait-for.js:[2m124:77[22m[39m
+[90m [2m❯[22m Timeout.checkRealTimersCallback node_modules/@testing-library/dom/dist/wait-for.js:[2m118:16[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/9]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/tests/e2e/chat-mcp-tools.test.ts[2m > [22mChat with MCP tools[2m > [22mmaintains unique tool call ids across multiple iterations
+[31m[1mAssertionError[22m: expected true to be false // Object.is equality
+
+Ignored nodes: comments, script, style
+[36m<html>[31m
+  [36m<head />[31m
+  [36m<body />[31m
+[36m</html>[31m[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- false[39m
+[31m+ true[39m
+
+[36m [2m❯[22m timeout src/tests/e2e/chat-mcp-tools.test.ts:[2m324:32[22m[39m
+    [90m322|[39m
+    [90m323|[39m     [35mawait[39m [34mwaitFor[39m(() [33m=>[39m {
+    [90m324|[39m       [34mexpect[39m([35mget[39m(isStreaming))[33m.[39m[34mtoBe[39m([35mfalse[39m)[33m;[39m
+    [90m   |[39m                                [31m^[39m
+    [90m325|[39m     }[33m,[39m { timeout[33m:[39m [34m15000[39m })[33m;[39m
+    [90m326|[39m
+[90m [2m❯[22m runWithExpensiveErrorDiagnosticsDisabled node_modules/@testing-library/dom/dist/config.js:[2m47:12[22m[39m
+[90m [2m❯[22m checkCallback node_modules/@testing-library/dom/dist/wait-for.js:[2m124:77[22m[39m
+[90m [2m❯[22m Timeout.checkRealTimersCallback node_modules/@testing-library/dom/dist/wait-for.js:[2m118:16[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/9]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/tests/e2e/chat-state.test.ts[2m > [22mChat state logic (state-based testing)[2m > [22msends message and receives streaming response from daemon
+[31m[1mAssertionError[22m: expected true to be false // Object.is equality
+
+Ignored nodes: comments, script, style
+[36m<html>[31m
+  [36m<head />[31m
+  [36m<body />[31m
+[36m</html>[31m[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- false[39m
+[31m+ true[39m
+
+[36m [2m❯[22m timeout src/tests/e2e/chat-state.test.ts:[2m159:32[22m[39m
+    [90m157|[39m     [90m// Step 12. System sets isStreaming to false[39m
+    [90m158|[39m     [35mawait[39m [34mwaitFor[39m(() [33m=>[39m {
+    [90m159|[39m       [34mexpect[39m([35mget[39m(isStreaming))[33m.[39m[34mtoBe[39m([35mfalse[39m)[33m;[39m
+    [90m   |[39m                                [31m^[39m
+    [90m160|[39m     }[33m,[39m { timeout[33m:[39m [34m5000[39m })[33m;[39m
+    [90m161|[39m
+[90m [2m❯[22m runWithExpensiveErrorDiagnosticsDisabled node_modules/@testing-library/dom/dist/config.js:[2m47:12[22m[39m
+[90m [2m❯[22m checkCallback node_modules/@testing-library/dom/dist/wait-for.js:[2m124:77[22m[39m
+[90m [2m❯[22m Timeout.checkRealTimersCallback node_modules/@testing-library/dom/dist/wait-for.js:[2m118:16[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/9]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/tests/e2e/chat-state.test.ts[2m > [22mChat state logic (state-based testing)[2m > [22mhandles multiple messages in sequence
+[31m[1mAssertionError[22m: expected true to be false // Object.is equality
+
+Ignored nodes: comments, script, style
+[36m<html>[31m
+  [36m<head />[31m
+  [36m<body />[31m
+[36m</html>[31m[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- false[39m
+[31m+ true[39m
+
+[36m [2m❯[22m timeout src/tests/e2e/chat-state.test.ts:[2m193:32[22m[39m
+    [90m191|[39m
+    [90m192|[39m     [35mawait[39m [34mwaitFor[39m(() [33m=>[39m {
+    [90m193|[39m       [34mexpect[39m([35mget[39m(isStreaming))[33m.[39m[34mtoBe[39m([35mfalse[39m)[33m;[39m
+    [90m   |[39m                                [31m^[39m
+    [90m194|[39m     }[33m,[39m { timeout[33m:[39m [34m5000[39m })[33m;[39m
+    [90m195|[39m
+[90m [2m❯[22m runWithExpensiveErrorDiagnosticsDisabled node_modules/@testing-library/dom/dist/config.js:[2m47:12[22m[39m
+[90m [2m❯[22m checkCallback node_modules/@testing-library/dom/dist/wait-for.js:[2m124:77[22m[39m
+[90m [2m❯[22m Timeout.checkRealTimersCallback node_modules/@testing-library/dom/dist/wait-for.js:[2m118:16[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/9]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/tests/e2e/chat-state.test.ts[2m > [22mChat state logic (state-based testing)[2m > [22medits message and re-streams response
+[31m[1mAssertionError[22m: expected true to be false // Object.is equality
+
+Ignored nodes: comments, script, style
+[36m<html>[31m
+  [36m<head />[31m
+  [36m<body />[31m
+[36m</html>[31m[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- false[39m
+[31m+ true[39m
+
+[36m [2m❯[22m timeout src/tests/e2e/chat-state.test.ts:[2m311:32[22m[39m
+    [90m309|[39m
+    [90m310|[39m     [35mawait[39m [34mwaitFor[39m(() [33m=>[39m {
+    [90m311|[39m       [34mexpect[39m([35mget[39m(isStreaming))[33m.[39m[34mtoBe[39m([35mfalse[39m)[33m;[39m
+    [90m   |[39m                                [31m^[39m
+    [90m312|[39m     }[33m,[39m { timeout[33m:[39m [34m5000[39m })[33m;[39m
+    [90m313|[39m
+[90m [2m❯[22m runWithExpensiveErrorDiagnosticsDisabled node_modules/@testing-library/dom/dist/config.js:[2m47:12[22m[39m
+[90m [2m❯[22m checkCallback node_modules/@testing-library/dom/dist/wait-for.js:[2m124:77[22m[39m
+[90m [2m❯[22m Timeout.checkRealTimersCallback node_modules/@testing-library/dom/dist/wait-for.js:[2m118:16[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/9]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/tests/e2e/chat-state.test.ts[2m > [22mChat state logic (state-based testing)[2m > [22maborts during AI call and resumes without aborted message
+[31m[1mAssertionError[22m: expected true to be false // Object.is equality
+
+Ignored nodes: comments, script, style
+[36m<html>[31m
+  [36m<head />[31m
+  [36m<body />[31m
+[36m</html>[31m[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- false[39m
+[31m+ true[39m
+
+[36m [2m❯[22m timeout src/tests/e2e/chat-state.test.ts:[2m633:29[22m[39m
+    [90m631|[39m     [90m// Step 27. System sets isStreaming to true[39m
+    [90m632|[39m     [35mawait[39m [34mwaitFor[39m(() [33m=>[39m {
+    [90m633|[39m       [34mexpect[39m([35mget[39m(isPaused))[33m.[39m[34mtoBe[39m([35mfalse[39m)[33m;[39m
+    [90m   |[39m                             [31m^[39m
+    [90m634|[39m       [34mexpect[39m([35mget[39m(isAborted))[33m.[39m[34mtoBe[39m([35mfalse[39m)[33m;[39m
+    [90m635|[39m       [34mexpect[39m([35mget[39m(isStreaming))[33m.[39m[34mtoBe[39m([35mtrue[39m)[33m;[39m
+[90m [2m❯[22m runWithExpensiveErrorDiagnosticsDisabled node_modules/@testing-library/dom/dist/config.js:[2m47:12[22m[39m
+[90m [2m❯[22m checkCallback node_modules/@testing-library/dom/dist/wait-for.js:[2m124:77[22m[39m
+[90m [2m❯[22m Timeout.checkRealTimersCallback node_modules/@testing-library/dom/dist/wait-for.js:[2m118:16[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/9]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/tests/e2e/roles-integration.test.ts[2m > [22mroles-integration.md[2m > [22mScenario 1: Basic Role Selection
+[31m[1mAssertionError[22m: expected true to be false // Object.is equality
+
+Ignored nodes: comments, script, style
+[36m<html>[31m
+  [36m<head />[31m
+  [36m<body />[31m
+[36m</html>[31m[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- false[39m
+[31m+ true[39m
+
+[36m [2m❯[22m timeout src/tests/e2e/roles-integration.test.ts:[2m143:32[22m[39m
+    [90m141|[39m     // Step 8. System includes role prompt in request and receives res…
+    [90m142|[39m     [35mawait[39m [34mwaitFor[39m(() [33m=>[39m {
+    [90m143|[39m       [34mexpect[39m([35mget[39m(isStreaming))[33m.[39m[34mtoBe[39m([35mfalse[39m)[33m;[39m
+    [90m   |[39m                                [31m^[39m
+    [90m144|[39m     }[33m,[39m { timeout[33m:[39m [34m5000[39m })[33m;[39m
+    [90m145|[39m
+[90m [2m❯[22m runWithExpensiveErrorDiagnosticsDisabled node_modules/@testing-library/dom/dist/config.js:[2m47:12[22m[39m
+[90m [2m❯[22m checkCallback node_modules/@testing-library/dom/dist/wait-for.js:[2m124:77[22m[39m
+[90m [2m❯[22m Timeout.checkRealTimersCallback node_modules/@testing-library/dom/dist/wait-for.js:[2m118:16[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/9]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/tests/e2e/roles-integration.test.ts[2m > [22mroles-integration.md[2m > [22mScenario 5: Project Attached After Chat Started
+[31m[1mAssertionError[22m: expected true to be false // Object.is equality
+
+Ignored nodes: comments, script, style
+[36m<html>[31m
+  [36m<head />[31m
+  [36m<body />[31m
+[36m</html>[31m[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- false[39m
+[31m+ true[39m
+
+[36m [2m❯[22m timeout src/tests/e2e/roles-integration.test.ts:[2m295:32[22m[39m
+    [90m293|[39m
+    [90m294|[39m     [35mawait[39m [34mwaitFor[39m(() [33m=>[39m {
+    [90m295|[39m       [34mexpect[39m([35mget[39m(isStreaming))[33m.[39m[34mtoBe[39m([35mfalse[39m)[33m;[39m
+    [90m   |[39m                                [31m^[39m
+    [90m296|[39m     }[33m,[39m { timeout[33m:[39m [34m5000[39m })[33m;[39m
+    [90m297|[39m
+[90m [2m❯[22m runWithExpensiveErrorDiagnosticsDisabled node_modules/@testing-library/dom/dist/config.js:[2m47:12[22m[39m
+[90m [2m❯[22m checkCallback node_modules/@testing-library/dom/dist/wait-for.js:[2m124:77[22m[39m
+[90m [2m❯[22m Timeout.checkRealTimersCallback node_modules/@testing-library/dom/dist/wait-for.js:[2m118:16[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/9]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m3 failed[39m[22m[90m (3)[39m
+[2m      Tests [22m [1m[31m9 failed[39m[22m[2m | [22m[1m[32m15 passed[39m[22m[2m | [22m[33m1 skipped[39m[90m (25)[39m
+[2m   Start at [22m 20:31:17
+[2m   Duration [22m 46.87s[2m (transform 748ms, setup 102ms, import 993ms, tests 79.05s, environment 351ms)[22m
+
+Finished in 47.37s
+[test-frontend-e2e] ERROR task failed

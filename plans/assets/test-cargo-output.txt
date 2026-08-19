@@ -1,0 +1,732 @@
+[cargo-build] $ cargo build
+warning: unused import: `FunctionCall`
+ --> packages/rhd_db/src/chat_db/messages.rs:5:13
+  |
+5 | use super::{FunctionCall, Message, ToolCall};
+  |             ^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `rhd_db` (lib) generated 1 warning (run `cargo fix --lib -p rhd_db` to apply 1 suggestion)
+warning: unused import: `std::sync::Arc`
+ --> packages/rhd_chat/src/tools/builtin_fsms.rs:1:5
+  |
+1 | use std::sync::Arc;
+  |     ^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `event_sender`
+   --> packages/rhd_chat/src/manager.rs:226:9
+    |
+226 |         event_sender: &broadcast::Sender<ChatEvent>,
+    |         ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_event_sender`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `tools`
+  --> packages/rhd_chat/src/tools/tool_loop.rs:78:5
+   |
+78 |     tools: &[ToolDefinition],
+   |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_tools`
+
+warning: unused variable: `current_content`
+  --> packages/rhd_chat/src/tools/tool_loop.rs:84:5
+   |
+84 |     current_content: &mut String,
+   |     ^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_current_content`
+
+warning: unused variable: `message_id`
+   --> packages/rhd_chat/src/tools/db_sync_listener.rs:126:5
+    |
+126 |     message_id: i64,
+    |     ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_message_id`
+
+warning: `rhd_chat` (lib) generated 5 warnings (run `cargo fix --lib -p rhd_chat` to apply 5 suggestions)
+warning: unused import: `PausedState`
+ --> packages/rhd_app/src/execution/fsm.rs:5:26
+  |
+5 | use super::{AbortHandle, PausedState, ResumeAction};
+  |                          ^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `CurrentStep`
+ --> packages/rhd_app/src/execution/mod.rs:5:15
+  |
+5 | pub use fsm::{CurrentStep, ExecutionAction, ExecutionFsm, ExecutionInput, ExecutionState};
+  |               ^^^^^^^^^^^
+
+warning: unused import: `oneshot`
+  --> packages/rhd_app/src/execution/mod.rs:13:30
+   |
+13 | use tokio::sync::{broadcast, oneshot, watch};
+   |                              ^^^^^^^
+
+warning: unused variable: `tx`
+   --> packages/rhd_app/src/execution/tracker.rs:113:18
+    |
+113 |             let (tx, rx) = oneshot::channel();
+    |                  ^^ help: if this is intentional, prefix it with an underscore: `_tx`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `model_override` is never read
+  --> packages/rhd_app/src/execution/fsm.rs:62:9
+   |
+61 |     Resume {
+   |     ------ field in this variant
+62 |         model_override: Option<String>,
+   |         ^^^^^^^^^^^^^^
+   |
+   = note: `ExecutionInput` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: variants `StepStarted`, `AddTokenUsage`, `AddSection`, `SetStepExitCode`, `SetStepModel`, and `Finish` are never constructed
+  --> packages/rhd_app/src/execution/fsm.rs:67:5
+   |
+49 | pub enum ExecutionInput {
+   |          -------------- variants in this enum
+...
+67 |     StepStarted {
+   |     ^^^^^^^^^^^
+...
+73 |     AddTokenUsage {
+   |     ^^^^^^^^^^^^^
+...
+77 |     AddSection {
+   |     ^^^^^^^^^^
+...
+81 |     SetStepExitCode {
+   |     ^^^^^^^^^^^^^^^
+...
+85 |     SetStepModel {
+   |     ^^^^^^^^^^^^
+...
+89 |     Finish {
+   |     ^^^^^^
+   |
+   = note: `ExecutionInput` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: unused import: `tokio::sync::mpsc`
+ --> packages/rhd_test/src/mock_server/mod.rs:6:5
+  |
+6 | use tokio::sync::mpsc;
+  |     ^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `tokio::process::Command`
+ --> packages/rhd_test/src/standard_test/setup.rs:2:5
+  |
+2 | use tokio::process::Command;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `Arc` and `Mutex`
+ --> packages/rhd_test/src/standard_test/execution.rs:1:17
+  |
+1 | use std::sync::{Arc, Mutex};
+  |                 ^^^  ^^^^^
+
+warning: unused imports: `Arc` and `Mutex`
+ --> packages/rhd_test/src/standard_test/validation.rs:1:17
+  |
+1 | use std::sync::{Arc, Mutex};
+  |                 ^^^  ^^^^^
+
+warning: unused imports: `Arc` and `Mutex`
+ --> packages/rhd_test/src/standard_test/mod.rs:5:17
+  |
+5 | use std::sync::{Arc, Mutex};
+  |                 ^^^  ^^^^^
+  |
+help: if this is a test module, consider adding a `#[cfg(test)]` to the containing module
+ --> packages/rhd_test/src/main.rs:9:1
+  |
+9 | mod standard_test;
+  | ^^^^^^^^^^^^^^^^^^
+
+warning: variable does not need to be mutable
+  --> packages/rhd_test/src/standard_test/setup.rs:53:9
+   |
+53 |     let mut daemon = spawned.daemon;
+   |         ----^^^^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `rhd_bin`
+  --> packages/rhd_test/src/standard_test/setup.rs:21:9
+   |
+21 |     let rhd_bin = workspace_root.join("target/debug/rhd");
+   |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_rhd_bin`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `execution_result`
+ --> packages/rhd_test/src/standard_test/validation.rs:9:5
+  |
+9 |     execution_result: &ExecutionResult,
+  |     ^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_execution_result`
+
+warning: unused variable: `random_response`
+  --> packages/rhd_test/src/standard_test/validation.rs:23:5
+   |
+23 |     random_response: &str,
+   |     ^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_random_response`
+
+warning: fields `exit_code`, `stdout`, and `stderr` are never read
+ --> packages/rhd_test/src/standard_test/execution.rs:7:9
+  |
+6 | pub struct ExecutionResult {
+  |            --------------- fields in this struct
+7 |     pub exit_code: i32,
+  |         ^^^^^^^^^
+8 |     pub stdout: String,
+  |         ^^^^^^
+9 |     pub stderr: String,
+  |         ^^^^^^
+  |
+  = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `rhd_app` (bin "rhd") generated 6 warnings (run `cargo fix --bin "rhd" -p rhd_app` to apply 4 suggestions)
+warning: `rhd_test` (bin "rhd_test") generated 10 warnings (run `cargo fix --bin "rhd_test" -p rhd_test` to apply 9 suggestions)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.08s
+[test-cargo] $ cargo test
+warning: unused import: `FunctionCall`
+ --> packages/rhd_db/src/chat_db/messages.rs:5:13
+  |
+5 | use super::{FunctionCall, Message, ToolCall};
+  |             ^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `rhd_db` (lib) generated 1 warning (run `cargo fix --lib -p rhd_db` to apply 1 suggestion)
+warning: `rhd_db` (lib test) generated 1 warning (1 duplicate)
+warning: unused import: `std::sync::Arc`
+ --> packages/rhd_chat/src/tools/builtin_fsms.rs:1:5
+  |
+1 | use std::sync::Arc;
+  |     ^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `event_sender`
+   --> packages/rhd_chat/src/manager.rs:226:9
+    |
+226 |         event_sender: &broadcast::Sender<ChatEvent>,
+    |         ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_event_sender`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `tools`
+  --> packages/rhd_chat/src/tools/tool_loop.rs:78:5
+   |
+78 |     tools: &[ToolDefinition],
+   |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_tools`
+
+warning: unused variable: `current_content`
+  --> packages/rhd_chat/src/tools/tool_loop.rs:84:5
+   |
+84 |     current_content: &mut String,
+   |     ^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_current_content`
+
+warning: unused variable: `message_id`
+   --> packages/rhd_chat/src/tools/db_sync_listener.rs:126:5
+    |
+126 |     message_id: i64,
+    |     ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_message_id`
+
+warning: `rhd_chat` (lib) generated 5 warnings (run `cargo fix --lib -p rhd_chat` to apply 5 suggestions)
+warning: `rhd_chat` (lib test) generated 5 warnings (5 duplicates)
+warning: unused import: `PausedState`
+ --> packages/rhd_app/src/execution/fsm.rs:5:26
+  |
+5 | use super::{AbortHandle, PausedState, ResumeAction};
+  |                          ^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `CurrentStep`
+ --> packages/rhd_app/src/execution/mod.rs:5:15
+  |
+5 | pub use fsm::{CurrentStep, ExecutionAction, ExecutionFsm, ExecutionInput, ExecutionState};
+  |               ^^^^^^^^^^^
+
+warning: unused import: `oneshot`
+  --> packages/rhd_app/src/execution/mod.rs:13:30
+   |
+13 | use tokio::sync::{broadcast, oneshot, watch};
+   |                              ^^^^^^^
+
+warning: unused import: `super`
+ --> packages/rhd_app/src/ws/tests.rs:1:5
+  |
+1 | use super::*;
+  |     ^^^^^
+
+warning: unused variable: `tx`
+   --> packages/rhd_app/src/execution/tracker.rs:113:18
+    |
+113 |             let (tx, rx) = oneshot::channel();
+    |                  ^^ help: if this is intentional, prefix it with an underscore: `_tx`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `model_override` is never read
+  --> packages/rhd_app/src/execution/fsm.rs:62:9
+   |
+61 |     Resume {
+   |     ------ field in this variant
+62 |         model_override: Option<String>,
+   |         ^^^^^^^^^^^^^^
+   |
+   = note: `ExecutionInput` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: variants `AddSection`, `SetStepExitCode`, and `SetStepModel` are never constructed
+  --> packages/rhd_app/src/execution/fsm.rs:77:5
+   |
+49 | pub enum ExecutionInput {
+   |          -------------- variants in this enum
+...
+77 |     AddSection {
+   |     ^^^^^^^^^^
+...
+81 |     SetStepExitCode {
+   |     ^^^^^^^^^^^^^^^
+...
+85 |     SetStepModel {
+   |     ^^^^^^^^^^^^
+   |
+   = note: `ExecutionInput` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: unused import: `tokio::sync::mpsc`
+ --> packages/rhd_test/src/mock_server/mod.rs:6:5
+  |
+6 | use tokio::sync::mpsc;
+  |     ^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `tokio::process::Command`
+ --> packages/rhd_test/src/standard_test/setup.rs:2:5
+  |
+2 | use tokio::process::Command;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `Arc` and `Mutex`
+ --> packages/rhd_test/src/standard_test/execution.rs:1:17
+  |
+1 | use std::sync::{Arc, Mutex};
+  |                 ^^^  ^^^^^
+
+warning: unused imports: `Arc` and `Mutex`
+ --> packages/rhd_test/src/standard_test/validation.rs:1:17
+  |
+1 | use std::sync::{Arc, Mutex};
+  |                 ^^^  ^^^^^
+
+warning: unused imports: `Arc` and `Mutex`
+ --> packages/rhd_test/src/standard_test/mod.rs:5:17
+  |
+5 | use std::sync::{Arc, Mutex};
+  |                 ^^^  ^^^^^
+
+warning: variable does not need to be mutable
+  --> packages/rhd_test/src/standard_test/setup.rs:53:9
+   |
+53 |     let mut daemon = spawned.daemon;
+   |         ----^^^^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `rhd_bin`
+  --> packages/rhd_test/src/standard_test/setup.rs:21:9
+   |
+21 |     let rhd_bin = workspace_root.join("target/debug/rhd");
+   |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_rhd_bin`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `execution_result`
+ --> packages/rhd_test/src/standard_test/validation.rs:9:5
+  |
+9 |     execution_result: &ExecutionResult,
+  |     ^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_execution_result`
+
+warning: unused variable: `random_response`
+  --> packages/rhd_test/src/standard_test/validation.rs:23:5
+   |
+23 |     random_response: &str,
+   |     ^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_random_response`
+
+warning: fields `exit_code`, `stdout`, and `stderr` are never read
+ --> packages/rhd_test/src/standard_test/execution.rs:7:9
+  |
+6 | pub struct ExecutionResult {
+  |            --------------- fields in this struct
+7 |     pub exit_code: i32,
+  |         ^^^^^^^^^
+8 |     pub stdout: String,
+  |         ^^^^^^
+9 |     pub stderr: String,
+  |         ^^^^^^
+  |
+  = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `rhd_app` (bin "rhd" test) generated 7 warnings (run `cargo fix --bin "rhd" -p rhd_app --tests` to apply 4 suggestions)
+warning: `rhd_test` (bin "rhd_test" test) generated 10 warnings (run `cargo fix --bin "rhd_test" -p rhd_test --tests` to apply 9 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.08s
+     Running unittests src/lib.rs (target/debug/deps/rhd_ai-6c8065d81a18415a)
+
+running 9 tests
+test config::tests::test_resolve_api_key_credential_exists ... ok
+test config::tests::test_resolve_api_key_credential_not_found ... ok
+test config::tests::test_resolve_api_key_env_var_exists ... ok
+test config::tests::test_resolve_api_key_env_var_not_set ... ok
+test config::tests::test_resolve_api_key_partial_env_var_no_substitution ... ok
+test config::tests::test_resolve_api_key_plain_string ... ok
+test config::tests::test_backward_compatibility_plain_string ... ok
+test config::tests::test_backward_compatibility_env_var ... ok
+test config::tests::test_credential_reference ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/rhd_api-da1450c3f93489b5)
+
+running 23 tests
+test tests::test_error_code_chat_variants_serialization ... ok
+test tests::test_chat_stream_finished_event_serialization ... ok
+test tests::test_chat_stream_chunk_event_serialization ... ok
+test tests::test_event_type_debug_lowercase_serialization ... ok
+test tests::test_chat_message_added_event_serialization ... ok
+test tests::test_chat_message_dto_serialization ... ok
+test tests::test_flat_cost_calculation ... ok
+test tests::test_event_type_serde_serialization ... ok
+test tests::test_no_pricing_returns_none ... ok
+test tests::test_role_changed_event_serialization ... ok
+test tests::test_role_info_serialization ... ok
+test tests::test_roles_updated_event_serialization ... ok
+test tests::test_tiered_cost_calculation ... ok
+test tests::test_todo_item_dto_serialization ... ok
+test tests::test_todo_list_updated_event_empty_items ... ok
+test tests::test_todo_list_updated_event_format ... ok
+test tests::test_todo_list_updated_event_serialization ... ok
+test tests::test_ws_request_abort_chat_serialization ... ok
+test tests::test_ws_request_create_chat_serialization ... ok
+test tests::test_ws_request_edit_message_serialization ... ok
+test tests::test_ws_request_get_available_roles_serialization ... ok
+test tests::test_ws_request_set_role_serialization ... ok
+test tests::test_ws_request_send_message_serialization ... ok
+
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/rhd_app-c983dd5c3783a4d0)
+
+running 14 tests
+test project_loader::tests::test_load_projects_nonexistent_dir ... ok
+test project_loader::tests::test_load_project_without_roles ... ok
+test project_loader::tests::test_load_project_empty_mcp_yaml ... ok
+test project_loader::tests::test_load_projects_invalid_yaml ... ok
+test project_loader::tests::test_load_project_with_only_mcp ... ok
+test project_loader::tests::test_load_project_with_only_system_prompt ... ok
+test project_loader::tests::test_load_project_with_env_vars ... ok
+test project_loader::tests::test_load_projects_skips_empty_dirs ... ok
+test project_loader::tests::test_load_project_with_mcp_and_system_prompt ... ok
+test project_loader::tests::test_load_project_with_incomplete_role ... ok
+test project_loader::tests::test_load_projects_sorted_by_name ... ok
+test project_loader::tests::test_project_info_has_roles ... ok
+test project_loader::tests::test_load_project_with_roles ... ok
+test project_loader::tests::test_load_roles_sorted_by_name ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/main.rs (target/debug/deps/rhd-9036d758043a4d2e)
+
+running 45 tests
+test execution::fsm::tests::test_initial_state ... ok
+test execution::fsm::tests::test_invalid_transition_start_from_running ... ok
+test execution::fsm::tests::test_add_token_usage ... ok
+test execution::fsm::tests::test_finish_from_running ... ok
+test execution::fsm::tests::test_abort_from_running ... ok
+test execution::fsm::tests::test_abort_from_paused ... ok
+test execution::fsm::tests::test_pause_from_running ... ok
+test execution::fsm::tests::test_resume_from_paused ... ok
+test execution::fsm::tests::test_start_from_idle ... ok
+test execution::fsm::tests::test_step_started ... ok
+test project_loader::tests::test_load_projects_nonexistent_dir ... ok
+test project_manager::tests::test_get_mcp_clients_empty ... ok
+test project_manager::tests::test_get_mcp_status_empty ... ok
+test project_manager::tests::test_get_project_found ... ok
+test project_manager::tests::test_get_project_not_found ... ok
+test project_manager::tests::test_get_project_roles ... ok
+test project_manager::tests::test_get_project_roles_empty ... ok
+test project_manager::tests::test_get_role_system_prompt ... ok
+test project_loader::tests::test_load_project_with_env_vars ... ok
+test project_loader::tests::test_load_project_with_only_system_prompt ... ok
+test project_loader::tests::test_load_project_empty_mcp_yaml ... ok
+test project_manager::tests::test_list_projects_empty ... ok
+test project_manager::tests::test_list_projects_sorted ... ok
+test project_loader::tests::test_load_project_with_only_mcp ... ok
+test project_manager::tests::test_mcp_status_is_connected ... ok
+test project_manager::tests::test_project_info_has_system_prompt ... ok
+test scenario::placeholder::tests::missing_step_resolves_empty ... ok
+test project_manager::tests::test_project_info_has_mcp ... ok
+test scenario::placeholder::tests::no_placeholder_passthrough ... ok
+test scenario::placeholder::tests::resolves_exit_code ... ok
+test scenario::placeholder::tests::stdout_stderr_combined_from_lines ... ok
+test scenario::placeholder::tests::stdout_stderr_empty_when_no_lines ... ok
+test project_loader::tests::test_load_projects_invalid_yaml ... ok
+test scenario::placeholder::tests::unclosed_percent_passthrough ... ok
+test template_loader::tests::test_get_existing_template ... ok
+test template_loader::tests::test_get_nonexistent_template ... ok
+test ws::tests::test_ws_event_conversion ... ok
+test project_loader::tests::test_load_project_without_roles ... ok
+test project_loader::tests::test_load_project_with_mcp_and_system_prompt ... ok
+test project_loader::tests::test_load_projects_skips_empty_dirs ... ok
+test project_loader::tests::test_load_project_with_incomplete_role ... ok
+test project_loader::tests::test_load_projects_sorted_by_name ... ok
+test project_loader::tests::test_project_info_has_roles ... ok
+test project_loader::tests::test_load_project_with_roles ... ok
+test project_loader::tests::test_load_roles_sorted_by_name ... ok
+
+test result: ok. 45 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (target/debug/deps/rhd_chat-663332b3d9fca5f6)
+
+running 87 tests
+test state::tests::test_message_queue_push_and_drain ... ok
+test state::tests::test_message_queue_multiple_messages ... ok
+test state::tests::test_stream_state_is_aborted ... ok
+test state::tests::test_stream_state_phase ... ok
+test manager::tests::test_pause_chat ... ok
+test manager::tests::test_resume_chat ... ok
+test stream_fsm::tests::test_abort_from_paused ... ok
+test stream_fsm::tests::test_abort_from_running ... ok
+test stream_fsm::tests::test_initial_state ... ok
+test manager::tests::test_queue_message_when_paused ... ok
+test stream_fsm::tests::test_invalid_transition_register_from_running ... ok
+test stream_fsm::tests::test_pause_from_running ... ok
+test stream_fsm::tests::test_queue_message_while_paused ... ok
+test stream_fsm::tests::test_resume_from_paused ... ok
+test manager::tests::test_abort_chat_transitions_to_aborted ... ok
+test stream_fsm::tests::test_register_from_idle ... ok
+test stream_fsm::tests::test_set_phase ... ok
+test stream_fsm::tests::test_unregister_from_running ... ok
+test tools::builtin_fsms::tests::test_builtin_fsm_manager_creation ... ok
+test tools::builtin_fsms::tests::test_is_tool_intercepted ... ok
+test tools::db_sync_listener::tests::test_convert_fsm_message_to_db ... ok
+test tools::db_sync_listener::tests::test_convert_fsm_message_to_db_with_tool_calls ... ok
+test manager::tests::test_resume_preserves_message_queue ... ok
+test manager::tests::test_process_queued_messages ... ok
+test manager::tests::test_queue_message_when_running_fails ... ok
+test stream::tests::test_inject_todo_tool_contract_missing_template ... ok
+test stream::tests::test_inject_todo_tool_contract_first_message ... ok
+test stream::tests::test_inject_todo_tool_contract_already_injected ... ok
+test projects::tests::test_inject_role_system_prompt ... ok
+test projects::tests::test_check_role_conflicts_no_conflict ... ok
+test tools::tests::fsm_integration_tests::tests::test_fsm_listener_add_and_remove ... ok
+test tools::tests::fsm_integration_tests::tests::test_fsm_listener_event_order ... ok
+test tools::tests::fsm_integration_tests::tests::test_fsm_message_id_counter_initialization ... ok
+test projects::tests::test_check_role_conflicts_with_conflict ... ok
+test tools::tests::fsm_integration_tests::tests::test_fsm_multiple_listeners ... ok
+test tools::tests::fsm_integration_tests::tests::test_fsm_state_changed_events ... ok
+test tools::tests::fsm_integration_tests::tests::test_fsm_tool_call_id_generation ... ok
+test tools::tests::message_tests::test_build_chat_messages ... ok
+test tools::tests::message_tests::test_build_chat_messages_for_tools_simple ... ok
+test tools::tests::message_tests::test_build_chat_messages_for_tools_with_tool_calls ... ok
+test projects::tests::test_inject_roles_prompt ... ok
+test tools::tests::message_tests::test_tool_loop_cancellation ... ok
+test tools::tests::message_tests::test_tool_loop_cancellation_check ... ok
+test tools::tests::message_tests::test_tool_loop_iteration_tracking ... ok
+test tools::tests::message_tests::test_tool_loop_max_iterations ... ok
+test tools::tests::message_tests::test_tool_loop_max_iterations_check ... ok
+test tools::tests::message_tests::test_tool_loop_no_tools_returns_immediately ... ok
+test tools::tests::message_tests::test_tool_loop_single_tool_call ... ok
+test tools::tests::mock_mcp::test_mock_mcp_client_call_tool ... ok
+test tools::tests::mock_mcp::test_mock_mcp_client_call_tool_default_result ... ok
+test tools::tests::mock_mcp::test_mock_mcp_client_has_tool ... ok
+test tools::tests::mock_mcp::test_mock_mcp_client_integration ... ok
+test tools::tests::mock_mcp::test_mock_mcp_client_list_tools ... ok
+test stream::tests::test_inject_todo_tool_contract_not_first_message ... ok
+test tools::tests::fsm_integration_tests::tests::test_db_sync_listener_message_with_multiple_tool_calls ... ok
+test tools::tests::fsm_integration_tests::tests::test_db_sync_listener_message_inserted ... ok
+test tools::tests::fsm_integration_tests::tests::test_db_sync_listener_long_content ... ok
+test tools::tests::fsm_integration_tests::tests::test_db_sync_listener_message_removed ... ok
+test tools::tests::role_tests::test_rhd_set_role_tool_definition ... ok
+test tools::tests::fsm_integration_tests::tests::test_db_sync_listener_message_replaced ... ok
+test tools::tests::fsm_integration_tests::tests::test_db_sync_listener_empty_messages_replaced ... ok
+test tools::tests::fsm_integration_tests::tests::test_db_sync_listener_all_messages_replaced ... ok
+test tools::tests::fsm_integration_tests::tests::test_db_sync_listener_message_with_tool_calls ... ok
+test tools::tests::message_tests::test_execute_tool_call_unknown_tool ... ok
+test tools::tests::role_tests::test_collect_builtin_tools_no_roles ... ok
+test tools::tests::message_tests::test_execute_tool_call_with_mcp_client ... ok
+test tools::tests::todo_list::test_parse_todo_list ... ok
+test tools::tests::todo_list::test_parse_todo_list_empty_lines ... ok
+test tools::tests::todo_list::test_parse_todo_list_invalid_lines ... ok
+test tools::tests::todo_list::test_rhd_set_todo_list_tool_definition ... ok
+test tools::tests::tool_parsing::test_extract_mcp_id_from_tool_name_with_prefix ... ok
+test tools::tests::tool_parsing::test_extract_mcp_id_from_tool_name_without_prefix ... ok
+test tools::tests::tool_parsing::test_split_tool_name_with_prefix ... ok
+test tools::tests::tool_parsing::test_split_tool_name_without_prefix ... ok
+test tools::tests::fsm_integration_tests::tests::test_db_sync_listener_special_characters ... ok
+test tools::tests::role_tests::test_collect_builtin_tools_with_roles ... ok
+test tools::tests::fsm_integration_tests::tests::test_db_sync_listener_rapid_events ... ok
+test tools::tests::role_tests::test_handle_rhd_set_role_invalid_args ... ok
+test tools::tests::role_tests::test_handle_rhd_set_role_not_found ... ok
+test tools::tests::todo_list::test_handle_rhd_set_todo_list_emits_event ... ok
+test tools::tests::todo_list::test_handle_rhd_set_todo_list_success ... ok
+test tools::tests::todo_list::test_handle_rhd_set_todo_list_invalid_args ... ok
+test tools::tests::role_tests::test_handle_rhd_set_role_success ... ok
+test tools::tests::todo_list::test_inject_todo_list_missing_template ... ok
+test tools::tests::todo_list::test_inject_todo_list_message_with_items ... ok
+test tools::tests::todo_list::test_inject_todo_list_message_empty ... ok
+test tools::tests::todo_list::test_inject_todo_list_with_role ... ok
+
+test result: ok. 87 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+     Running unittests src/lib.rs (target/debug/deps/rhd_db-52bdad3a916dce85)
+
+running 23 tests
+test chat_db::tests::chat_tests::test_delete_chat ... ok
+test chat_db::tests::chat_tests::test_delete_all_chats ... ok
+test chat_db::tests::chat_tests::test_create_and_list_chats ... ok
+test chat_db::tests::project_tests::test_attach_project_idempotent ... ok
+test chat_db::tests::chat_tests::test_get_chat ... ok
+test chat_db::tests::message_tests::test_update_chat_active_model ... ok
+test chat_db::tests::project_tests::test_attach_and_get_projects ... ok
+test chat_db::tests::message_tests::test_update_message ... ok
+test chat_db::tests::chat_tests::test_update_chat_title ... ok
+test chat_db::tests::project_tests::test_cascade_delete_projects ... ok
+test chat_db::tests::message_tests::test_add_and_get_messages ... ok
+test chat_db::tests::project_tests::test_detach_project ... ok
+test chat_db::tests::message_tests::test_truncate_messages ... ok
+test chat_db::tests::migration_tests::test_migration_from_old_schema ... ok
+test tests::test_next_id_increments ... ok
+test tests::test_persistence_across_restarts ... ok
+test chat_db::tests::role_tests::test_roles_list_injected_flag ... ok
+test chat_db::tests::todo_tests::test_migration_adds_todo_list_column ... ok
+test chat_db::tests::project_tests::test_mark_system_prompt_added ... ok
+test chat_db::tests::role_tests::test_role_prompt_pending_flag ... ok
+test chat_db::tests::role_tests::test_set_and_get_active_role ... ok
+test chat_db::tests::role_tests::test_migration_adds_role_columns ... ok
+test chat_db::tests::todo_tests::test_set_and_get_todo_list ... ok
+
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running unittests src/lib.rs (target/debug/deps/rhd_fsm-5fd8ecb724f6f184)
+
+running 34 tests
+test roles_fsm::tests::test_initial_state ... ok
+test roles_fsm::tests::test_intercepted_tool_calls ... ok
+test roles_fsm::tests::test_handle_set_role_missing_field ... ok
+test roles_fsm::tests::test_handle_set_role ... ok
+test todo_list_fsm::tests::test_initial_state ... ok
+test todo_list_fsm::tests::test_handle_set_todo_list ... ok
+test todo_list_fsm::tests::test_handle_set_todo_list_missing_field ... ok
+test todo_list_fsm::tests::test_intercepted_tool_calls ... ok
+test tool_loop_fsm::tests::listener_tests::test_add_and_remove_listener ... ok
+test tool_loop_fsm::tests::listener_tests::test_listener_receives_message_events ... ok
+test tool_loop_fsm::tests::listener_tests::test_listener_receives_state_changed_events ... ok
+test tool_loop_fsm::tests::listener_tests::test_message_id_counter ... ok
+test tool_loop_fsm::tests::listener_tests::test_tool_call_id_generated_event ... ok
+test tool_loop_fsm::tests::test_abort_during_ai_call ... ok
+test tool_loop_fsm::tests::test_abort_from_idle ... ok
+test tool_loop_fsm::tests::test_add_tool ... ok
+test tool_loop_fsm::tests::test_initial_state ... ok
+test tool_loop_fsm::tests::test_complete_without_tool_calls ... ok
+test tool_loop_fsm::tests::test_complete_tool_loop_scenario ... ok
+test tool_loop_fsm::tests::test_input_after_finished ... ok
+test tool_loop_fsm::tests::test_insert_message ... ok
+test tool_loop_fsm::tests::test_invalid_transition ... ok
+test tool_loop_fsm::tests::test_pause_during_ai_call ... ok
+test tool_loop_fsm::tests::test_multiple_tool_calls ... ok
+test tool_loop_fsm::tests::test_remove_message ... ok
+test tool_loop_fsm::tests::test_remove_nonexistent_message ... ok
+test tool_loop_fsm::tests::test_pause_during_tool_execution ... ok
+test tool_loop_fsm::tests::test_remove_nonexistent_tool ... ok
+test tool_loop_fsm::tests::test_remove_tool ... ok
+test tool_loop_fsm::tests::test_replace_message ... ok
+test tool_loop_fsm::tests::test_resume_from_pause ... ok
+test tool_loop_fsm::tests::test_run_from_idle ... ok
+test tool_loop_fsm::tests::test_tool_calls_flow ... ok
+test tool_loop_fsm::tests::test_unknown_tool_call_result ... ok
+
+test result: ok. 34 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/rhd_mcp_client-caf74d2852227637)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/debug/deps/rhd_test-a941b2f782be9dfe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/rhd_util-d0418e979bf3a064)
+
+running 5 tests
+test tests::dollar_at_end ... ok
+test tests::missing_var_kept_as_is ... ok
+test tests::multiple_vars ... ok
+test tests::no_vars_passthrough ... ok
+test tests::substitutes_env_var ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests rhd_ai
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests rhd_api
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests rhd_app
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests rhd_chat
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests rhd_db
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests rhd_fsm
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests rhd_mcp_client
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests rhd_util
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+Finished in 4.20s

@@ -12,6 +12,17 @@ pub enum TodoListState {
     Active { todos: String },
 }
 
+impl std::fmt::Display for TodoListState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TodoListState::Empty => write!(f, "Empty"),
+            TodoListState::Active { todos } => {
+                write!(f, "Active {{ todos_length: {} }}", todos.len())
+            }
+        }
+    }
+}
+
 /// FSM for managing todo list state and intercepting rhd_set_todo_list tool calls
 pub struct TodoListFsm {
     state: TodoListState,
@@ -102,6 +113,13 @@ impl TodoListFsm {
     /// This method is called by the async wrapper when a `rhd_set_todo_list` tool call
     /// is intercepted. It parses the arguments and updates the state.
     pub fn handle_set_todo_list(&mut self, arguments: &str) -> Result<String, String> {
+        tracing::debug!(
+            fsm = "TodoListFsm",
+            state_before = %self.state,
+            arguments_length = arguments.len(),
+            "TodoListFsm::handle_set_todo_list"
+        );
+
         let json: serde_json::Value = serde_json::from_str(arguments)
             .map_err(|e| format!("Failed to parse arguments: {}", e))?;
 
@@ -113,6 +131,12 @@ impl TodoListFsm {
         self.state = TodoListState::Active {
             todos: todos.to_string(),
         };
+
+        tracing::debug!(
+            fsm = "TodoListFsm",
+            state_after = %self.state,
+            "TodoListFsm state updated"
+        );
 
         Ok(format!("Todo list updated successfully with {} items", todos.lines().count()))
     }

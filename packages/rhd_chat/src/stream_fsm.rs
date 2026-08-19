@@ -74,6 +74,64 @@ pub enum StreamLifecycleAction {
     Error { message: String },
 }
 
+impl std::fmt::Display for StreamLifecycleState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StreamLifecycleState::Idle => write!(f, "Idle"),
+            StreamLifecycleState::Running { phase, .. } => {
+                write!(f, "Running {{ phase: {:?} }}", phase)
+            }
+            StreamLifecycleState::Paused { phase, message_queue, .. } => {
+                write!(f, "Paused {{ phase: {:?}, queue_size: {} }}",
+                    phase, message_queue.len())
+            }
+            StreamLifecycleState::Aborted { aborted_tool_ids, message_queue, .. } => {
+                write!(f, "Aborted {{ aborted_tools: {}, queue_size: {} }}",
+                    aborted_tool_ids.len(), message_queue.len())
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for StreamLifecycleInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StreamLifecycleInput::Register { .. } => write!(f, "Register"),
+            StreamLifecycleInput::Pause => write!(f, "Pause"),
+            StreamLifecycleInput::Resume => write!(f, "Resume"),
+            StreamLifecycleInput::Abort { aborted_tool_ids } => {
+                write!(f, "Abort {{ aborted_tools: {} }}", aborted_tool_ids.len())
+            }
+            StreamLifecycleInput::SetPhase { phase } => {
+                write!(f, "SetPhase {{ phase: {:?} }}", phase)
+            }
+            StreamLifecycleInput::QueueMessage { message } => {
+                write!(f, "QueueMessage {{ content_length: {} }}", message.content.len())
+            }
+            StreamLifecycleInput::Unregister => write!(f, "Unregister"),
+        }
+    }
+}
+
+impl std::fmt::Display for StreamLifecycleAction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StreamLifecycleAction::Registered => write!(f, "Registered"),
+            StreamLifecycleAction::Paused => write!(f, "Paused"),
+            StreamLifecycleAction::Resumed => write!(f, "Resumed"),
+            StreamLifecycleAction::Aborted => write!(f, "Aborted"),
+            StreamLifecycleAction::Unregistered => write!(f, "Unregistered"),
+            StreamLifecycleAction::PhaseChanged { phase } => {
+                write!(f, "PhaseChanged {{ phase: {:?} }}", phase)
+            }
+            StreamLifecycleAction::MessageQueued => write!(f, "MessageQueued"),
+            StreamLifecycleAction::Error { message } => {
+                write!(f, "Error {{ message: {} }}", message)
+            }
+        }
+    }
+}
+
 /// Finite State Machine for managing stream lifecycle
 pub struct StreamLifecycleFsm {
     chat_id: i64,
@@ -104,10 +162,11 @@ impl StreamLifecycleFsm {
         let mut actions = Vec::new();
 
         tracing::info!(
+            fsm = "StreamLifecycleFsm",
             chat_id = self.chat_id,
-            input = ?std::mem::discriminant(&input),
-            current_state = ?std::mem::discriminant(&self.state),
-            "StreamLifecycleFsm::handle"
+            state_before = %self.state,
+            input = %input,
+            "StreamLifecycleFsm::handle started"
         );
 
         match (&self.state, input) {
@@ -280,10 +339,22 @@ impl StreamLifecycleFsm {
             }
         }
 
+        for action in &actions {
+            tracing::info!(
+                fsm = "StreamLifecycleFsm",
+                chat_id = self.chat_id,
+                state_after = %self.state,
+                action = %action,
+                "Emitted action"
+            );
+        }
+
         tracing::info!(
+            fsm = "StreamLifecycleFsm",
             chat_id = self.chat_id,
-            to_state = ?std::mem::discriminant(&self.state),
-            "StreamLifecycleFsm state transition"
+            final_state = %self.state,
+            actions_count = actions.len(),
+            "StreamLifecycleFsm::handle completed"
         );
 
         actions

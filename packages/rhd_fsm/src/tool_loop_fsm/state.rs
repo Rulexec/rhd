@@ -93,3 +93,26 @@ impl State {
         }
     }
 }
+
+impl std::fmt::Display for State {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            State::Idle => write!(f, "Idle"),
+            State::AwaitingAiResponse { sent_messages } => {
+                write!(f, "AwaitingAiResponse {{ sent_messages_count: {} }}", sent_messages.len())
+            }
+            State::AwaitingToolResults { pending_tool_calls, collected_results } => {
+                write!(f, "AwaitingToolResults {{ pending: {}, collected: {} }}",
+                    pending_tool_calls.len(), collected_results.len())
+            }
+            State::Paused { pending_tool_calls, collected_results } => {
+                write!(f, "Paused {{ pending: {}, collected: {} }}",
+                    pending_tool_calls.len(), collected_results.len())
+            }
+            State::Aborted => write!(f, "Aborted"),
+            State::Completed { message_id } => {
+                write!(f, "Completed {{ message_id: {} }}", message_id)
+            }
+        }
+    }
+}

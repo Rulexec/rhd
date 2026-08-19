@@ -12,6 +12,17 @@ pub enum RoleState {
     Active { role_name: String },
 }
 
+impl std::fmt::Display for RoleState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RoleState::None => write!(f, "None"),
+            RoleState::Active { role_name } => {
+                write!(f, "Active {{ role_name: {} }}", role_name)
+            }
+        }
+    }
+}
+
 /// FSM for managing role state and intercepting rhd_set_role tool calls
 pub struct RolesFsm {
     state: RoleState,
@@ -102,6 +113,13 @@ impl RolesFsm {
     /// This method is called by the async wrapper when a `rhd_set_role` tool call
     /// is intercepted. It parses the arguments and updates the state.
     pub fn handle_set_role(&mut self, arguments: &str) -> Result<String, String> {
+        tracing::debug!(
+            fsm = "RolesFsm",
+            state_before = %self.state,
+            arguments_length = arguments.len(),
+            "RolesFsm::handle_set_role"
+        );
+
         let json: serde_json::Value = serde_json::from_str(arguments)
             .map_err(|e| format!("Failed to parse arguments: {}", e))?;
 
@@ -113,6 +131,12 @@ impl RolesFsm {
         self.state = RoleState::Active {
             role_name: role_name.to_string(),
         };
+
+        tracing::debug!(
+            fsm = "RolesFsm",
+            state_after = %self.state,
+            "RolesFsm state updated"
+        );
 
         Ok(format!("Successfully switched to role '{}'", role_name))
     }

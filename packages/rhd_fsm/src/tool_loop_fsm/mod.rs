@@ -85,10 +85,41 @@ impl ToolLoopFsm {
     pub fn run(&mut self, inputs: &mut Vec<ToolLoopInput>) -> Result<Vec<ToolLoopAction>, FsmError> {
         let mut actions = Vec::new();
 
+        tracing::debug!(
+            fsm = "ToolLoopFsm",
+            state = %self.state,
+            inputs_count = inputs.len(),
+            "ToolLoopFsm::run started"
+        );
+
         for input in inputs.drain(..) {
+            tracing::debug!(
+                fsm = "ToolLoopFsm",
+                state_before = %self.state,
+                input = %input,
+                "Processing input"
+            );
+
             let input_actions = self.process_input(input)?;
+            
+            for action in &input_actions {
+                tracing::debug!(
+                    fsm = "ToolLoopFsm",
+                    state_after = %self.state,
+                    action = %action,
+                    "Emitted action"
+                );
+            }
+            
             actions.extend(input_actions);
         }
+
+        tracing::debug!(
+            fsm = "ToolLoopFsm",
+            final_state = %self.state,
+            actions_count = actions.len(),
+            "ToolLoopFsm::run completed"
+        );
 
         Ok(actions)
     }

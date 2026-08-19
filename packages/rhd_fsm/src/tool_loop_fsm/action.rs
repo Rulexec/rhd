@@ -55,3 +55,27 @@ impl ToolLoopAction {
         }
     }
 }
+
+impl std::fmt::Display for ToolLoopAction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ToolLoopAction::SendToAi { messages, tools } => {
+                write!(f, "SendToAi {{ messages: {}, tools: {} }}", messages.len(), tools.len())
+            }
+            ToolLoopAction::ExecuteToolCall { tool_call } => {
+                write!(f, "ExecuteToolCall {{ name: {}, id: {} }}", tool_call.name, tool_call.id)
+            }
+            ToolLoopAction::Completed { message } => {
+                write!(f, "Completed {{ message_id: {} }}", message.id)
+            }
+            ToolLoopAction::Paused => write!(f, "Paused"),
+            ToolLoopAction::Aborted => write!(f, "Aborted"),
+            ToolLoopAction::GenerateToolCallId { tool_call_id } => {
+                write!(f, "GenerateToolCallId {{ id: {} }}", tool_call_id)
+            }
+            ToolLoopAction::Error { message } => {
+                write!(f, "Error {{ message: {} }}", message)
+            }
+        }
+    }
+}

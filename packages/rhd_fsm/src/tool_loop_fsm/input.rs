@@ -75,3 +75,42 @@ impl ToolLoopInput {
         }
     }
 }
+
+impl std::fmt::Display for ToolLoopInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ToolLoopInput::Run => write!(f, "Run"),
+            ToolLoopInput::InsertMessage { message } => {
+                write!(f, "InsertMessage {{ id: {}, role: {} }}", message.id, message.role)
+            }
+            ToolLoopInput::RemoveMessage { message_id } => {
+                write!(f, "RemoveMessage {{ message_id: {} }}", message_id)
+            }
+            ToolLoopInput::ReplaceMessage { message_id, new_message } => {
+                write!(f, "ReplaceMessage {{ message_id: {}, new_role: {} }}",
+                    message_id, new_message.role)
+            }
+            ToolLoopInput::ReplaceAllMessages { messages } => {
+                write!(f, "ReplaceAllMessages {{ count: {} }}", messages.len())
+            }
+            ToolLoopInput::AddTool { tool } => {
+                write!(f, "AddTool {{ name: {} }}", tool.name)
+            }
+            ToolLoopInput::RemoveTool { tool_name } => {
+                write!(f, "RemoveTool {{ name: {} }}", tool_name)
+            }
+            ToolLoopInput::ProvideAiResponse { content, tool_calls, finish_reason, .. } => {
+                write!(f, "ProvideAiResponse {{ has_content: {}, tool_calls: {}, finish_reason: {} }}",
+                    content.is_some(), tool_calls.len(), finish_reason)
+            }
+            ToolLoopInput::RequestToolCallId => write!(f, "RequestToolCallId"),
+            ToolLoopInput::ProvideToolResult { tool_call_id, result } => {
+                write!(f, "ProvideToolResult {{ tool_call_id: {}, is_error: {} }}",
+                    tool_call_id, result.is_error)
+            }
+            ToolLoopInput::Pause => write!(f, "Pause"),
+            ToolLoopInput::Abort => write!(f, "Abort"),
+            ToolLoopInput::Resume => write!(f, "Resume"),
+        }
+    }
+}

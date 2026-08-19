@@ -91,6 +91,12 @@ impl<'a, P: ProjectProvider> FsmToolLoop<'a, P> {
 
     /// Run the tool loop until completion, pause, or abort
     pub async fn run(&mut self, db_sync_listener: Option<rhd_fsm::tool_loop_fsm::ToolLoopListenerCallback>) -> Result<ToolLoopResult, ChatError> {
+        tracing::info!(
+            chat_id = self.chat_id,
+            model = %self.model,
+            "FsmToolLoop::run started"
+        );
+
         // Load initial messages from DB
         self.load_initial_messages()?;
 
@@ -110,6 +116,10 @@ impl<'a, P: ProjectProvider> FsmToolLoop<'a, P> {
         loop {
             // Check for abort
             if self.cancel_token.is_cancelled() {
+                tracing::info!(
+                    chat_id = self.chat_id,
+                    "FsmToolLoop: cancel token triggered, aborting"
+                );
                 self.handle_abort().await?;
                 return Err(ChatError::Ai(rhd_ai::client::AiError::Aborted {
                     model: self.model.clone(),
@@ -118,6 +128,12 @@ impl<'a, P: ProjectProvider> FsmToolLoop<'a, P> {
 
             // Check for max iterations
             if self.iterations >= self.max_iterations {
+                tracing::warn!(
+                    chat_id = self.chat_id,
+                    iterations = self.iterations,
+                    max_iterations = self.max_iterations,
+                    "FsmToolLoop: max iterations exceeded"
+                );
                 return Err(ChatError::Ai(rhd_ai::client::AiError::Api {
                     model: self.model.clone(),
                     status: 0,
@@ -128,6 +144,12 @@ impl<'a, P: ProjectProvider> FsmToolLoop<'a, P> {
             // Process actions
             while !actions.is_empty() {
                 let action = actions.remove(0);
+                tracing::debug!(
+                    chat_id = self.chat_id,
+                    fsm_state = %self.fsm.state(),
+                    action = %action,
+                    "FsmToolLoop processing action"
+                );
                 match action {
                     ToolLoopAction::SendToAi { messages, tools } => {
                         let result = self.handle_send_to_ai(&messages, &tools).await?;
@@ -199,6 +221,11 @@ impl<'a, P: ProjectProvider> FsmToolLoop<'a, P> {
             // If we get here, FSM is in a waiting state
             // Check if FSM is finished
             if self.fsm.is_finished() {
+                tracing::info!(
+                    chat_id = self.chat_id,
+                    final_state = %self.fsm.state(),
+                    "FsmToolLoop: FSM finished"
+                );
                 break;
             }
 
@@ -206,6 +233,11 @@ impl<'a, P: ProjectProvider> FsmToolLoop<'a, P> {
             tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
         }
 
+        tracing::error!(
+            chat_id = self.chat_id,
+            final_state = %self.fsm.state(),
+            "FsmToolLoop::run completed without result"
+        );
         Err(ChatError::Internal("FSM finished without result".to_string()))
     }
 
