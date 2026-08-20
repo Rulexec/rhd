@@ -3,64 +3,6 @@
 > **Note**: This file list may not be fully accurate. If you find issues like references to non-existing files or inaccurate descriptions, fix them immediately.
 
 ```
-frontend/
-├── .nvmrc              # Node.js version (v24.13.0)
-├── package.json        # Dependencies and scripts
-├── tsconfig.json       # TypeScript configuration
-├── vite.config.js      # Vite configuration
-├── vitest.config.unit.ts  # Unit test config
-├── vitest.config.e2e.ts   # E2E test config
-├── index.html          # Entry HTML
-├── svelte.config.js    # Svelte configuration
-└── src/
-    ├── main.ts         # App entry point
-    ├── App.svelte      # Root component
-    ├── lib/
-    │   ├── ws.ts       # WebSocket connection service with Zod validation
-    │   ├── stores.ts   # Svelte stores for scenario state
-    │   ├── chatStores.ts # Svelte stores for chat state
-    │   ├── chatWs.ts   # Chat WebSocket functions and event handlers
-    │   ├── projectStores.ts # Project and MCP status stores
-    │   ├── stateExport.ts # State export/import for window.__exportState/__importState
-    │   ├── stateExport.test.ts # Unit tests for state export/import
-    │   ├── utils.ts    # Helper functions
-    │   ├── router.ts   # Hash-based routing
-    │   ├── actions/    # Action layer for test overrides
-    │   │   ├── types.ts      # Action type definitions
-    │   │   ├── dispatcher.ts # ActionDispatcher with _testOverrideAction
-    │   │   ├── processors.ts # Action processors (wrap chatWs)
-    │   │   └── index.ts      # Public exports
-    │   └── types/
-    │       ├── index.ts    # Domain types with Zod schemas
-    │       └── ws.ts       # WebSocket protocol schemas
-    ├── components/
-    │   ├── TabNav.svelte
-    │   ├── ScenariosTab.svelte
-    │   ├── ChatsTab.svelte
-    │   ├── ChatList.svelte
-    │   ├── ChatView.svelte
-    │   ├── MessageList.svelte
-    │   ├── Message.svelte
-    │   ├── MessageInput.svelte
-    │   ├── StreamingMessage.svelte
-    │   ├── ToolCallMessage.svelte
-    │   ├── ActiveScenario.svelte
-    │   └── FinishedScenario.svelte
-    ├── styles/
-    │   ├── global.css
-    │   ├── utilities.css
-    │   └── components/
-    └── tests/
-        ├── setup.ts        # Test setup
-        ├── testUtils.ts    # E2E test utilities
-        ├── e2e/            # E2E tests (state-based)
-        │   ├── chat-state.test.ts
-        │   └── ...
-        └── ui/             # UI unit tests
-            ├── MessageInput.test.ts
-            ├── ChatList.test.ts
-            └── Message.test.ts
-
 packages/rhd_app/src/
 ├── main.rs           # CLI entry point, command dispatch
 ├── cli.rs            # clap argument definitions
@@ -213,7 +155,6 @@ packages/rhd_test/src/
 ├── args.rs           # CLI argument definitions
 ├── control_server.rs # HTTP control server for test coordination
 ├── daemon_startup_test.rs # Daemon startup validation
-├── frontend_test.rs  # Frontend E2E test orchestrator
 ├── mcp_test.rs       # MCP tool test
 ├── mock_mcp_server.rs # Mock MCP server for testing
 ├── sse_test.rs       # SSE streaming test

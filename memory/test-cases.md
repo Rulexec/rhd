@@ -40,8 +40,6 @@ Brief description of the user scenario.
 ### UI Tests
 - [`test-file.test.ts`](path/to/test) - `test name` (step Z)
 
-### Storybook Tests
-- [`test-file.spec.ts`](path/to/test) - `test name` (steps X-Y)
 ```
 
 ## Step Comments in Test Code
@@ -98,26 +96,6 @@ test('sends message and receives streaming response', async () => {
 });
 ```
 
-## Test Case Types
-
-### E2E Tests
-- Located in `frontend/src/tests/e2e/`
-- Spawn daemon via `rhd_test frontend`
-- Test complete user flows with real backend
-- Use action dispatch and override mechanism
-
-### UI Tests
-- Located in `frontend/src/tests/ui/`
-- Unit tests for component rendering
-- Mock stores and test specific UI states
-- Cover specific steps (e.g., rendering at a certain state)
-
-### Storybook Tests
-- Located in `frontend/tests/storybook/`
-- Playwright tests against running Storybook
-- Test interactive stories with step-by-step execution
-- Use `StoryExecutionControls` component for manual step execution
-
 ## Cross-Linking Guidelines
 
 1. **Test case → Test file**: List all tests that cover this case in "Covered By" section
@@ -134,7 +112,3 @@ test('sends message and receives streaming response', async () => {
 5. Update "Covered By" section with test references
 6. Verify complete step coverage
 
-## References
-
-- [Frontend E2E Testing](frontend-e2e.md) - E2E test infrastructure
-- [Storybook](storybook.md) - Storybook testing guidelines

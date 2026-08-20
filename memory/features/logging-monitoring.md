@@ -165,14 +165,9 @@ error: <error message>
 
 ### Desktop Notifications (Daemon)
 - macOS: `terminal-notifier` (preferred, supports click actions) or `osascript` fallback
-- Triggered when scenario pauses (if `neverFail` enabled and no frontend alive)
+- Triggered when scenario pauses (if `neverFail` enabled and no WebSocket client alive)
 - Debug command: `rhd dev daemon-notification`
 
-### Browser Notifications (Frontend)
-- Request permission on app load
-- Shown when `scenarioPaused` event received
-- Click notification focuses browser tab
-- Debug: `rhd dev frontend-notification` sends `devNotification` WebSocket request
 
 ## Token Tracking
 - Token usage captured from OpenAI-compatible API responses

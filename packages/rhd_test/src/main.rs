@@ -1,7 +1,5 @@
 mod args;
-mod control_server;
 mod daemon_startup_test;
-mod frontend_test;
 mod mcp_test;
 mod mock_mcp_server;
 mod mock_server;
@@ -12,7 +10,6 @@ mod utils;
 use clap::Parser;
 
 use args::{Args, Commands};
-use frontend_test::run_frontend_test;
 use mcp_test::run_mcp_test;
 use mock_server::start_mock_server;
 use standard_test::run_single_test;
@@ -22,15 +19,6 @@ async fn main() {
     let args = Args::parse();
 
     match args.command {
-        Some(Commands::Frontend { ws_port, control_port }) => {
-            let success = run_frontend_test(ws_port, control_port).await;
-            if !success {
-                eprintln!("\nFRONTEND TEST FAILED");
-                std::process::exit(1);
-            } else {
-                println!("\nFRONTEND TEST PASSED");
-            }
-        }
         Some(Commands::SseTest) => {
             sse_test::run_sse_test().await;
         }

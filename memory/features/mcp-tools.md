@@ -98,11 +98,3 @@ actions:
 - Max iterations exceeded → scenario fails with error
 - Tool name collisions → first match wins, warning logged
 
-### Tool Call Error UI
-When a tool call fails (MCP returns `is_error: true`):
-- Frontend displays red X icon (✗) instead of green checkmark (✓)
-- Tool call card gets red border styling
-- Error message shown in result section
-- Status set to `'failed'` (vs `'completed'` for success)
-- Backend propagates `is_error` flag via `ToolCallCompleted` event
-- UI already has error state logic; backend now properly signals failures

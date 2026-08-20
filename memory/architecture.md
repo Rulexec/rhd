@@ -54,7 +54,7 @@
 - `ChatLoggers`: Logging infrastructure for chat interactions
 - `ProjectProvider`: Trait for accessing project MCP clients
 - Tool call IDs are made globally unique using FSM's `tool_call_id_counter`
-- Event ordering: ToolCallStarted sent BEFORE MessageAdded (intermediate assistant) to ensure frontend creates temp message first
+- Event ordering: ToolCallStarted sent BEFORE MessageAdded (intermediate assistant) to ensure WebSocket client creates temp message first
 
 **rhd_app**:
 - **Daemon mode**: Unix socket server on `$HOME/rhd.sock` (default), accepts `RunScenario` and `Reload` requests

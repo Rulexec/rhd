@@ -39,13 +39,13 @@ Scenarios live in `scenarios/<name>/scenario.yaml`. The directory name is the sc
 ### Scenario Control (Pause/Resume/Retry)
 When `neverFail: true` is set in config and WebSocket server is enabled:
 - AI errors pause execution instead of failing the scenario
-- Frontend shows paused scenario with error details
+- Paused scenario shows error details via WebSocket events
 - User can retry (optionally switching model) or abort
 - `rhd run` client waits during pause, receives final result after resume/abort
 - Desktop notifications alert user when scenario pauses
 
 ### Abort
-- Frontend can abort active scenario execution
+- WebSocket client can abort active scenario execution
 - Daemon kills running operation (command/AI/MCP call)
 - Log writes `===== ABORTED =====` marker
 - `meta.json` records `status: "aborted"`

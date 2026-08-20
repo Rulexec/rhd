@@ -44,11 +44,11 @@ Persistent conversational interface for direct AI interaction. Users create chat
 
 ### Streaming Responses
 - AI responses stream token-by-token
-- Frontend shows animated dots indicator while streaming
+- WebSocket client shows animated dots indicator while streaming
 - First chunk hides loader and shows assistant message with content
 - Subsequent chunks append to content in real-time
 - Stream finish removes animated dots, shows final message
-- Empty chunks filtered on backend (not sent to frontend)
+- Empty chunks filtered on backend (not sent to WebSocket client)
 
 ### Smart Auto-Scrolling
 - Message list auto-scrolls to bottom when new content arrives **only if user is at bottom**

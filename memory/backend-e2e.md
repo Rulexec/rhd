@@ -56,5 +56,4 @@ HTTP server on random port for test coordination. Endpoints:
 | `standard_test.rs` | Standard test with meta.json validation |
 | `mcp_test.rs` | MCP tool test |
 | `sse_test.rs` | SSE streaming test |
-| `frontend_test.rs` | Frontend E2E test orchestrator |
 | `utils.rs` | Test utilities |

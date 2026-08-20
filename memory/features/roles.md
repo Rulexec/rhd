@@ -31,7 +31,7 @@ projects/
 ### Role Selection
 1. User attaches a project with roles to a chat
 2. System emits `RolesUpdated` event with available roles
-3. Frontend displays role selector dropdown
+3. WebSocket client receives available roles via event
 4. User selects a role from the dropdown
 5. System injects the role's system prompt as a system message
 6. AI behavior changes according to the selected role
@@ -40,7 +40,7 @@ projects/
 - AI can call `rhd_set_role` tool to switch roles automatically
 - Tool is only available when roles are defined in attached projects
 - When AI switches roles, the role's system prompt is injected immediately
-- Frontend receives `RoleChanged` event and updates UI
+- WebSocket client receives `RoleChanged` event
 
 ### Role Injection
 - Roles list prompt is injected on the first message after project attachment
@@ -53,21 +53,6 @@ projects/
 - If duplicate role names are found, attachment is rejected with an error
 - Error lists the conflicting role names
 - User must detach one of the conflicting projects or rename roles
-
-## Frontend UI
-
-### Role Selector
-- Dropdown appears in chat header when roles are available
-- Shows all available roles from all attached projects
-- Format: `roleName (projectName)`
-- "No role" option to clear the active role
-- Disabled during streaming
-- Hidden when no roles are available
-
-### Role Events
-- `roleChanged` — Active role changed (chatId, projectName, roleName)
-- `rolesUpdated` — Available roles list changed (chatId, roles[], activeRoleProject, activeRoleName)
-- `activeRoleCleared` — Active role cleared (chatId)
 
 ## WebSocket Protocol
 
@@ -112,15 +97,15 @@ projects/
 ### Project Attached After Chat Started
 - Roles become available immediately
 - `RolesUpdated` event is emitted
-- Role selector appears in UI
+- Roles become available to WebSocket clients
 - Roles list prompt is injected on next message
 
 ### No Roles Available
-- Role selector is hidden
+- No roles are available to WebSocket clients
 - `rhd_set_role` tool is not available
 - Roles list prompt is not injected
 
 ### Role Switching During Streaming
-- Frontend role selector is disabled during streaming
+- Role switching via WebSocket is disabled during streaming
 - AI can still switch roles via `rhd_set_role` tool during tool loop
 - Role change takes effect immediately for subsequent AI calls

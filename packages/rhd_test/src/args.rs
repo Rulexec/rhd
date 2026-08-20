@@ -17,16 +17,6 @@ pub struct Args {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Run frontend UI tests
-    Frontend {
-        /// WebSocket port for daemon (default: random)
-        #[arg(long)]
-        ws_port: Option<u16>,
-
-        /// Control server port (default: random)
-        #[arg(long)]
-        control_port: Option<u16>,
-    },
     /// Run simple SSE streaming test
     SseTest,
     /// Run mock MCP server (stdio JSON-RPC)

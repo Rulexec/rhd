@@ -12,7 +12,6 @@ rhd/
 ├── plans/            # Implementation plans
 │   ├── archive/      # Completed/historical plans
 │   └── milestones/   # Feature milestone plans
-├── frontend/         # Svelte web UI
 ├── memory/           # This knowledge base (split by topic)
 │   └── features/     # Product-scoped feature documentation
 ├── packages/
@@ -73,13 +72,10 @@ Detailed documentation is split into topic-specific files. Read the relevant fil
 | [chat.md](chat.md) | When working on ChatManager, chat persistence, chat events, streaming, or chat-related WebSocket handlers |
 | [fsm.md](fsm.md) | When working on ToolLoopFsm, helper FSMs (TodoListFsm, RolesFsm), async wrapper, DB sync listener, or event interception |
 | [logging.md](logging.md) | When working on execution logs, `meta.json` format, log output format, or step timing/tracking |
-| [frontend.md](frontend.md) | When working on the Svelte web UI, chat stores, WebSocket client, or frontend components |
 | [development.md](development.md) | When planning features, running tests, committing code, or needing to understand project conventions and error handling |
 | [file-structure.md](file-structure.md) | When you need to find which file contains specific functionality or understand the project layout |
-| [frontend-e2e.md](frontend-e2e.md) | When working on frontend E2E tests, test utilities, or test infrastructure |
 | [backend-e2e.md](backend-e2e.md) | When working on backend E2E tests, rhd_test crate, mock server, or test scenarios |
 | [test-cases.md](test-cases.md) | When creating or modifying test cases, writing test step comments, or understanding test case format |
-| [storybook.md](storybook.md) | When creating Storybook stories, writing Storybook tests, or setting up interactive story controls |
 | [debugging.md](debugging.md) | When any test fails |
 
 ## Token Saving Guidelines
@@ -132,7 +128,6 @@ Product-scoped feature documentation (what the feature does, not how it's implem
 | [features/chat.md](features/chat.md) | Understanding chat feature, streaming, model selection, message editing, delete all chats, auto-scroll |
 | [features/mcp-tools.md](features/mcp-tools.md) | Understanding MCP tool integration, built-in tools, flags, skip conditions, tool call error UI |
 | [features/configuration.md](features/configuration.md) | Understanding config files, credentials, model aliases, CLI arguments |
-| [features/frontend-ui.md](features/frontend-ui.md) | Understanding web UI structure, tabs, routing, notifications, state export/import, markdown rendering, new chat dialog |
 | [features/testing.md](features/testing.md) | Understanding E2E test infrastructure, mock server, test utilities |
 | [features/logging-monitoring.md](features/logging-monitoring.md) | Understanding log files, meta.json, WebSocket events, notifications |
 | [features/projects.md](features/projects.md) | Understanding projects feature, project structure, attaching projects to chats, MCP server lifecycle, system prompt injection |

@@ -72,30 +72,6 @@ When attaching a project to a chat:
 - Error lists the conflicting MCP IDs
 - User must detach one of the conflicting projects or rename MCP IDs
 
-## Frontend UI
-
-### Projects Panel
-- Located in the chat sidebar or as a separate tab
-- Shows list of available projects
-- Each project shows:
-  - Project name
-  - Attach/detach button (context-aware based on current chat)
-  - MCP status indicator (if attached)
-
-### MCP Status Drawer
-- Toggleable right-side drawer
-- Shows attached projects and their MCP server statuses
-- Status indicators:
-  - 🟢 Green: Connected
-  - 🟡 Yellow: Connecting
-  - 🔴 Red: Failed (with error message)
-
-### Chat View Integration
-- Attached projects shown as badges/chips in chat header
-- Button to open project selector
-- Send button disabled if any MCP server not connected
-- Toggle button for MCP status drawer
-
 ## WebSocket Protocol
 
 ### Requests

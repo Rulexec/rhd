@@ -18,8 +18,8 @@
 **Keep files under 500 lines.** When a file approaches or exceeds this limit, split it into smaller, logical modules. This applies to all source files and test files.
 
 To check for large files:
-- `mise run check-large-files` — checks both backend and frontend
-- `mise run top-files-backend` / `mise run top-files-frontend` — shows largest files
+- `mise run check-large-files` — checks backend files
+- `mise run top-files-backend` — shows largest backend files
 
 When splitting, extract test modules first, then split by logical responsibility. See `.agents/skills/code-splitting/SKILL.md` for detailed patterns and examples.
 
@@ -31,11 +31,9 @@ When splitting, extract test modules first, then split by logical responsibility
 
 | Command | Description |
 |---------|-------------|
-| `mise run test-frontend-unit` | Frontend unit tests (vitest, no daemon) |
-| `mise run test-frontend-e2e` | Frontend e2e tests (vitest, spawns daemon) |
 | `mise run test-cargo` | Cargo unit tests (`cargo test`) |
 | `mise run test-e2e` | Backend e2e tests (`cargo build && cargo run -p rhd_test`) |
-| `mise run test-all` | All tests above |
+| `mise run test-all` | All tests (cargo + e2e) |
 
 Pass arguments to rhd_test: `mise run test-e2e -- --seed 100 --repetitions 5`
 
@@ -43,14 +41,8 @@ Pass arguments to rhd_test: `mise run test-e2e -- --seed 100 --repetitions 5`
 
 | Command | Description |
 |---------|-------------|
-| `mise run check-svelte` | Svelte type/lint checks (`svelte-check` in frontend dir) |
 | `mise run check-cargo` | Rust compilation check (`cargo check`) |
-| `mise run check` | Both checks above, run sequentially |
-
-### Frontend Tests
-
-- Unit tests: pure component/utils tests, no daemon spawn. Config: `frontend/vitest.config.unit.ts`
-- E2E tests: see [frontend-e2e.md](frontend-e2e.md)
+| `mise run check` | Cargo check |
 
 ### Backend E2E Tests
 

@@ -1,5 +1,4 @@
 [tasks]
-test-frontend-unit = { dir = "frontend", run = ["npm run test:unit"] }
 
 [tasks.test-cargo]
 depends = ["cargo-build"]
@@ -8,23 +7,12 @@ run = ["cargo test"]
 [tasks.cargo-build]
 run = ["cargo build"]
 
-[tasks.test-frontend-e2e]
-dir = "frontend"
-depends = ["cargo-build"]
-run = ["npm run test:e2e"]
-
-[tasks.test-frontend]
-depends = ["test-frontend-unit", "test-frontend-e2e"]
-
 [tasks.test-e2e]
 depends = ["cargo-build"]
 run = ["cargo run -p rhd_test{{arg(name='rhd_test_args', var=true, prefix=' -- ', required=false)}}"]
 
 [tasks.test-all]
-depends = ["test-frontend-unit", "test-frontend-e2e", "test-cargo", "test-e2e"]
-
-[tasks.cloc-frontend]
-run = ["cloc --vcs=git --not-match-f='package.*\\.json' frontend/"]
+depends = ["test-cargo", "test-e2e"]
 
 [tasks.cloc-backend]
 run = ["cloc --vcs=git packages/"]
@@ -37,36 +25,25 @@ run = ["cloc --vcs=git plans/"]
 
 [tasks.cloc]
 run = [
-  "mise run cloc-frontend",
   "mise run cloc-backend",
   "mise run cloc-memory",
   "mise run cloc-plans",
 ]
 
 [tasks.cloc-all]
-run = ["cloc --vcs=git --not-match-f='package.*\\.json' frontend/ packages/ memory/ plans/"]
-
-[tasks.check-svelte]
-dir = "frontend"
-run = ["./node_modules/.bin/svelte-check"]
+run = ["cloc --vcs=git packages/ memory/ plans/"]
 
 [tasks.check-cargo]
 run = ["cargo check"]
 
 [tasks.check]
-depends = ["check-svelte", "check-cargo"]
+depends = ["check-cargo"]
 
 [tasks.top-files-backend]
 run = ["find packages -name '*.rs' -type f -exec wc -l {} + | sort -rn | head -n 21"]
 
-[tasks.top-files-frontend]
-run = ["find frontend/src \\( -name '*.ts' -o -name '*.svelte' \\) -type f -exec wc -l {} + | sort -rn | head -n 21"]
-
 [tasks.check-large-files-backend]
 run = ["find packages -name '*.rs' -type f -exec wc -l {} + | sort -rn | awk '$1 > 400 && $2 != \"total\" {print}'"]
 
-[tasks.check-large-files-frontend]
-run = ["find frontend/src \\( -name '*.ts' -o -name '*.svelte' \\) -type f -exec wc -l {} + | sort -rn | awk '$1 > 400 && $2 != \"total\" {print}'"]
-
 [tasks.check-large-files]
-depends = ["check-large-files-backend", "check-large-files-frontend"]
+depends = ["check-large-files-backend"]

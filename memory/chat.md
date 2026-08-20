@@ -32,7 +32,7 @@ The tool loop is now implemented using an FSM-driven architecture (see [fsm.md](
 **Streaming behavior**:
 1. Streaming `chat_stream_with_tools()` calls during tool loop (content and thinking streamed)
 2. Tool calls are made globally unique using FSM's `tool_call_id_counter`
-3. Event ordering: `ToolCallStarted` sent BEFORE `MessageAdded` (intermediate assistant) to ensure frontend creates temp message first
+3. Event ordering: `ToolCallStarted` sent BEFORE `MessageAdded` (intermediate assistant) to ensure WebSocket client creates temp message first
 4. When final response received (no tool calls): emit `StreamFinished` when complete
 
 Tool calls visible via `ToolCallStarted`/`ToolCallCompleted` events, with content streamed separately.
@@ -71,7 +71,7 @@ After each tool loop iteration, the current todo list is injected as a system me
 - **Parameters**: `todos` (string) - Full markdown checklist
 - **Behavior**: Replaces entire todo list with new one (no merge)
 - **Storage**: Saved to database, persists across tool calls
-- **Event**: Emits `TodoListUpdated` event for frontend updates
+- **Event**: Emits `TodoListUpdated` event for WebSocket client updates
 - **Injection**: After each tool loop iteration, current todo list is injected as system message
 - **Contract**: Tool contract injected as system message on first message in chat
 - **Checkbox syntax**: `[ ]` (pending), `[-]` (in progress), `[x]` (completed), `[!]` (discarded)
@@ -121,7 +121,7 @@ The `ChatManager` in `packages/rhd_chat/src/manager.rs` handles all chat operati
   - Emits `MessageAdded` event for updated message
   - Re-streams AI response (same flow as `send_message`, filters out empty content chunks)
 - **`abort_chat(chat_id)`**: Cancels active stream token if present, returns true if aborted
-- **`attach_project(chat_id, project_name, event_sender)`**: Attaches project to chat, starts MCP clients, emits `ProjectAttached` event. Called synchronously from WebSocket handler (not spawned) to ensure errors propagate to frontend.
+- **`attach_project(chat_id, project_name, event_sender)`**: Attaches project to chat, starts MCP clients, emits `ProjectAttached` event. Called synchronously from WebSocket handler (not spawned) to ensure errors propagate to WebSocket client.
 
 ## Chat Events (`ChatEvent` enum)
 
