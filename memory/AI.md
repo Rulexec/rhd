@@ -4,6 +4,26 @@
 
 RHD is a Rust-based automation tool for AI-assisted task execution. It uses a daemon/client architecture where a long-running daemon process executes scenarios (action chains) on behalf of client requests via Unix socket IPC. The system also includes a persistent chat feature for direct AI conversations with streaming responses and MCP tool integration.
 
+## ⚠️ Current State: Full Rewrite In Progress
+
+The project is undergoing a **full rewrite**. The old implementation is being replaced with a new architecture.
+
+**Packages being kept (active development):**
+- `rhd_util` — Shared error types, utilities, env var substitution
+- `rhd_ai` — OpenAI-compatible AI client
+- `rhd_db` — SQLite database layer
+- `rhd_fsm` — Finite state machine framework
+- `rhd_mcp_client` — MCP protocol client for tool usage
+
+**Packages kept for reference only (old implementation):**
+- `rhd_api`, `rhd_chat`, `rhd_app`, `rhd_test` — These contain the previous implementation and may be helpful as reference, but will be rewritten.
+
+**Important implications for agents:**
+- Existing memory files may describe the **old** architecture and may be **partially or fully unrelated** to the new implementation.
+- **Before editing existing code**, ask the user whether the old code should be modified or whether new code should be written instead.
+- Memory files in `memory/` and `memory/features/` reflect the previous state of the project and should be treated as historical context, not current truth.
+- When in doubt about whether something is still relevant, **ask the user**.
+
 ## Multi-Crate Workspace Structure
 
 ```
