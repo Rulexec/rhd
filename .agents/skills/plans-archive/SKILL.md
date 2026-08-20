@@ -81,13 +81,13 @@ If plan adds "smart auto-scrolling":
 If plan adds new feature not yet documented:
 - Create new file in `memory/features/` (e.g., `projects.md`)
 - Document the feature from product perspective
-- Update `memory/AI.md` index to include the new file
+- Update `memory/MEMORY.md` index to include the new file
 
-### Step 4: Update AI.md Index
+### Step 4: Update MEMORY.md Index
 
 If you created new feature files or significantly updated existing ones:
 
-1. Open `memory/AI.md`
+1. Open `memory/MEMORY.md`
 2. Update the "Product Features" table:
    - Add entries for new files
    - Update "when to read" descriptions for modified files
@@ -146,7 +146,7 @@ Use this checklist when archiving plans:
 - [ ] Extract product-level information from each plan
 - [ ] Update relevant `memory/features/` files with new information
 - [ ] Create new feature files if needed (e.g., for entirely new features)
-- [ ] Update `memory/AI.md` index if files were added or significantly changed
+- [ ] Update `memory/MEMORY.md` index if files were added or significantly changed
 - [ ] Move all processed plans to `plans/archive/` using file moving tools or `mv` command
 - [ ] Verify `plans/` directory only contains active work
 

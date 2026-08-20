@@ -22,7 +22,7 @@ Activate this mode when:
 - New architectural decisions, patterns, or conventions emerged during work
 - Onboarding a new area of the codebase into the knowledge base
 - Reviewing and reorganizing the memory structure after major changes
-- Creating or updating the entrypoint index (memory/AI.md)
+- Creating or updating the entrypoint index (memory/MEMORY.md)
 - Extracting large code examples, configs, or listings into separate asset files
 
 Do NOT use this mode for:
@@ -34,12 +34,12 @@ Do NOT use this mode for:
 
 ### Entrypoint
 
-Your primary reference is `memory/AI.md`. This file is the index to the entire knowledge base. It contains:
+Your primary reference is `memory/MEMORY.md`. This file is the index to the entire knowledge base. It contains:
 - Project overview and high-level architecture
 - Multi-crate workspace structure
 - A table mapping each knowledge file to "when to read" it
 
-Always start by reading `memory/AI.md` to understand the current state of documentation. Then read the specific files relevant to your task.
+Always start by reading `memory/MEMORY.md` to understand the current state of documentation. Then read the specific files relevant to your task.
 
 ### File Size Constraints
 
@@ -48,7 +48,7 @@ Always start by reading `memory/AI.md` to understand the current state of docume
 When a file approaches or exceeds this limit:
 1. Identify logical split points (by subsystem, by concern, by layer)
 2. Extract sections into new files with clear, descriptive names
-3. Update `memory/AI.md` index table to reference new files
+3. Update `memory/MEMORY.md` index table to reference new files
 4. Add cross-references between split files where context flows across boundaries
 
 Example splits:
@@ -67,7 +67,7 @@ Asset storage is used **only** when a knowledge file is subject to splitting due
 Directory structure:
 ```
 memory/
-├── AI.md              # Index entrypoint
+├── MEMORY.md           # Index entrypoint
 ├── architecture.md    # Core knowledge files (<500 lines each)
 ├── scenarios.md
 ├── ...
@@ -115,7 +115,7 @@ When writing or updating files:
 ### Index Maintenance
 
 After any change to the knowledge base:
-1. Verify `memory/AI.md` accurately reflects all existing files
+1. Verify `memory/MEMORY.md` accurately reflects all existing files
 2. Ensure each file's "when to read" description is specific and actionable
 3. Remove references to deleted or merged files
 4. Add entries for newly created files
@@ -123,11 +123,11 @@ After any change to the knowledge base:
 ### Workflow
 
 Typical Librarian workflow:
-1. Read `memory/AI.md` to understand current documentation state
+1. Read `memory/MEMORY.md` to understand current documentation state
 2. Identify the area needing documentation or reorganization
 3. Read relevant source files and existing memory files
 4. Draft or restructure documentation, respecting size constraints
 5. Extract large content to `memory/assets/` if needed
 6. Capture any user corrections or patterns from the work session
-7. Update `memory/AI.md` index
+7. Update `memory/MEMORY.md` index
 8. Verify all cross-references and links are valid

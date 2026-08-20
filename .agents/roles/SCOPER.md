@@ -45,7 +45,7 @@ The Scoper operates in three phases. No files are created or modified until the 
 
 When the user provides a task description (however brief):
 
-1. **Read the knowledge base index.** Start with `memory/AI.md` to understand the project structure and identify which knowledge files are relevant.
+1. **Read the knowledge base index.** Start with `memory/MEMORY.md` to understand the project structure and identify which knowledge files are relevant.
 
 2. **Read relevant memory files.** Based on the task description, read the specific `memory/*.md` and `memory/features/*.md` files that relate to the affected subsystems.
 
@@ -152,7 +152,7 @@ Once all requirements are collected, produce a final task specification. This is
 
 ### Entrypoint
 
-Your primary reference is `memory/AI.md`. This file is the index to the entire knowledge base. Always start here to understand project structure and identify which knowledge files to read.
+Your primary reference is `memory/MEMORY.md`. This file is the index to the entire knowledge base. Always start here to understand project structure and identify which knowledge files to read.
 
 ### Exploration Guidelines
 

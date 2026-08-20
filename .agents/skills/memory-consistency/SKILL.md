@@ -56,7 +56,7 @@ The memory system follows a two-layer architecture:
 ### Step 1: Review All Memory Files
 
 Read through all files in the memory system:
-1. Start with `memory/AI.md` (the index)
+1. Start with `memory/MEMORY.md` (the index)
 2. Read each top-level file
 3. Read each features file
 4. Note any inconsistencies or overlaps
@@ -167,13 +167,13 @@ Check that all markdown links in memory files point to valid files:
 3. Fix any broken links
 
 **Common locations for cross-references**:
-- `memory/AI.md` - index with links to all files
+- `memory/MEMORY.md` - index with links to all files
 - `memory/development.md` - may reference testing files
 - Between top-level and features files (should be minimal)
 
-### Step 6: Update AI.md Index
+### Step 6: Update MEMORY.md Index
 
-Ensure `memory/AI.md` accurately reflects:
+Ensure `memory/MEMORY.md` accurately reflects:
 1. All existing memory files
 2. Correct "when to read" descriptions
 3. Proper categorization (top-level vs features)
@@ -183,7 +183,7 @@ Ensure `memory/AI.md` accurately reflects:
 
 Use this checklist when performing a memory consistency check:
 
-- [ ] Read all memory files (AI.md, top-level files, features files)
+- [ ] Read all memory files (MEMORY.md, top-level files, features files)
 - [ ] Identify implementation details in features files
 - [ ] For each implementation detail removed, identify where it should go in top-level files
 - [ ] Move database schemas to appropriate top-level files (chat.md, scenarios.md, etc.)
@@ -196,7 +196,7 @@ Use this checklist when performing a memory consistency check:
 - [ ] Remove internal crate references from features files
 - [ ] Verify features files contain only product-view content
 - [ ] Verify all cross-references are valid
-- [ ] Update AI.md index if files were added/removed/moved
+- [ ] Update MEMORY.md index if files were added/removed/moved
 - [ ] Test that the pattern is clear and consistent across all files
 
 ## Common Issues
