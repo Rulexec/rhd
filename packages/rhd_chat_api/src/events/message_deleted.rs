@@ -1,0 +1,43 @@
+//! `messageDeleted` event data.
+//!
+//! Emitted when a message is deleted. Sent to all clients subscribed to that chat.
+
+use serde::{Deserialize, Serialize};
+
+/// Data payload for the `messageDeleted` event.
+///
+/// # Example JSON
+/// ```json
+/// {
+///   "chatId": 123,
+///   "messageId": 456
+/// }
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageDeletedData {
+    /// ID of the chat the message belonged to.
+    pub chat_id: i64,
+    /// ID of the deleted message.
+    pub message_id: i64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_message_deleted_data_serialization() {
+        let data = MessageDeletedData {
+            chat_id: 123,
+            message_id: 456,
+        };
+
+        let json = serde_json::to_string(&data).unwrap();
+        assert!(json.contains("\"chatId\":123"));
+        assert!(json.contains("\"messageId\":456"));
+
+        let deserialized: MessageDeletedData = serde_json::from_str(&json).unwrap();
+        assert_eq!(data, deserialized);
+    }
+}

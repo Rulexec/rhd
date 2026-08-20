@@ -1403,6 +1403,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rhd_chat_api"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "rhd_db"
 version = "0.1.0"
 dependencies = [
