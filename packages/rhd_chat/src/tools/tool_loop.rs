@@ -86,6 +86,7 @@ pub async fn tool_loop<P: ProjectProvider>(
     loggers: Option<ChatLoggers>,
     template_loader: &crate::stream::TemplateLoaderRef,
 ) -> Result<ToolLoopResult, ChatError> {
+    eprintln!("DBG: tool_loop function called, chat_id={}, model={}", chat_id, model);
     // Create DB sync listener
     let db_sync_listener = create_db_sync_listener(
         manager.db().clone(),

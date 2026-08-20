@@ -152,7 +152,11 @@ impl<'a, P: ProjectProvider> FsmToolLoop<'a, P> {
                 );
                 match action {
                     ToolLoopAction::SendToAi { messages, tools } => {
+                        eprintln!("DBG: tool_loop - SendToAi action, messages_count={}, tools_count={}", messages.len(), tools.len());
                         let result = self.handle_send_to_ai(&messages, &tools).await?;
+                        eprintln!("DBG: tool_loop - SendToAi result, content_len={}, tool_calls_count={}",
+                            result.content.as_ref().map(|c| c.len()).unwrap_or(0),
+                            result.tool_calls.len());
                         let tool_calls = result.tool_calls.clone();
                         let mut next_inputs = vec![ToolLoopInput::ProvideAiResponse {
                             content: result.content,
@@ -186,6 +190,7 @@ impl<'a, P: ProjectProvider> FsmToolLoop<'a, P> {
                         actions = self.fsm.run(&mut next_inputs).map_err(|e| ChatError::Internal(e.to_string()))?;
                     }
                     ToolLoopAction::Completed { message } => {
+                        eprintln!("DBG: tool_loop - Completed action, message_id={}", message.id);
                         return Ok(ToolLoopResult::Completed { message_id: message.id });
                     }
                     ToolLoopAction::Paused => {
@@ -447,6 +452,7 @@ impl<'a, P: ProjectProvider> FsmToolLoop<'a, P> {
         if !tool_calls.is_empty() {
             self.iterations += 1;
         } else {
+            eprintln!("DBG: handle_send_to_ai - final response (no tool calls), content_len={}", final_content.len());
             // Log stream finished for final response
             if let Some(ref mut l) = self.loggers {
                 l.chat_log.log_stream_finished(finish_reason.as_deref().unwrap_or("stop"), 0);

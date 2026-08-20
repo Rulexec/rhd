@@ -97,6 +97,7 @@ pub async fn send_message<P: ProjectProvider>(
     }
 
     let chat_messages = tools::build_chat_messages(&messages);
+    eprintln!("DBG: send_message - non-tool path, chat_id={}, messages_count={}", chat_id, messages.len());
 
     let mut loggers = if let Some(log_chats_dir) = manager.log_chats() {
         match chat_log::create_chat_loggers(log_chats_dir, &chat_title, manager.log_chats_raw()) {
@@ -164,6 +165,7 @@ pub async fn send_message<P: ProjectProvider>(
         manager.unregister_stream(chat_id).await;
     }
 
+    eprintln!("DBG: send_message - calling handle_stream_result, chat_id={}", chat_id);
     handle_stream_result(
         manager,
         result,

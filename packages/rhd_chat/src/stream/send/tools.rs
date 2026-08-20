@@ -60,6 +60,11 @@ pub(super) async fn send_message_with_tools<P: ProjectProvider>(
     match result {
         Ok(ToolLoopResult::Completed { message_id }) => {
             manager.unregister_stream(chat_id).await;
+            let _ = event_sender.send(ChatEvent::StreamFinished {
+                chat_id,
+                message_id,
+                finish_reason: "stop".to_string(),
+            });
             Ok(message_id)
         }
         Ok(ToolLoopResult::Paused) => {
