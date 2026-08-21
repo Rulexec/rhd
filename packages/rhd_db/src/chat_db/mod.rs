@@ -1,10 +1,16 @@
 mod chats;
+mod custom_events;
 mod messages;
+mod plugins;
 mod projects;
 mod schema;
+mod tags;
 
 #[cfg(test)]
 mod tests;
+
+pub use custom_events::CustomEventInfo;
+pub use plugins::PluginInfo;
 
 use rusqlite::Connection;
 use std::sync::Mutex;
@@ -201,5 +207,102 @@ impl ChatDb {
 
     pub fn mark_system_prompt_added(&self, chat_id: i64, project_name: &str) -> DbResult<()> {
         projects::mark_system_prompt_added(&self.conn, chat_id, project_name)
+    }
+
+    // Tag operations
+    pub fn get_chat_tags(&self, chat_id: i64) -> DbResult<Vec<String>> {
+        tags::get_chat_tags(&self.conn, chat_id)
+    }
+
+    pub fn get_message_tags(&self, message_id: i64) -> DbResult<Vec<String>> {
+        tags::get_message_tags(&self.conn, message_id)
+    }
+
+    pub fn set_chat_tags(&self, chat_id: i64, tags: &[String]) -> DbResult<()> {
+        tags::set_chat_tags(&self.conn, chat_id, tags)
+    }
+
+    pub fn set_message_tags(&self, message_id: i64, tags: &[String]) -> DbResult<()> {
+        tags::set_message_tags(&self.conn, message_id, tags)
+    }
+
+    pub fn add_chat_tags(&self, chat_id: i64, tags: &[String]) -> DbResult<()> {
+        tags::add_chat_tags(&self.conn, chat_id, tags)
+    }
+
+    pub fn add_message_tags(&self, message_id: i64, tags: &[String]) -> DbResult<()> {
+        tags::add_message_tags(&self.conn, message_id, tags)
+    }
+
+    pub fn remove_chat_tags(&self, chat_id: i64, tags: &[String]) -> DbResult<()> {
+        tags::remove_chat_tags(&self.conn, chat_id, tags)
+    }
+
+    pub fn remove_message_tags(&self, message_id: i64, tags: &[String]) -> DbResult<()> {
+        tags::remove_message_tags(&self.conn, message_id, tags)
+    }
+
+    pub fn get_chats_by_tag(&self, tag: &str) -> DbResult<Vec<i64>> {
+        tags::get_chats_by_tag(&self.conn, tag)
+    }
+
+    pub fn get_messages_by_tag(&self, tag: &str) -> DbResult<Vec<i64>> {
+        tags::get_messages_by_tag(&self.conn, tag)
+    }
+
+    // Plugin operations
+    pub fn register_plugin(&self, plugin_id: &str) -> DbResult<()> {
+        plugins::register_plugin(&self.conn, plugin_id)
+    }
+
+    pub fn deactivate_plugin(&self, plugin_id: &str) -> DbResult<()> {
+        plugins::deactivate_plugin(&self.conn, plugin_id)
+    }
+
+    pub fn remove_plugin(&self, plugin_id: &str) -> DbResult<()> {
+        plugins::remove_plugin(&self.conn, plugin_id)
+    }
+
+    pub fn get_plugins(&self) -> DbResult<Vec<PluginInfo>> {
+        plugins::get_plugins(&self.conn)
+    }
+
+    pub fn get_plugin(&self, plugin_id: &str) -> DbResult<Option<PluginInfo>> {
+        plugins::get_plugin(&self.conn, plugin_id)
+    }
+
+    pub fn is_plugin_active(&self, plugin_id: &str) -> DbResult<bool> {
+        plugins::is_plugin_active(&self.conn, plugin_id)
+    }
+
+    // Custom event operations
+    pub fn create_custom_event(
+        &self,
+        event_id: &str,
+        event_name: &str,
+        sender_plugin_id: Option<&str>,
+        additional: Option<&str>,
+    ) -> DbResult<()> {
+        custom_events::create_custom_event(&self.conn, event_id, event_name, sender_plugin_id, additional)
+    }
+
+    pub fn get_custom_event(&self, event_id: &str) -> DbResult<Option<CustomEventInfo>> {
+        custom_events::get_custom_event(&self.conn, event_id)
+    }
+
+    pub fn ack_custom_event(&self, event_id: &str, plugin_id: &str) -> DbResult<()> {
+        custom_events::ack_custom_event(&self.conn, event_id, plugin_id)
+    }
+
+    pub fn has_plugin_acked(&self, event_id: &str, plugin_id: &str) -> DbResult<bool> {
+        custom_events::has_plugin_acked(&self.conn, event_id, plugin_id)
+    }
+
+    pub fn get_pending_events_for_plugin(&self, plugin_id: &str) -> DbResult<Vec<CustomEventInfo>> {
+        custom_events::get_pending_events_for_plugin(&self.conn, plugin_id)
+    }
+
+    pub fn delete_custom_event(&self, event_id: &str) -> DbResult<()> {
+        custom_events::delete_custom_event(&self.conn, event_id)
     }
 }

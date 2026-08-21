@@ -42,6 +42,64 @@ pub(crate) fn init(conn: &Connection) -> DbResult<()> {
         );",
     )?;
 
+    // Create chat_tags table
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS chat_tags (
+            chat_id INTEGER NOT NULL,
+            tag TEXT NOT NULL,
+            PRIMARY KEY (chat_id, tag),
+            FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_chat_tags_tag ON chat_tags(tag);",
+    )?;
+
+    // Create message_tags table
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS message_tags (
+            message_id INTEGER NOT NULL,
+            tag TEXT NOT NULL,
+            PRIMARY KEY (message_id, tag),
+            FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_message_tags_tag ON message_tags(tag);",
+    )?;
+
+    // Create plugins table
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS plugins (
+            plugin_id TEXT PRIMARY KEY,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );",
+    )?;
+
+    // Create custom_events table
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS custom_events (
+            event_id TEXT PRIMARY KEY,
+            event_name TEXT NOT NULL,
+            sender_plugin_id TEXT,
+            additional TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );",
+    )?;
+
+    // Create custom_event_acks table
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS custom_event_acks (
+            event_id TEXT NOT NULL,
+            plugin_id TEXT NOT NULL,
+            acked_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (event_id, plugin_id),
+            FOREIGN KEY (event_id) REFERENCES custom_events(event_id) ON DELETE CASCADE,
+            FOREIGN KEY (plugin_id) REFERENCES plugins(plugin_id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_custom_event_acks_plugin ON custom_event_acks(plugin_id);",
+    )?;
+
     // Migrate existing tables to add new columns
     migrate(conn)?;
 
