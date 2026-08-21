@@ -4,6 +4,8 @@
 //! - [`Chat`] — Full chat information with metadata
 //! - [`Message`] — A message within a chat
 //! - [`ChatSummary`] — Lightweight chat info for list views
+//! - [`PluginSummary`] — Plugin with active status
+//! - [`PendingEvent`] — Pending custom event that has not been acknowledged
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -98,6 +100,51 @@ pub struct ChatSummary {
     pub updated_at: DateTime<Utc>,
     /// Tags associated with the chat.
     pub tags: Vec<String>,
+}
+
+/// A plugin with its active status.
+///
+/// # Example JSON
+/// ```json
+/// {
+///   "pluginId": "my-plugin-id",
+///   "isActive": true
+/// }
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginSummary {
+    /// Unique identifier for the plugin.
+    pub plugin_id: String,
+    /// Whether the plugin's WebSocket connection is active.
+    pub is_active: bool,
+}
+
+/// A pending custom event that has not been acknowledged.
+///
+/// # Example JSON
+/// ```json
+/// {
+///   "eventId": "generated-uuid-string",
+///   "eventName": "my-custom-event",
+///   "senderPluginId": "sender-plugin",
+///   "additional": "{\"key\": \"value\"}",
+///   "createdAt": "2026-08-20T18:00:00Z"
+/// }
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingEvent {
+    /// Unique identifier for the event.
+    pub event_id: String,
+    /// Name of the event.
+    pub event_name: String,
+    /// ID of the plugin that sent the event.
+    pub sender_plugin_id: Option<String>,
+    /// Additional JSON data.
+    pub additional: Option<String>,
+    /// Timestamp when the event was created.
+    pub created_at: DateTime<Utc>,
 }
 
 impl From<Chat> for ChatSummary {

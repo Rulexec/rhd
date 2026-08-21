@@ -6,7 +6,7 @@
 //!
 //! # Architecture
 //!
-//! - **Shared types** in [`common`] — `Chat`, `Message`, `ChatSummary`
+//! - **Shared types** in [`common`] — `Chat`, `Message`, `ChatSummary`, `PluginSummary`, `PendingEvent`
 //! - **Error types** in [`error`] — `ErrorCode`, `ErrorResponse`
 //! - **Protocol envelope** in [`protocol`] — `Request`, `Response`, `Event`, `Message`
 //! - **Method types** in [`methods`] — One file per method with `Params` and `Result` structs
@@ -29,18 +29,23 @@ pub mod methods;
 pub mod protocol;
 
 // Re-export commonly used types at the crate root for convenience
-pub use common::{Chat, ChatSummary, Message};
+pub use common::{Chat, ChatSummary, Message, PendingEvent, PluginSummary};
 pub use error::{ErrorCode, ErrorResponse};
 pub use events::{
-    ChatCreatedData, ChatDeletedData, ChatUpdatedData, MessageAddedData, MessageDeletedData,
-    MessageUpdatedData,
+    ChatCreatedData, ChatDeletedData, ChatUpdatedData, CustomEventAcknowledgedData, CustomEventData,
+    MessageAddedData, MessageDeletedData, MessageUpdatedData, PluginRegisteredData,
+    PluginRemovedData, PluginUpdatedData,
 };
 pub use methods::{
-    AddMessageParams, AddMessageResult, CreateChatParams, CreateChatResult, DeleteChatParams,
-    DeleteChatResult, DeleteMessageParams, DeleteMessageResult, GetChatParams, GetChatResult,
-    ListChatsParams, ListChatsResult, SubscribeChatParams, SubscribeChatResult,
-    SubscribeChatsListParams, SubscribeChatsListResult, UnsubscribeChatParams,
-    UnsubscribeChatResult, UnsubscribeChatsListParams, UnsubscribeChatsListResult,
+    AckCustomEventParams, AckCustomEventResult, AddMessageParams, AddMessageResult,
+    CreateChatParams, CreateChatResult, DeleteChatParams, DeleteChatResult, DeleteMessageParams,
+    DeleteMessageResult, GetChatParams, GetChatResult, GetPendingAcksParams, GetPendingAcksResult,
+    GetPluginsParams, GetPluginsResult, ListChatsParams, ListChatsResult, RegisterPluginParams,
+    RegisterPluginResult, RemovePluginParams, RemovePluginResult, SendCustomEventParams,
+    SendCustomEventResult, SubscribeChatParams, SubscribeChatResult, SubscribeChatsListParams,
+    SubscribeChatsListResult, SubscribePluginsListParams, SubscribePluginsListResult,
+    UnsubscribeChatParams, UnsubscribeChatResult, UnsubscribeChatsListParams,
+    UnsubscribeChatsListResult, UnsubscribePluginsListParams, UnsubscribePluginsListResult,
     UpdateChatParams, UpdateChatResult, UpdateMessageParams, UpdateMessageResult,
 };
 pub use protocol::{Event, Request, Response};

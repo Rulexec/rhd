@@ -412,6 +412,246 @@ Unsubscribe from chats list changes.
 }
 ```
 
+#### 13. `registerPlugin`
+Register current WebSocket connection as a plugin with the specified ID.
+
+**Request:**
+```json
+{
+  "type": "request",
+  "id": "uuid-string",
+  "method": "registerPlugin",
+  "params": {
+    "pluginId": "my-plugin-id"
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "type": "response",
+  "id": "uuid-string",
+  "success": true,
+  "data": {}
+}
+```
+
+**Behavior:**
+- Associates the current WebSocket connection with the specified plugin ID
+- If the plugin ID already exists, marks it as active (is_active = true)
+- If the plugin ID is new, creates a new plugin entry
+- Emits `pluginUpdated` event to plugins list subscribers
+
+#### 14. `getPlugins`
+List all registered plugins with their active status.
+
+**Request:**
+```json
+{
+  "type": "request",
+  "id": "uuid-string",
+  "method": "getPlugins",
+  "params": {}
+}
+```
+
+**Response:**
+```json
+{
+  "type": "response",
+  "id": "uuid-string",
+  "success": true,
+  "data": {
+    "plugins": [
+      {
+        "pluginId": "my-plugin-id",
+        "isActive": true
+      },
+      {
+        "pluginId": "another-plugin",
+        "isActive": false
+      }
+    ]
+  }
+}
+```
+
+#### 15. `subscribePluginsList`
+Subscribe to changes in the plugins list (plugin registered, removed, or active status changed).
+
+**Request:**
+```json
+{
+  "type": "request",
+  "id": "uuid-string",
+  "method": "subscribePluginsList",
+  "params": {}
+}
+```
+
+**Response:**
+```json
+{
+  "type": "response",
+  "id": "uuid-string",
+  "success": true,
+  "data": {}
+}
+```
+
+#### 16. `unsubscribePluginsList`
+Unsubscribe from plugins list changes.
+
+**Request:**
+```json
+{
+  "type": "request",
+  "id": "uuid-string",
+  "method": "unsubscribePluginsList",
+  "params": {}
+}
+```
+
+**Response:**
+```json
+{
+  "type": "response",
+  "id": "uuid-string",
+  "success": true,
+  "data": {}
+}
+```
+
+#### 17. `removePlugin`
+Remove a plugin from the list of plugins.
+
+**Request:**
+```json
+{
+  "type": "request",
+  "id": "uuid-string",
+  "method": "removePlugin",
+  "params": {
+    "pluginId": "my-plugin-id"
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "type": "response",
+  "id": "uuid-string",
+  "success": true,
+  "data": {}
+}
+```
+
+**Behavior:**
+- Removes the plugin entry completely from the plugins list
+- Emits `pluginRemoved` event to plugins list subscribers
+
+#### 18. `sendCustomEvent`
+Send a custom event that broadcasts to all connected WebSockets.
+
+**Request:**
+```json
+{
+  "type": "request",
+  "id": "uuid-string",
+  "method": "sendCustomEvent",
+  "params": {
+    "eventName": "my-custom-event",
+    "additional": "{\"key\": \"value\"}"
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "type": "response",
+  "id": "uuid-string",
+  "success": true,
+  "data": {
+    "eventId": "generated-uuid-string"
+  }
+}
+```
+
+**Behavior:**
+- Generates a unique event ID for tracking
+- Broadcasts the event to all connected WebSocket clients
+- The event can be acknowledged by plugins using `ackCustomEvent`
+- The sender also receives the event (if they are a plugin, they need to acknowledge it too)
+
+#### 19. `ackCustomEvent`
+Acknowledge receiving a custom event by the current plugin.
+
+**Request:**
+```json
+{
+  "type": "request",
+  "id": "uuid-string",
+  "method": "ackCustomEvent",
+  "params": {
+    "eventId": "generated-uuid-string"
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "type": "response",
+  "id": "uuid-string",
+  "success": true,
+  "data": {}
+}
+```
+
+**Behavior:**
+- Marks the event as acknowledged by the current plugin
+- Sends `customEventAcknowledged` event to the plugin that originally sent the custom event
+
+#### 20. `getPendingAcks`
+Get list of events that have not been acknowledged by the current plugin.
+
+**Request:**
+```json
+{
+  "type": "request",
+  "id": "uuid-string",
+  "method": "getPendingAcks",
+  "params": {}
+}
+```
+
+**Response:**
+```json
+{
+  "type": "response",
+  "id": "uuid-string",
+  "success": true,
+  "data": {
+    "pendingEvents": [
+      {
+        "eventId": "generated-uuid-string",
+        "eventName": "my-custom-event",
+        "senderPluginId": "sender-plugin",
+        "additional": "{\"key\": \"value\"}",
+        "createdAt": "2026-08-20T18:00:00Z"
+      }
+    ]
+  }
+}
+```
+
+**Behavior:**
+- Returns all custom events that the current plugin has not yet acknowledged
+- Includes events sent by the current plugin itself (if not yet acknowledged)
+
 ### Server → Client Events
 
 Events are pushed to subscribed clients when changes occur.
@@ -525,6 +765,78 @@ Emitted when a message is deleted. Sent to all clients subscribed to that chat.
 }
 ```
 
+#### 7. `pluginRegistered`
+Emitted when a new plugin is registered or an existing plugin becomes active. Sent to all clients subscribed to plugins list.
+
+```json
+{
+  "type": "event",
+  "event": "pluginRegistered",
+  "data": {
+    "pluginId": "my-plugin-id",
+    "isActive": true
+  }
+}
+```
+
+#### 8. `pluginRemoved`
+Emitted when a plugin is removed from the list. Sent to all clients subscribed to plugins list.
+
+```json
+{
+  "type": "event",
+  "event": "pluginRemoved",
+  "data": {
+    "pluginId": "my-plugin-id"
+  }
+}
+```
+
+#### 9. `pluginUpdated`
+Emitted when a plugin's active status changes (e.g., connection lost). Sent to all clients subscribed to plugins list.
+
+```json
+{
+  "type": "event",
+  "event": "pluginUpdated",
+  "data": {
+    "pluginId": "my-plugin-id",
+    "isActive": false
+  }
+}
+```
+
+#### 10. `customEvent`
+Broadcast to all connected WebSocket clients when a custom event is sent.
+
+```json
+{
+  "type": "event",
+  "event": "customEvent",
+  "data": {
+    "eventId": "generated-uuid-string",
+    "eventName": "my-custom-event",
+    "senderPluginId": "sender-plugin-id",
+    "additional": "{\"key\": \"value\"}",
+    "createdAt": "2026-08-20T18:00:00Z"
+  }
+}
+```
+
+#### 11. `customEventAcknowledged`
+Sent to the plugin that originally sent the custom event when another plugin acknowledges it.
+
+```json
+{
+  "type": "event",
+  "event": "customEventAcknowledged",
+  "data": {
+    "eventId": "generated-uuid-string",
+    "acknowledgingPluginId": "acknowledging-plugin-id"
+  }
+}
+```
+
 ### Error Responses
 
 All error responses follow this format:
@@ -552,7 +864,7 @@ packages/rhd_chat_api/
 ├── Cargo.toml
 ├── src/
 │   ├── lib.rs               # Re-exports all types
-│   ├── common.rs            # Shared types: Chat, Message, ChatSummary
+│   ├── common.rs            # Shared types: Chat, Message, ChatSummary, Plugin, PluginSummary, CustomEvent
 │   ├── error.rs             # ErrorCode enum, error response types
 │   ├── protocol.rs          # Base message envelope: Request, Response, Event
 │   ├── methods/             # One file per method
@@ -568,7 +880,15 @@ packages/rhd_chat_api/
 │   │   ├── subscribe_chat.rs
 │   │   ├── unsubscribe_chat.rs
 │   │   ├── subscribe_chats_list.rs
-│   │   └── unsubscribe_chats_list.rs
+│   │   ├── unsubscribe_chats_list.rs
+│   │   ├── register_plugin.rs
+│   │   ├── get_plugins.rs
+│   │   ├── subscribe_plugins_list.rs
+│   │   ├── unsubscribe_plugins_list.rs
+│   │   ├── remove_plugin.rs
+│   │   ├── send_custom_event.rs
+│   │   ├── ack_custom_event.rs
+│   │   └── get_pending_acks.rs
 │   └── events/              # One file per event type
 │       ├── mod.rs           # Re-exports all event types
 │       ├── chat_created.rs
@@ -576,7 +896,12 @@ packages/rhd_chat_api/
 │       ├── chat_deleted.rs
 │       ├── message_added.rs
 │       ├── message_updated.rs
-│       └── message_deleted.rs
+│       ├── message_deleted.rs
+│       ├── plugin_registered.rs
+│       ├── plugin_removed.rs
+│       ├── plugin_updated.rs
+│       ├── custom_event.rs
+│       └── custom_event_acknowledged.rs
 ```
 
 Each method file contains:
@@ -616,7 +941,7 @@ chrono = { version = "0.4", features = ["serde"] }
 - `chrono::DateTime<Utc>` for timestamps
 
 ### Phase 2: Method Types
-**Goal**: Implement request/response types for all 12 methods.
+**Goal**: Implement request/response types for all 20 methods.
 
 **Files to create:**
 - `packages/rhd_chat_api/src/methods/mod.rs` — Re-exports all method types
@@ -632,6 +957,14 @@ chrono = { version = "0.4", features = ["serde"] }
 - `packages/rhd_chat_api/src/methods/unsubscribe_chat.rs` — `UnsubscribeChatParams`, `UnsubscribeChatResult`
 - `packages/rhd_chat_api/src/methods/subscribe_chats_list.rs` — `SubscribeChatsListParams`, `SubscribeChatsListResult`
 - `packages/rhd_chat_api/src/methods/unsubscribe_chats_list.rs` — `UnsubscribeChatsListParams`, `UnsubscribeChatsListResult`
+- `packages/rhd_chat_api/src/methods/register_plugin.rs` — `RegisterPluginParams`, `RegisterPluginResult`
+- `packages/rhd_chat_api/src/methods/get_plugins.rs` — `GetPluginsParams`, `GetPluginsResult`
+- `packages/rhd_chat_api/src/methods/subscribe_plugins_list.rs` — `SubscribePluginsListParams`, `SubscribePluginsListResult`
+- `packages/rhd_chat_api/src/methods/unsubscribe_plugins_list.rs` — `UnsubscribePluginsListParams`, `UnsubscribePluginsListResult`
+- `packages/rhd_chat_api/src/methods/remove_plugin.rs` — `RemovePluginParams`, `RemovePluginResult`
+- `packages/rhd_chat_api/src/methods/send_custom_event.rs` — `SendCustomEventParams`, `SendCustomEventResult`
+- `packages/rhd_chat_api/src/methods/ack_custom_event.rs` — `AckCustomEventParams`, `AckCustomEventResult`
+- `packages/rhd_chat_api/src/methods/get_pending_acks.rs` — `GetPendingAcksParams`, `GetPendingAcksResult`
 
 **Key decisions:**
 - Each method has its own file for easy discovery
@@ -640,7 +973,7 @@ chrono = { version = "0.4", features = ["serde"] }
 - Tags use `Vec<String>`
 
 ### Phase 3: Event Types
-**Goal**: Implement event data types for all 6 event types.
+**Goal**: Implement event data types for all 11 event types.
 
 **Files to create:**
 - `packages/rhd_chat_api/src/events/mod.rs` — Re-exports all event types
@@ -650,6 +983,11 @@ chrono = { version = "0.4", features = ["serde"] }
 - `packages/rhd_chat_api/src/events/message_added.rs` — `MessageAddedData`
 - `packages/rhd_chat_api/src/events/message_updated.rs` — `MessageUpdatedData`
 - `packages/rhd_chat_api/src/events/message_deleted.rs` — `MessageDeletedData`
+- `packages/rhd_chat_api/src/events/plugin_registered.rs` — `PluginRegisteredData`
+- `packages/rhd_chat_api/src/events/plugin_removed.rs` — `PluginRemovedData`
+- `packages/rhd_chat_api/src/events/plugin_updated.rs` — `PluginUpdatedData`
+- `packages/rhd_chat_api/src/events/custom_event.rs` — `CustomEventData`
+- `packages/rhd_chat_api/src/events/custom_event_acknowledged.rs` — `CustomEventAcknowledgedData`
 
 **Key decisions:**
 - Each event type has its own file
@@ -668,9 +1006,9 @@ chrono = { version = "0.4", features = ["serde"] }
 ## Success Criteria
 
 1. Library package `rhd_chat_api` compiles
-2. All 12 method types are implemented with request/response structs
-3. All 6 event types are implemented
-4. Shared types (`Chat`, `Message`, `ChatSummary`) are defined
+2. All 20 method types are implemented with request/response structs
+3. All 11 event types are implemented
+4. Shared types (`Chat`, `Message`, `ChatSummary`, `Plugin`, `PluginSummary`, `CustomEvent`) are defined
 5. Error codes are defined
 6. Protocol envelope types (`Request`, `Response`, `Event`) are defined
 7. All types serialize/deserialize correctly with camelCase field names
