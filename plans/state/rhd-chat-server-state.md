@@ -60,14 +60,29 @@ The `rhd_chat_server` package has not been created yet. All components are in th
 - Server compiles without errors; warnings for unused `db` parameter and `to_error_code` method are expected (will be used in Phase 3)
 
 ### Phase 3: Request Handlers
-**Status**: ⏳ Not started
+**Status**: ✅ Completed
 
 **Goal**: Implement all request handlers for chat and message operations.
 
-**Files to create**:
-- `packages/rhd_chat_server/src/handlers/mod.rs`
-- `packages/rhd_chat_server/src/handlers/chat.rs` — Chat operations (create, list, get, delete, update)
-- `packages/rhd_chat_server/src/handlers/message.rs` — Message operations (add, update, delete)
+**Files created**:
+- `packages/rhd_chat_server/src/handlers/mod.rs` — Module declarations and request routing
+- `packages/rhd_chat_server/src/handlers/chat.rs` — Chat operations (createChat, listChats, getChat, deleteChat, updateChat)
+- `packages/rhd_chat_server/src/handlers/message.rs` — Message operations (addMessage, updateMessage, deleteMessage)
+
+**Additional changes**:
+- Added `handlers` module to `packages/rhd_chat_server/src/main.rs`
+- Integrated handlers into `packages/rhd_chat_server/src/connection.rs` to replace stub responses
+- Handlers return `Result<Value, ServerError>` to support both success and error responses
+- Type conversions between `rhd_db` types (String timestamps) and `rhd_chat_api` types (DateTime<Utc>)
+- Tag operations integrated: set_tags for create, add/remove_tags for update
+- Chat updated_at timestamp touched after message operations
+
+**Implementation notes**:
+- All 8 chat and message methods work correctly
+- Error handling returns proper ErrorResponse types (chat_not_found, message_not_found, invalid_request)
+- Handlers use types from `rhd_chat_api` for params and results
+- Database operations use the ChatDb methods from `rhd_db`
+- Limitation: updateMessage only updates content and tags (reasoning_content and role updates require future rhd_db enhancements)
 
 ### Phase 4: Subscription System
 **Status**: ⏳ Not started

@@ -12,6 +12,7 @@ use rhd_chat_api::ErrorResponse;
 use rhd_db::ChatDb;
 
 use crate::error::ServerError;
+use crate::handlers;
 
 /// Type alias for WebSocket read half.
 type WsRead = futures_util::stream::SplitStream<tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>>;
@@ -62,13 +63,15 @@ pub async fn handle_connection(
 
                 debug!("Parsed request: method={}, id={}", request.method, request.id);
 
-                // TODO: Route to appropriate handler (Phase 3)
-                // For now, return "method not implemented" error
-                let response = ErrorResponse::invalid_request(
-                    request.id,
-                    format!("Method '{}' not yet implemented", request.method),
-                );
-                write.send(Message::Text(serde_json::to_string(&response)?)).await?;
+                // Route to appropriate handler
+                let response_value = match handlers::handle_request(request.clone(), &db).await {
+                    Ok(resp) => resp,
+                    Err(e) => {
+                        error!("Handler error: {}", e);
+                        serde_json::to_value(ErrorResponse::internal_error(request.id, format!("Internal error: {}", e)))?
+                    }
+                };
+                write.send(Message::Text(serde_json::to_string(&response_value)?)).await?;
             }
             Message::Binary(_) => {
                 debug!("Received binary message (ignoring)");
