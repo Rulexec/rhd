@@ -5,9 +5,11 @@
 
 mod config;
 mod connection;
+mod custom_events;
 mod error;
 mod events;
 mod handlers;
+mod plugins;
 mod server;
 mod subscriptions;
 

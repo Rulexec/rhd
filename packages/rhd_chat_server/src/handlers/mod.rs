@@ -2,6 +2,7 @@
 
 pub mod chat;
 pub mod message;
+pub mod plugin;
 pub mod subscription;
 
 use serde_json::Value;
@@ -11,6 +12,7 @@ use rhd_chat_api::ErrorResponse;
 use rhd_db::ChatDb;
 
 use crate::error::ServerError;
+use crate::plugins::SharedPluginRegistry;
 use crate::subscriptions::SharedSubscriptionManager;
 
 /// Route a request to the appropriate handler.
@@ -19,6 +21,7 @@ pub async fn handle_request(
     db: &ChatDb,
     connection_id: &str,
     subscription_manager: SharedSubscriptionManager,
+    plugin_registry: SharedPluginRegistry,
 ) -> Result<Value, ServerError> {
     let request_id = request.id.clone();
     
@@ -40,6 +43,16 @@ pub async fn handle_request(
         "unsubscribeChat" => subscription::unsubscribe_chat(request.params, db, &request_id, connection_id, subscription_manager).await,
         "subscribeChatsList" => subscription::subscribe_chats_list(request.params, db, &request_id, connection_id, subscription_manager).await,
         "unsubscribeChatsList" => subscription::unsubscribe_chats_list(request.params, db, &request_id, connection_id, subscription_manager).await,
+        
+        // Plugin methods
+        "registerPlugin" => plugin::register_plugin(request.params, db, &request_id, connection_id, plugin_registry, subscription_manager).await,
+        "getPlugins" => plugin::get_plugins(request.params, db, &request_id).await,
+        "subscribePluginsList" => plugin::subscribe_plugins_list(request.params, db, &request_id, connection_id, subscription_manager).await,
+        "unsubscribePluginsList" => plugin::unsubscribe_plugins_list(request.params, db, &request_id, connection_id, subscription_manager).await,
+        "removePlugin" => plugin::remove_plugin(request.params, db, &request_id, plugin_registry, subscription_manager).await,
+        "sendCustomEvent" => plugin::send_custom_event(request.params, db, &request_id, connection_id, plugin_registry, subscription_manager).await,
+        "ackCustomEvent" => plugin::ack_custom_event(request.params, db, &request_id, connection_id, plugin_registry, subscription_manager).await,
+        "getPendingAcks" => plugin::get_pending_acks(request.params, db, &request_id, connection_id, plugin_registry).await,
         
         // Unknown method
         _ => Ok(serde_json::to_value(ErrorResponse::invalid_request(

@@ -23,6 +23,8 @@ pub struct SubscriptionManager {
     chat_subscribers: HashMap<i64, HashSet<ConnectionId>>,
     /// Set of connection IDs subscribed to the chats list.
     chats_list_subscribers: HashSet<ConnectionId>,
+    /// Set of connection IDs subscribed to the plugins list.
+    plugins_list_subscribers: HashSet<ConnectionId>,
 }
 
 impl SubscriptionManager {
@@ -47,6 +49,8 @@ impl SubscriptionManager {
         }
         // Remove from chats list subscriptions
         self.chats_list_subscribers.remove(connection_id);
+        // Remove from plugins list subscriptions
+        self.plugins_list_subscribers.remove(connection_id);
         // Remove connection
         self.connections.remove(connection_id);
     }
@@ -117,6 +121,51 @@ impl SubscriptionManager {
     pub fn broadcast_to_chat_and_list(&self, chat_id: i64, event: Event) {
         self.broadcast_to_chat(chat_id, event.clone());
         self.broadcast_to_chats_list(event);
+    }
+
+    /// Subscribe a connection to the plugins list.
+    pub fn subscribe_plugins_list(&mut self, connection_id: &str) {
+        self.plugins_list_subscribers.insert(connection_id.to_string());
+    }
+
+    /// Unsubscribe a connection from the plugins list.
+    pub fn unsubscribe_plugins_list(&mut self, connection_id: &str) {
+        self.plugins_list_subscribers.remove(connection_id);
+    }
+
+    /// Broadcast an event to all subscribers of the plugins list.
+    pub fn broadcast_to_plugins_list(&self, event: Event) {
+        let event_json = match serde_json::to_string(&event) {
+            Ok(j) => j,
+            Err(_) => return,
+        };
+        for connection_id in &self.plugins_list_subscribers {
+            if let Some(sender) = self.connections.get(connection_id) {
+                let _ = sender.send(event_json.clone());
+            }
+        }
+    }
+
+    /// Broadcast an event to ALL connected clients.
+    pub fn broadcast_to_all(&self, event: Event) {
+        let event_json = match serde_json::to_string(&event) {
+            Ok(j) => j,
+            Err(_) => return,
+        };
+        for sender in self.connections.values() {
+            let _ = sender.send(event_json.clone());
+        }
+    }
+
+    /// Send an event to a specific connection.
+    pub fn send_to_connection(&self, connection_id: &str, event: Event) {
+        let event_json = match serde_json::to_string(&event) {
+            Ok(j) => j,
+            Err(_) => return,
+        };
+        if let Some(sender) = self.connections.get(connection_id) {
+            let _ = sender.send(event_json);
+        }
     }
 }
 

@@ -14,6 +14,7 @@ use rhd_db::ChatDb;
 
 use crate::error::ServerError;
 use crate::handlers;
+use crate::plugins::{self, SharedPluginRegistry};
 use crate::subscriptions::SharedSubscriptionManager;
 
 /// Type alias for WebSocket read half.
@@ -28,6 +29,7 @@ pub async fn handle_connection(
     mut write: WsWrite,
     db: Arc<ChatDb>,
     subscription_manager: SharedSubscriptionManager,
+    plugin_registry: SharedPluginRegistry,
 ) -> Result<(), ServerError> {
     // Register connection and get the outgoing message receiver
     let (connection_id, mut outgoing_rx) = {
@@ -63,7 +65,12 @@ pub async fn handle_connection(
     });
 
     // Process incoming messages
-    let result = process_messages(read, db, subscription_manager.clone(), &connection_id, outgoing_tx).await;
+    let result = process_messages(read, db.clone(), subscription_manager.clone(), plugin_registry.clone(), &connection_id, outgoing_tx).await;
+
+    // Deactivate plugins for this connection
+    if let Err(e) = plugins::deactivate_plugins_on_disconnect(&db, &plugin_registry, &connection_id).await {
+        error!("Failed to deactivate plugins for connection {}: {}", connection_id, e);
+    }
 
     // Unregister connection
     {
@@ -83,6 +90,7 @@ async fn process_messages(
     mut read: WsRead,
     db: Arc<ChatDb>,
     subscription_manager: SharedSubscriptionManager,
+    plugin_registry: SharedPluginRegistry,
     connection_id: &str,
     outgoing_tx: mpsc::UnboundedSender<String>,
 ) -> Result<(), ServerError> {
@@ -129,6 +137,7 @@ async fn process_messages(
                     &db,
                     connection_id,
                     subscription_manager.clone(),
+                    plugin_registry.clone(),
                 ).await {
                     Ok(resp) => resp,
                     Err(e) => {

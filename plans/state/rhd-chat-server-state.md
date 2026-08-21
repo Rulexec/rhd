@@ -113,14 +113,30 @@ The `rhd_chat_server` package has not been created yet. All components are in th
 - All 6 chat/message event types are broadcast to appropriate subscribers
 
 ### Phase 5: Plugin Management System
-**Status**: ⏳ Not started
+**Status**: ✅ Completed
 
 **Goal**: Implement plugin registration, tracking, and custom event broadcasting.
 
-**Files to create**:
-- `packages/rhd_chat_server/src/plugins.rs` — Plugin registry and management
-- `packages/rhd_chat_server/src/custom_events.rs` — Custom event broadcasting and acknowledgment tracking
-- `packages/rhd_chat_server/src/handlers/plugin.rs` — Plugin operations (register, get, remove, subscribe, send/ack events)
+**Files created**:
+- `packages/rhd_chat_server/src/plugins.rs` — Plugin registry with plugin-to-connection mapping, shared via `Arc<RwLock<...>>`
+- `packages/rhd_chat_server/src/custom_events.rs` — Custom event creation, acknowledgment, and pending events query
+- `packages/rhd_chat_server/src/handlers/plugin.rs` — All 8 plugin handlers (registerPlugin, getPlugins, subscribePluginsList, unsubscribePluginsList, removePlugin, sendCustomEvent, ackCustomEvent, getPendingAcks)
+
+**Additional changes**:
+- Added `plugins` and `custom_events` modules to `packages/rhd_chat_server/src/main.rs`
+- Added `plugin` module to `packages/rhd_chat_server/src/handlers/mod.rs`
+- Updated `handle_request` in `handlers/mod.rs` to accept `plugin_registry` parameter and route all 8 plugin methods
+- Extended `SubscriptionManager` in `subscriptions.rs` with `plugins_list_subscribers`, `subscribe_plugins_list`, `unsubscribe_plugins_list`, `broadcast_to_plugins_list`, `broadcast_to_all`, and `send_to_connection` methods
+- Updated `connection.rs` to accept `plugin_registry` parameter, pass it to handlers, and call `deactivate_plugins_on_disconnect` when connection closes
+- Updated `server.rs` to create shared plugin registry and pass it to connection handler
+
+**Implementation notes**:
+- Plugin registry tracks bidirectional mapping: plugin_id → connection_id and connection_id → set of plugin_ids
+- When a connection disconnects, all its plugins are removed from registry and marked inactive in database
+- Custom events are broadcast to ALL connected clients using `broadcast_to_all()`
+- Acknowledgments are sent to the original sender's connection via `send_to_connection()`
+- All 8 plugin methods work correctly
+- All 5 plugin event types are supported (pluginRegistered, pluginRemoved, pluginUpdated, customEvent, customEventAcknowledged)
 
 ### Phase 6: Integration and Testing
 **Status**: ⏳ Not started
