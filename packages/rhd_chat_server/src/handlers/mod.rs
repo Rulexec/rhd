@@ -2,6 +2,7 @@
 
 pub mod chat;
 pub mod message;
+pub mod subscription;
 
 use serde_json::Value;
 
@@ -10,26 +11,35 @@ use rhd_chat_api::ErrorResponse;
 use rhd_db::ChatDb;
 
 use crate::error::ServerError;
+use crate::subscriptions::SharedSubscriptionManager;
 
 /// Route a request to the appropriate handler.
 pub async fn handle_request(
     request: Request,
     db: &ChatDb,
+    connection_id: &str,
+    subscription_manager: SharedSubscriptionManager,
 ) -> Result<Value, ServerError> {
     let request_id = request.id.clone();
     
     match request.method.as_str() {
         // Chat methods
-        "createChat" => chat::create_chat(request.params, db, &request_id).await,
+        "createChat" => chat::create_chat(request.params, db, &request_id, &subscription_manager).await,
         "listChats" => chat::list_chats(request.params, db, &request_id).await,
         "getChat" => chat::get_chat(request.params, db, &request_id).await,
-        "deleteChat" => chat::delete_chat(request.params, db, &request_id).await,
-        "updateChat" => chat::update_chat(request.params, db, &request_id).await,
+        "deleteChat" => chat::delete_chat(request.params, db, &request_id, &subscription_manager).await,
+        "updateChat" => chat::update_chat(request.params, db, &request_id, &subscription_manager).await,
         
         // Message methods
-        "addMessage" => message::add_message(request.params, db, &request_id).await,
-        "updateMessage" => message::update_message(request.params, db, &request_id).await,
-        "deleteMessage" => message::delete_message(request.params, db, &request_id).await,
+        "addMessage" => message::add_message(request.params, db, &request_id, &subscription_manager).await,
+        "updateMessage" => message::update_message(request.params, db, &request_id, &subscription_manager).await,
+        "deleteMessage" => message::delete_message(request.params, db, &request_id, &subscription_manager).await,
+        
+        // Subscription methods
+        "subscribeChat" => subscription::subscribe_chat(request.params, db, &request_id, connection_id, subscription_manager).await,
+        "unsubscribeChat" => subscription::unsubscribe_chat(request.params, db, &request_id, connection_id, subscription_manager).await,
+        "subscribeChatsList" => subscription::subscribe_chats_list(request.params, db, &request_id, connection_id, subscription_manager).await,
+        "unsubscribeChatsList" => subscription::unsubscribe_chats_list(request.params, db, &request_id, connection_id, subscription_manager).await,
         
         // Unknown method
         _ => Ok(serde_json::to_value(ErrorResponse::invalid_request(

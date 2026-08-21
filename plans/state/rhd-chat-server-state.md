@@ -85,14 +85,32 @@ The `rhd_chat_server` package has not been created yet. All components are in th
 - Limitation: updateMessage only updates content and tags (reasoning_content and role updates require future rhd_db enhancements)
 
 ### Phase 4: Subscription System
-**Status**: ⏳ Not started
+**Status**: ✅ Completed
 
 **Goal**: Implement subscription mechanism for real-time events.
 
-**Files to create**:
-- `packages/rhd_chat_server/src/subscriptions.rs` — Subscription manager
-- `packages/rhd_chat_server/src/events.rs` — Event broadcasting
-- `packages/rhd_chat_server/src/handlers/subscription.rs` — Subscribe handlers
+**Files created**:
+- `packages/rhd_chat_server/src/subscriptions.rs` — Subscription manager with connection tracking, chat/chats-list subscriptions, and event broadcasting via unbounded channels
+- `packages/rhd_chat_server/src/events.rs` — Event broadcasting helpers for all 6 chat/message event types
+- `packages/rhd_chat_server/src/handlers/subscription.rs` — Subscribe/unsubscribe handlers (subscribeChat, unsubscribeChat, subscribeChatsList, unsubscribeChatsList)
+
+**Additional changes**:
+- Added `subscriptions` and `events` modules to `packages/rhd_chat_server/src/main.rs`
+- Added `subscription` module to `packages/rhd_chat_server/src/handlers/mod.rs`
+- Updated `handle_request` in `handlers/mod.rs` to accept `connection_id` and `subscription_manager` parameters
+- Modified `handlers/chat.rs` to broadcast `chatCreated`, `chatUpdated`, and `chatDeleted` events
+- Modified `handlers/message.rs` to broadcast `messageAdded`, `messageUpdated`, and `messageDeleted` events
+- Updated `connection.rs` to register/unregister connections with subscription manager, spawn write task for outgoing messages, and route subscription manager to handlers
+- Updated `server.rs` to create shared subscription manager and pass it to connection handler
+
+**Implementation notes**:
+- Subscription manager uses `Arc<RwLock<...>>` for thread-safe shared access
+- Each connection gets a unique UUID and an unbounded channel for outgoing messages
+- Events are serialized to JSON strings before being sent through channels
+- Write task reads from outgoing channel and sends to WebSocket
+- Connection cleanup on disconnect removes all subscriptions automatically
+- All 4 subscription methods work correctly
+- All 6 chat/message event types are broadcast to appropriate subscribers
 
 ### Phase 5: Plugin Management System
 **Status**: ⏳ Not started

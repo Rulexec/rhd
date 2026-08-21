@@ -6,8 +6,10 @@
 mod config;
 mod connection;
 mod error;
+mod events;
 mod handlers;
 mod server;
+mod subscriptions;
 
 use clap::Parser;
 use tracing::info;

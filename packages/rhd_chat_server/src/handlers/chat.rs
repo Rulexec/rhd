@@ -13,6 +13,8 @@ use rhd_chat_api::ErrorResponse;
 use rhd_db::ChatDb;
 
 use crate::error::ServerError;
+use crate::events::{chat_created_event, chat_deleted_event, chat_updated_event};
+use crate::subscriptions::SharedSubscriptionManager;
 
 /// Convert rhd_db::ChatInfo to rhd_chat_api::Chat.
 fn convert_chat_info_to_api(
@@ -86,6 +88,7 @@ pub async fn create_chat(
     params: Value,
     db: &ChatDb,
     request_id: &str,
+    subscription_manager: &SharedSubscriptionManager,
 ) -> Result<Value, ServerError> {
     let params: CreateChatParams = match serde_json::from_value(params) {
         Ok(p) => p,
@@ -104,6 +107,14 @@ pub async fn create_chat(
     if !params.tags.is_empty() {
         db.set_chat_tags(chat_id, &params.tags)?;
     }
+
+    // Broadcast chatCreated event
+    let chat_tags = db.get_chat_tags(chat_id)?;
+    let chat_info = db.get_chat(chat_id)?.unwrap();
+    let chat_summary = convert_chat_info_to_summary(chat_info, chat_tags)?;
+    let event = chat_created_event(chat_summary);
+    let manager = subscription_manager.read().await;
+    manager.broadcast_to_chats_list(event);
 
     // Return result
     let result = CreateChatResult { chat_id };
@@ -198,6 +209,7 @@ pub async fn delete_chat(
     params: Value,
     db: &ChatDb,
     request_id: &str,
+    subscription_manager: &SharedSubscriptionManager,
 ) -> Result<Value, ServerError> {
     let params: DeleteChatParams = match serde_json::from_value(params) {
         Ok(p) => p,
@@ -214,6 +226,11 @@ pub async fn delete_chat(
         return Ok(serde_json::to_value(ErrorResponse::chat_not_found(request_id, params.chat_id))?);
     }
 
+    // Broadcast chatDeleted event before deletion
+    let event = chat_deleted_event(params.chat_id);
+    let manager = subscription_manager.read().await;
+    manager.broadcast_to_chat_and_list(params.chat_id, event);
+
     // Delete chat (tags will be deleted by CASCADE)
     db.delete_chat(params.chat_id)?;
 
@@ -226,6 +243,7 @@ pub async fn update_chat(
     params: Value,
     db: &ChatDb,
     request_id: &str,
+    subscription_manager: &SharedSubscriptionManager,
 ) -> Result<Value, ServerError> {
     let params: UpdateChatParams = match serde_json::from_value(params) {
         Ok(p) => p,
@@ -259,6 +277,14 @@ pub async fn update_chat(
 
     // Touch chat to update updated_at
     db.touch_chat(params.chat_id)?;
+
+    // Broadcast chatUpdated event
+    let chat_tags = db.get_chat_tags(params.chat_id)?;
+    let chat_info = db.get_chat(params.chat_id)?.unwrap();
+    let chat_summary = convert_chat_info_to_summary(chat_info, chat_tags)?;
+    let event = chat_updated_event(chat_summary);
+    let manager = subscription_manager.read().await;
+    manager.broadcast_to_chats_list(event);
 
     let result = UpdateChatResult {};
     Ok(serde_json::to_value(Response::success(request_id, serde_json::to_value(result)?))?)
