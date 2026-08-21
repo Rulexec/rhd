@@ -55,9 +55,7 @@ You will be provided with:
 
 **Run Checks:**
 - `mise run check-cargo` - Ensure Rust code compiles
-- `mise run check-svelte` - Ensure Svelte code compiles (if frontend changes)
 - `mise run test-cargo` - Run Rust unit tests
-- `mise run test-frontend-unit` - Run frontend unit tests (if applicable)
 
 **Verify Tests Pass:**
 - All new tests should pass
