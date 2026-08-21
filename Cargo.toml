@@ -7,6 +7,7 @@ members = [
     "packages/rhd_db",
     "packages/rhd_chat",
     "packages/rhd_chat_api",
+    "packages/rhd_chat_server",
     "packages/rhd_app",
     "packages/rhd_test",
     "packages/rhd_fsm",

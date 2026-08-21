@@ -1,0 +1,25 @@
+[package]
+name = "rhd_chat_server"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "rhd_chat_server"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { workspace = true }
+tokio-tungstenite = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+futures-util = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+clap = { workspace = true }
+uuid = { version = "1", features = ["v4"] }
+thiserror = { workspace = true }
+
+rhd_chat_api = { path = "../rhd_chat_api" }
+rhd_db = { path = "../rhd_db" }
+rhd_util = { path = "../rhd_util" }

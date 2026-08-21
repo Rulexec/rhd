@@ -36,17 +36,28 @@ The `rhd_chat_server` package has not been created yet. All components are in th
 - `custom_event_acks` — Custom event acknowledgments (event_id, plugin_id, acked_at)
 
 ### Phase 2: WebSocket Server Core
-**Status**: ⏳ Not started
+**Status**: ✅ Completed
 
 **Goal**: Create the `rhd_chat_server` package and implement basic WebSocket server with connection handling.
 
-**Files to create**:
-- `packages/rhd_chat_server/Cargo.toml` — Package manifest
-- `packages/rhd_chat_server/src/main.rs` — Entry point
-- `packages/rhd_chat_server/src/config.rs` — Configuration
-- `packages/rhd_chat_server/src/server.rs` — Server startup and listener
-- `packages/rhd_chat_server/src/connection.rs` — Connection handler
-- `packages/rhd_chat_server/src/error.rs` — Server error types
+**Files created**:
+- `packages/rhd_chat_server/Cargo.toml` — Package manifest with workspace dependencies
+- `packages/rhd_chat_server/src/main.rs` — Entry point with tracing initialization and CLI parsing
+- `packages/rhd_chat_server/src/config.rs` — Configuration via clap (host, port, db_path)
+- `packages/rhd_chat_server/src/server.rs` — WebSocket server using tokio-tungstenite, accepts connections and spawns per-connection tasks
+- `packages/rhd_chat_server/src/connection.rs` — Connection handler that parses JSON messages, validates Request format, handles ping/pong/close frames, returns "not yet implemented" for all methods (stub for Phase 3)
+- `packages/rhd_chat_server/src/error.rs` — ServerError enum with conversions to ErrorCode
+
+**Additional changes**:
+- Added `rhd_chat_server` to workspace members in root `Cargo.toml`
+
+**Implementation notes**:
+- Uses `tokio-tungstenite = "0.24"` (workspace version, not 0.21 as in original plan)
+- `SplitSink` is in `futures_util::stream` (not `futures_util::sink`)
+- Error responses use `ErrorResponse::invalid_request()` from `rhd_chat_api::error` (not `Response::error()` which doesn't exist)
+- Database is wrapped in `Arc<ChatDb>` and shared across connections
+- Each connection runs in its own tokio task
+- Server compiles without errors; warnings for unused `db` parameter and `to_error_code` method are expected (will be used in Phase 3)
 
 ### Phase 3: Request Handlers
 **Status**: ⏳ Not started
