@@ -44,6 +44,7 @@ type PendingSender = oneshot::Sender<Result<Response, ClientError>>;
 /// WebSocket client for the chat server.
 ///
 /// Provides typed async methods for all chat API operations and event subscriptions.
+#[derive(Clone)]
 pub struct ChatClient {
     /// Channel to send messages to the WebSocket writer.
     write_tx: mpsc::UnboundedSender<String>,
@@ -52,7 +53,7 @@ pub struct ChatClient {
     /// Event subscriptions.
     subscriptions: Arc<Mutex<EventSubscriptions>>,
     /// Connection task handle.
-    _connection_task: JoinHandle<()>,
+    _connection_task: Arc<JoinHandle<()>>,
 }
 
 impl ChatClient {
@@ -134,7 +135,7 @@ impl ChatClient {
             write_tx,
             pending_requests,
             subscriptions,
-            _connection_task: connection_task,
+            _connection_task: Arc::new(connection_task),
         })
     }
 
@@ -658,5 +659,26 @@ impl ChatClient {
         });
 
         token
+    }
+
+    // ========================================================================
+    // Monitor Creation Methods
+    // ========================================================================
+
+    /// Create a plugins monitor that tracks ALL registered plugins (active and inactive).
+    ///
+    /// The monitor automatically subscribes to plugins list events and maintains
+    /// the set of all registered plugins. It also provides methods for waiting
+    /// on custom event acknowledgments from all plugins.
+    pub async fn create_plugins_monitor(&self) -> Result<crate::plugins_monitor::PluginsMonitor, ClientError> {
+        crate::plugins_monitor::PluginsMonitor::new(self).await
+    }
+
+    /// Create a chat monitor that tracks chats and their state.
+    ///
+    /// The monitor automatically subscribes to chat list and individual chat events.
+    /// It maintains the current state of all chats including messages, queue count, and tags.
+    pub async fn create_chat_monitor(&self) -> Result<crate::chat_monitor::ChatMonitor, ClientError> {
+        crate::chat_monitor::ChatMonitor::new(Arc::new(self.clone())).await
     }
 }

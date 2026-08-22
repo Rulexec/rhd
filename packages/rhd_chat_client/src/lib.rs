@@ -39,6 +39,8 @@
 pub mod client;
 pub mod error;
 pub mod event_stream;
+pub mod plugins_monitor;
+pub mod chat_monitor;
 
 // Re-export main types at crate root for convenience
 pub use client::ChatClient;
@@ -46,3 +48,5 @@ pub use error::ClientError;
 pub use event_stream::{
     ChatEvent, ChatsListEvent, CancellationToken, PluginsListEvent,
 };
+pub use plugins_monitor::PluginsMonitor;
+pub use chat_monitor::{ChatMonitor, ChatState};

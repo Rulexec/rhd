@@ -14,8 +14,8 @@ pub enum ClientError {
     ConnectionClosed,
 
     /// The request timed out waiting for a response.
-    #[error("Request timeout")]
-    Timeout,
+    #[error("Request timeout: {0}")]
+    Timeout(String),
 
     /// The server returned an error response.
     #[error("Server error: {code} - {message}")]
