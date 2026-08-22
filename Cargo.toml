@@ -8,6 +8,7 @@ members = [
     "packages/rhd_chat_api",
     "packages/rhd_chat_server",
     "packages/rhd_chat_client",
+    "packages/rhd_app",
     "plugins/rhd_plugin_ai_completions",
 ]
 resolver = "2"
