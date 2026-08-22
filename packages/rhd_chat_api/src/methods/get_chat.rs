@@ -52,6 +52,8 @@ pub struct GetChatResult {
     pub chat: Chat,
     /// List of messages in the chat.
     pub messages: Vec<Message>,
+    /// Number of messages in the queue.
+    pub queued_messages_count: i64,
 }
 
 #[cfg(test)]
@@ -82,11 +84,13 @@ mod tests {
                 tags: vec![],
             },
             messages: vec![],
+            queued_messages_count: 5,
         };
 
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("\"chat\""));
         assert!(json.contains("\"messages\""));
+        assert!(json.contains("\"queuedMessagesCount\":5"));
 
         let deserialized: GetChatResult = serde_json::from_str(&json).unwrap();
         assert_eq!(result, deserialized);

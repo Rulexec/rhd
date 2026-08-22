@@ -200,7 +200,14 @@ pub async fn get_chat(
         messages.push(api_msg);
     }
 
-    let result = GetChatResult { chat, messages };
+    // Get queued messages count
+    let queued_messages_count = db.count_queue_messages(params.chat_id)?;
+
+    let result = GetChatResult {
+        chat,
+        messages,
+        queued_messages_count,
+    };
     Ok(serde_json::to_value(Response::success(request_id, serde_json::to_value(result)?))?)
 }
 

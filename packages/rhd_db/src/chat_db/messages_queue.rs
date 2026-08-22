@@ -205,3 +205,16 @@ pub(crate) fn delete_all_queue_messages(conn: &Mutex<Connection>, chat_id: i64) 
     conn.execute("DELETE FROM messages_queue WHERE chat_id = ?1", params![chat_id])?;
     Ok(())
 }
+
+/// Count queue messages for a chat
+pub(crate) fn count_queue_messages(conn: &Mutex<Connection>, chat_id: i64) -> DbResult<i64> {
+    let conn = conn
+        .lock()
+        .map_err(|e| DbError::InitializationError(e.to_string()))?;
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM messages_queue WHERE chat_id = ?1",
+        params![chat_id],
+        |row| row.get(0),
+    )?;
+    Ok(count)
+}

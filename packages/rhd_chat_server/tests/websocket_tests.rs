@@ -138,6 +138,54 @@ async fn test_get_chat() {
 }
 
 #[tokio::test]
+async fn test_get_chat_includes_queue_count() {
+    let (port, _handle) = start_test_server().await;
+    let client = connect_client(port).await;
+
+    // Create a chat
+    let create_result = client
+        .create_chat(CreateChatParams {
+            title: "Test".to_string(),
+            tags: vec![],
+        })
+        .await
+        .unwrap();
+    let chat_id = create_result.chat_id;
+
+    // Add queue messages
+    client
+        .add_queue_message(rhd_chat_api::AddQueueMessageParams {
+            chat_id,
+            role: "user".to_string(),
+            content: "Queue message 1".to_string(),
+            reasoning_content: None,
+            tags: vec![],
+        })
+        .await
+        .unwrap();
+
+    client
+        .add_queue_message(rhd_chat_api::AddQueueMessageParams {
+            chat_id,
+            role: "user".to_string(),
+            content: "Queue message 2".to_string(),
+            reasoning_content: None,
+            tags: vec![],
+        })
+        .await
+        .unwrap();
+
+    // Get chat
+    let result = client
+        .get_chat(GetChatParams { chat_id })
+        .await
+        .unwrap();
+
+    // Verify queue count
+    assert_eq!(result.queued_messages_count, 2);
+}
+
+#[tokio::test]
 async fn test_add_message() {
     let (port, _handle) = start_test_server().await;
     let client = connect_client(port).await;

@@ -15,8 +15,9 @@ use crate::error::ServerError;
 use crate::plugins::new_shared_plugin_registry;
 use crate::subscriptions::new_shared_subscription_manager;
 
-/// Run the WebSocket server.
-pub async fn run(config: Config) -> Result<(), ServerError> {
+/// Start the WebSocket server and return the bound port.
+/// This is a non-blocking version for testing.
+pub async fn start(config: Config) -> Result<(u16, tokio::task::JoinHandle<()>), ServerError> {
     // Initialize database
     let db = Arc::new(ChatDb::new(&config.db_path)?);
     info!("Database initialized at {}", config.db_path);
@@ -31,29 +32,48 @@ pub async fn run(config: Config) -> Result<(), ServerError> {
 
     // Bind TCP listener
     let listener = TcpListener::bind(&config.socket_addr()).await?;
-    info!("WebSocket server listening on ws://{}/", config.socket_addr());
+    let actual_port = listener.local_addr()?.port();
+    info!("WebSocket server listening on ws://{}/ (port {})", config.socket_addr(), actual_port);
 
-    // Accept connections
-    loop {
-        let (stream, addr) = listener.accept().await?;
-        info!("New connection from: {}", addr);
+    // Spawn server task
+    let handle = tokio::spawn(async move {
+        loop {
+            match listener.accept().await {
+                Ok((stream, addr)) => {
+                    info!("New connection from: {}", addr);
 
-        let db = Arc::clone(&db);
-        let subscription_manager = subscription_manager.clone();
-        let plugin_registry = plugin_registry.clone();
-        tokio::spawn(async move {
-            match accept_async(stream).await {
-                Ok(ws_stream) => {
-                    let (write, read) = ws_stream.split();
-                    if let Err(e) = handle_connection(read, write, db, subscription_manager, plugin_registry).await {
-                        error!("Connection error from {}: {}", addr, e);
-                    }
-                    info!("Connection closed: {}", addr);
+                    let db = Arc::clone(&db);
+                    let subscription_manager = subscription_manager.clone();
+                    let plugin_registry = plugin_registry.clone();
+                    tokio::spawn(async move {
+                        match accept_async(stream).await {
+                            Ok(ws_stream) => {
+                                let (write, read) = ws_stream.split();
+                                if let Err(e) = handle_connection(read, write, db, subscription_manager, plugin_registry).await {
+                                    error!("Connection error from {}: {}", addr, e);
+                                }
+                                info!("Connection closed: {}", addr);
+                            }
+                            Err(e) => {
+                                error!("WebSocket handshake failed for {}: {}", addr, e);
+                            }
+                        }
+                    });
                 }
                 Err(e) => {
-                    error!("WebSocket handshake failed for {}: {}", addr, e);
+                    error!("Accept error: {}", e);
+                    break;
                 }
             }
-        });
-    }
+        }
+    });
+
+    Ok((actual_port, handle))
+}
+
+/// Run the WebSocket server (blocking version).
+pub async fn run(config: Config) -> Result<(), ServerError> {
+    let (_port, handle) = start(config).await?;
+    handle.await.map_err(|e| ServerError::Internal(format!("Server task failed: {}", e)))?;
+    Ok(())
 }

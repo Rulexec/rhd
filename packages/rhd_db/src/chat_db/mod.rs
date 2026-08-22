@@ -349,6 +349,10 @@ impl ChatDb {
         messages_queue::delete_all_queue_messages(&self.conn, chat_id)
     }
 
+    pub fn count_queue_messages(&self, chat_id: i64) -> DbResult<i64> {
+        messages_queue::count_queue_messages(&self.conn, chat_id)
+    }
+
     // Queue message tag operations
     pub fn get_queue_message_tags(&self, message_id: i64) -> DbResult<Vec<String>> {
         tags::get_queue_message_tags(&self.conn, message_id)

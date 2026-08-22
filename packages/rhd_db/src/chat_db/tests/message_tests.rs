@@ -65,6 +65,34 @@ fn test_update_message() {
 }
 
 #[test]
+fn test_count_queue_messages() {
+    let path = "test_count_queue_messages.db";
+    cleanup(path);
+
+    let db = ChatDb::new(path).unwrap();
+    let chat_id = db.create_chat("Test Chat").unwrap();
+
+    // Initially, queue should be empty
+    assert_eq!(db.count_queue_messages(chat_id).unwrap(), 0);
+
+    // Add queue messages
+    db.add_queue_message(chat_id, "user", "Message 1", None, None).unwrap();
+    db.add_queue_message(chat_id, "user", "Message 2", None, None).unwrap();
+
+    // Count should be 2
+    assert_eq!(db.count_queue_messages(chat_id).unwrap(), 2);
+
+    // Delete one message
+    let queue_messages = db.get_queue_messages(chat_id).unwrap();
+    db.delete_queue_message(queue_messages[0].id).unwrap();
+
+    // Count should be 1
+    assert_eq!(db.count_queue_messages(chat_id).unwrap(), 1);
+
+    cleanup(path);
+}
+
+#[test]
 fn test_update_chat_active_model() {
     let path = "test_chat_active_model.db";
     cleanup(path);
