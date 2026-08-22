@@ -1,19 +1,13 @@
 [workspace]
 members = [
     "packages/rhd_util",
-    "packages/rhd_ai",
     "packages/rhd_ai_client",
     "packages/rhd_mock_ai_provider",
     "packages/rhd_mcp_client",
-    "packages/rhd_api",
     "packages/rhd_db",
-    "packages/rhd_chat",
     "packages/rhd_chat_api",
     "packages/rhd_chat_server",
     "packages/rhd_chat_client",
-    "packages/rhd_app",
-    "packages/rhd_test",
-    "packages/rhd_fsm",
     "plugins/rhd_plugin_ai_completions",
 ]
 resolver = "2"
