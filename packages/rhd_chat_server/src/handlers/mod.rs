@@ -3,7 +3,9 @@
 pub mod chat;
 pub mod message;
 pub mod plugin;
+pub mod queue_message;
 pub mod subscription;
+pub mod tools;
 
 use serde_json::Value;
 
@@ -53,6 +55,31 @@ pub async fn handle_request(
         "sendCustomEvent" => plugin::send_custom_event(request.params, db, &request_id, connection_id, plugin_registry, subscription_manager).await,
         "ackCustomEvent" => plugin::ack_custom_event(request.params, db, &request_id, connection_id, plugin_registry, subscription_manager).await,
         "getPendingAcks" => plugin::get_pending_acks(request.params, db, &request_id, connection_id, plugin_registry).await,
+        
+        // Queue message methods
+        "addQueueMessage" => queue_message::add_queue_message(request.params, db, &request_id, &subscription_manager).await,
+        "updateQueueMessage" => queue_message::update_queue_message(request.params, db, &request_id, &subscription_manager).await,
+        "deleteQueueMessage" => queue_message::delete_queue_message(request.params, db, &request_id, &subscription_manager).await,
+        "getQueueMessages" => queue_message::get_queue_messages(request.params, db, &request_id).await,
+        
+        // Tool methods
+        "addTools" => {
+            let plugin_id = {
+                let registry = plugin_registry.read().await;
+                let plugins = registry.get_plugins_for_connection(connection_id);
+                plugins.into_iter().next()
+            };
+            tools::add_tools(request.params, db, &request_id, plugin_id.as_deref(), &subscription_manager).await
+        }
+        "removeTools" => {
+            let plugin_id = {
+                let registry = plugin_registry.read().await;
+                let plugins = registry.get_plugins_for_connection(connection_id);
+                plugins.into_iter().next()
+            };
+            tools::remove_tools(request.params, db, &request_id, plugin_id.as_deref(), &subscription_manager).await
+        }
+        "getTools" => tools::get_tools(request.params, db, &request_id).await,
         
         // Unknown method
         _ => Ok(serde_json::to_value(ErrorResponse::invalid_request(

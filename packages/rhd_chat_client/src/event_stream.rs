@@ -9,7 +9,8 @@ use tokio::sync::oneshot;
 use rhd_chat_api::{
     ChatCreatedData, ChatDeletedData, ChatUpdatedData, CustomEventAcknowledgedData, CustomEventData,
     MessageAddedData, MessageDeletedData, MessageUpdatedData, PluginRegisteredData,
-    PluginRemovedData, PluginUpdatedData,
+    PluginRemovedData, PluginUpdatedData, QueueMessageAddedData, QueueMessageDeletedData,
+    QueueMessageUpdatedData, ToolsUpdatedData,
 };
 
 /// Events that can occur on a subscribed chat.
@@ -21,6 +22,14 @@ pub enum ChatEvent {
     MessageUpdated(MessageUpdatedData),
     /// A message was deleted from the chat.
     MessageDeleted(MessageDeletedData),
+    /// A queue message was added to the chat.
+    QueueMessageAdded(QueueMessageAddedData),
+    /// A queue message was updated in the chat.
+    QueueMessageUpdated(QueueMessageUpdatedData),
+    /// A queue message was deleted from the chat.
+    QueueMessageDeleted(QueueMessageDeletedData),
+    /// Tools were updated in the chat.
+    ToolsUpdated(ToolsUpdatedData),
 }
 
 /// Events that can occur on the chats list.

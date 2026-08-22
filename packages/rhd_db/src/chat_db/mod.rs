@@ -1,16 +1,19 @@
 mod chats;
 mod custom_events;
 mod messages;
+mod messages_queue;
 mod plugins;
 mod projects;
 mod schema;
 mod tags;
+mod tools;
 
 #[cfg(test)]
 mod tests;
 
 pub use custom_events::CustomEventInfo;
 pub use plugins::PluginInfo;
+pub use tools::{ToolDefinition, FunctionDefinition};
 
 use rusqlite::Connection;
 use std::sync::Mutex;
@@ -304,5 +307,93 @@ impl ChatDb {
 
     pub fn delete_custom_event(&self, event_id: &str) -> DbResult<()> {
         custom_events::delete_custom_event(&self.conn, event_id)
+    }
+
+    // Queue message operations
+    pub fn add_queue_message(
+        &self,
+        chat_id: i64,
+        role: &str,
+        content: &str,
+        model: Option<&str>,
+        thinking_content: Option<&str>,
+    ) -> DbResult<i64> {
+        messages_queue::add_queue_message(&self.conn, chat_id, role, content, model, thinking_content)
+    }
+
+    pub fn get_queue_messages(&self, chat_id: i64) -> DbResult<Vec<Message>> {
+        messages_queue::get_queue_messages(&self.conn, chat_id)
+    }
+
+    pub fn get_queue_message(&self, message_id: i64) -> DbResult<Option<Message>> {
+        messages_queue::get_queue_message(&self.conn, message_id)
+    }
+
+    pub fn update_queue_message(&self, message_id: i64, content: &str) -> DbResult<()> {
+        messages_queue::update_queue_message(&self.conn, message_id, content)
+    }
+
+    pub fn insert_queue_message(&self, message: &Message) -> DbResult<Message> {
+        messages_queue::insert_queue_message(&self.conn, message)
+    }
+
+    pub fn update_queue_message_full(&self, message: &Message) -> DbResult<Message> {
+        messages_queue::update_queue_message_full(&self.conn, message)
+    }
+
+    pub fn delete_queue_message(&self, message_id: i64) -> DbResult<()> {
+        messages_queue::delete_queue_message(&self.conn, message_id)
+    }
+
+    pub fn delete_all_queue_messages(&self, chat_id: i64) -> DbResult<()> {
+        messages_queue::delete_all_queue_messages(&self.conn, chat_id)
+    }
+
+    // Queue message tag operations
+    pub fn get_queue_message_tags(&self, message_id: i64) -> DbResult<Vec<String>> {
+        tags::get_queue_message_tags(&self.conn, message_id)
+    }
+
+    pub fn set_queue_message_tags(&self, message_id: i64, tags: &[String]) -> DbResult<()> {
+        tags::set_queue_message_tags(&self.conn, message_id, tags)
+    }
+
+    pub fn add_queue_message_tags(&self, message_id: i64, tags: &[String]) -> DbResult<()> {
+        tags::add_queue_message_tags(&self.conn, message_id, tags)
+    }
+
+    pub fn remove_queue_message_tags(&self, message_id: i64, tags: &[String]) -> DbResult<()> {
+        tags::remove_queue_message_tags(&self.conn, message_id, tags)
+    }
+
+    // Tool operations
+    pub fn add_chat_tools(
+        &self,
+        chat_id: i64,
+        plugin_id: &str,
+        tools: &[ToolDefinition],
+    ) -> DbResult<()> {
+        tools::add_chat_tools(&self.conn, chat_id, plugin_id, tools)
+    }
+
+    pub fn remove_chat_tools(
+        &self,
+        chat_id: i64,
+        plugin_id: &str,
+        tool_names: &[String],
+    ) -> DbResult<()> {
+        tools::remove_chat_tools(&self.conn, chat_id, plugin_id, tool_names)
+    }
+
+    pub fn get_chat_tools(&self, chat_id: i64) -> DbResult<Vec<(String, ToolDefinition)>> {
+        tools::get_chat_tools(&self.conn, chat_id)
+    }
+
+    pub fn get_chat_tools_by_plugin(
+        &self,
+        chat_id: i64,
+        plugin_id: &str,
+    ) -> DbResult<Vec<ToolDefinition>> {
+        tools::get_chat_tools_by_plugin(&self.conn, chat_id, plugin_id)
     }
 }

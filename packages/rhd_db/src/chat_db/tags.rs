@@ -142,3 +142,61 @@ pub fn get_messages_by_tag(conn: &Mutex<Connection>, tag: &str) -> DbResult<Vec<
         .collect::<Result<Vec<_>, _>>()?;
     Ok(message_ids)
 }
+
+/// Get all tags for a queue message.
+pub fn get_queue_message_tags(conn: &Mutex<Connection>, message_id: i64) -> DbResult<Vec<String>> {
+    let conn_guard = conn.lock().map_err(|e| DbError::InitializationError(e.to_string()))?;
+    let mut stmt = conn_guard.prepare(
+        "SELECT tag FROM message_queue_tags WHERE message_id = ? ORDER BY tag"
+    )?;
+    let tags = stmt
+        .query_map([message_id], |row| row.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(tags)
+}
+
+/// Set tags for a queue message (replaces all existing tags).
+pub fn set_queue_message_tags(conn: &Mutex<Connection>, message_id: i64, tags: &[String]) -> DbResult<()> {
+    let conn_guard = conn.lock().map_err(|e| DbError::InitializationError(e.to_string()))?;
+    
+    // Delete existing tags
+    conn_guard.execute("DELETE FROM message_queue_tags WHERE message_id = ?", [message_id])?;
+    
+    // Insert new tags
+    for tag in tags {
+        conn_guard.execute(
+            "INSERT OR IGNORE INTO message_queue_tags (message_id, tag) VALUES (?, ?)",
+            rusqlite::params![message_id, tag.as_str()],
+        )?;
+    }
+    
+    Ok(())
+}
+
+/// Add tags to a queue message (appends, no-op if tag exists).
+pub fn add_queue_message_tags(conn: &Mutex<Connection>, message_id: i64, tags: &[String]) -> DbResult<()> {
+    let conn_guard = conn.lock().map_err(|e| DbError::InitializationError(e.to_string()))?;
+    
+    for tag in tags {
+        conn_guard.execute(
+            "INSERT OR IGNORE INTO message_queue_tags (message_id, tag) VALUES (?, ?)",
+            rusqlite::params![message_id, tag.as_str()],
+        )?;
+    }
+    
+    Ok(())
+}
+
+/// Remove tags from a queue message (no-op if tag doesn't exist).
+pub fn remove_queue_message_tags(conn: &Mutex<Connection>, message_id: i64, tags: &[String]) -> DbResult<()> {
+    let conn_guard = conn.lock().map_err(|e| DbError::InitializationError(e.to_string()))?;
+    
+    for tag in tags {
+        conn_guard.execute(
+            "DELETE FROM message_queue_tags WHERE message_id = ? AND tag = ?",
+            rusqlite::params![message_id, tag.as_str()],
+        )?;
+    }
+    
+    Ok(())
+}

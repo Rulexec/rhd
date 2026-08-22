@@ -15,15 +15,19 @@ use uuid::Uuid;
 use rhd_chat_api::protocol::{Event, Request, Response};
 use rhd_chat_api::{
     AckCustomEventParams, AckCustomEventResult, AddMessageParams, AddMessageResult,
+    AddQueueMessageParams, AddQueueMessageResult, AddToolsParams, AddToolsResult,
     CreateChatParams, CreateChatResult, DeleteChatParams, DeleteChatResult, DeleteMessageParams,
-    DeleteMessageResult, GetChatParams, GetChatResult, GetPendingAcksParams, GetPendingAcksResult,
-    GetPluginsParams, GetPluginsResult, ListChatsParams, ListChatsResult, RegisterPluginParams,
-    RegisterPluginResult, RemovePluginParams, RemovePluginResult, SendCustomEventParams,
-    SendCustomEventResult, SubscribeChatParams, SubscribeChatResult, SubscribeChatsListParams,
-    SubscribeChatsListResult, SubscribePluginsListParams, SubscribePluginsListResult,
-    UnsubscribeChatParams, UnsubscribeChatResult, UnsubscribeChatsListParams,
-    UnsubscribeChatsListResult, UnsubscribePluginsListParams, UnsubscribePluginsListResult,
-    UpdateChatParams, UpdateChatResult, UpdateMessageParams, UpdateMessageResult,
+    DeleteMessageResult, DeleteQueueMessageParams, DeleteQueueMessageResult, GetChatParams,
+    GetChatResult, GetPendingAcksParams, GetPendingAcksResult, GetPluginsParams, GetPluginsResult,
+    GetQueueMessagesParams, GetQueueMessagesResult, GetToolsParams, GetToolsResult,
+    ListChatsParams, ListChatsResult, RegisterPluginParams, RegisterPluginResult,
+    RemovePluginParams, RemovePluginResult, RemoveToolsParams, RemoveToolsResult,
+    SendCustomEventParams, SendCustomEventResult, SubscribeChatParams, SubscribeChatResult,
+    SubscribeChatsListParams, SubscribeChatsListResult, SubscribePluginsListParams,
+    SubscribePluginsListResult, UnsubscribeChatParams, UnsubscribeChatResult,
+    UnsubscribeChatsListParams, UnsubscribeChatsListResult, UnsubscribePluginsListParams,
+    UnsubscribePluginsListResult, UpdateChatParams, UpdateChatResult, UpdateMessageParams,
+    UpdateMessageResult, UpdateQueueMessageParams, UpdateQueueMessageResult,
 };
 
 use crate::error::ClientError;
@@ -198,6 +202,46 @@ impl ChatClient {
                     }
                 }
             }
+            "queueMessageAdded" => {
+                if let Ok(data) = serde_json::from_value::<rhd_chat_api::QueueMessageAddedData>(event.data.clone()) {
+                    let chat_id = data.chat_id;
+                    for sub in &subs.chat_subscriptions {
+                        if sub.chat_id == chat_id {
+                            (sub.callback)(ChatEvent::QueueMessageAdded(data.clone())).await;
+                        }
+                    }
+                }
+            }
+            "queueMessageUpdated" => {
+                if let Ok(data) = serde_json::from_value::<rhd_chat_api::QueueMessageUpdatedData>(event.data.clone()) {
+                    let chat_id = data.chat_id;
+                    for sub in &subs.chat_subscriptions {
+                        if sub.chat_id == chat_id {
+                            (sub.callback)(ChatEvent::QueueMessageUpdated(data.clone())).await;
+                        }
+                    }
+                }
+            }
+            "queueMessageDeleted" => {
+                if let Ok(data) = serde_json::from_value::<rhd_chat_api::QueueMessageDeletedData>(event.data.clone()) {
+                    let chat_id = data.chat_id;
+                    for sub in &subs.chat_subscriptions {
+                        if sub.chat_id == chat_id {
+                            (sub.callback)(ChatEvent::QueueMessageDeleted(data.clone())).await;
+                        }
+                    }
+                }
+            }
+            "toolsUpdated" => {
+                if let Ok(data) = serde_json::from_value::<rhd_chat_api::ToolsUpdatedData>(event.data.clone()) {
+                    let chat_id = data.chat_id;
+                    for sub in &subs.chat_subscriptions {
+                        if sub.chat_id == chat_id {
+                            (sub.callback)(ChatEvent::ToolsUpdated(data.clone())).await;
+                        }
+                    }
+                }
+            }
             "chatCreated" => {
                 if let Ok(data) = serde_json::from_value::<rhd_chat_api::ChatCreatedData>(event.data.clone()) {
                     for sub in &subs.chats_list_subscriptions {
@@ -362,6 +406,49 @@ impl ChatClient {
     /// Delete a message.
     pub async fn delete_message(&self, params: DeleteMessageParams) -> Result<DeleteMessageResult, ClientError> {
         self.send_request("deleteMessage", params).await
+    }
+
+    // ========================================================================
+    // Queue Message Methods
+    // ========================================================================
+
+    /// Add a message to the queue.
+    pub async fn add_queue_message(&self, params: AddQueueMessageParams) -> Result<AddQueueMessageResult, ClientError> {
+        self.send_request("addQueueMessage", params).await
+    }
+
+    /// Update a queue message.
+    pub async fn update_queue_message(&self, params: UpdateQueueMessageParams) -> Result<UpdateQueueMessageResult, ClientError> {
+        self.send_request("updateQueueMessage", params).await
+    }
+
+    /// Delete a queue message.
+    pub async fn delete_queue_message(&self, params: DeleteQueueMessageParams) -> Result<DeleteQueueMessageResult, ClientError> {
+        self.send_request("deleteQueueMessage", params).await
+    }
+
+    /// Get all queue messages for a chat.
+    pub async fn get_queue_messages(&self, params: GetQueueMessagesParams) -> Result<GetQueueMessagesResult, ClientError> {
+        self.send_request("getQueueMessages", params).await
+    }
+
+    // ========================================================================
+    // Tool Methods
+    // ========================================================================
+
+    /// Add tools to a chat.
+    pub async fn add_tools(&self, params: AddToolsParams) -> Result<AddToolsResult, ClientError> {
+        self.send_request("addTools", params).await
+    }
+
+    /// Remove tools from a chat.
+    pub async fn remove_tools(&self, params: RemoveToolsParams) -> Result<RemoveToolsResult, ClientError> {
+        self.send_request("removeTools", params).await
+    }
+
+    /// Get all tools for a chat.
+    pub async fn get_tools(&self, params: GetToolsParams) -> Result<GetToolsResult, ClientError> {
+        self.send_request("getTools", params).await
     }
 
     // ========================================================================

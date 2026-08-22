@@ -27,6 +27,7 @@ pub mod error;
 pub mod events;
 pub mod methods;
 pub mod protocol;
+pub mod tools;
 
 // Re-export commonly used types at the crate root for convenience
 pub use common::{Chat, ChatSummary, Message, PendingEvent, PluginSummary};
@@ -34,18 +35,24 @@ pub use error::{ErrorCode, ErrorResponse};
 pub use events::{
     ChatCreatedData, ChatDeletedData, ChatUpdatedData, CustomEventAcknowledgedData, CustomEventData,
     MessageAddedData, MessageDeletedData, MessageUpdatedData, PluginRegisteredData,
-    PluginRemovedData, PluginUpdatedData,
+    PluginRemovedData, PluginUpdatedData, QueueMessageAddedData, QueueMessageDeletedData,
+    QueueMessageUpdatedData, ToolsUpdatedData,
 };
 pub use methods::{
     AckCustomEventParams, AckCustomEventResult, AddMessageParams, AddMessageResult,
+    AddQueueMessageParams, AddQueueMessageResult, AddToolsParams, AddToolsResult,
     CreateChatParams, CreateChatResult, DeleteChatParams, DeleteChatResult, DeleteMessageParams,
-    DeleteMessageResult, GetChatParams, GetChatResult, GetPendingAcksParams, GetPendingAcksResult,
-    GetPluginsParams, GetPluginsResult, ListChatsParams, ListChatsResult, RegisterPluginParams,
-    RegisterPluginResult, RemovePluginParams, RemovePluginResult, SendCustomEventParams,
-    SendCustomEventResult, SubscribeChatParams, SubscribeChatResult, SubscribeChatsListParams,
-    SubscribeChatsListResult, SubscribePluginsListParams, SubscribePluginsListResult,
-    UnsubscribeChatParams, UnsubscribeChatResult, UnsubscribeChatsListParams,
-    UnsubscribeChatsListResult, UnsubscribePluginsListParams, UnsubscribePluginsListResult,
-    UpdateChatParams, UpdateChatResult, UpdateMessageParams, UpdateMessageResult,
+    DeleteMessageResult, DeleteQueueMessageParams, DeleteQueueMessageResult, GetChatParams,
+    GetChatResult, GetPendingAcksParams, GetPendingAcksResult, GetPluginsParams, GetPluginsResult,
+    GetQueueMessagesParams, GetQueueMessagesResult, GetToolsParams, GetToolsResult,
+    ListChatsParams, ListChatsResult, RegisterPluginParams, RegisterPluginResult,
+    RemovePluginParams, RemovePluginResult, RemoveToolsParams, RemoveToolsResult,
+    SendCustomEventParams, SendCustomEventResult, SubscribeChatParams, SubscribeChatResult,
+    SubscribeChatsListParams, SubscribeChatsListResult, SubscribePluginsListParams,
+    SubscribePluginsListResult, UnsubscribeChatParams, UnsubscribeChatResult,
+    UnsubscribeChatsListParams, UnsubscribeChatsListResult, UnsubscribePluginsListParams,
+    UnsubscribePluginsListResult, UpdateChatParams, UpdateChatResult, UpdateMessageParams,
+    UpdateMessageResult, UpdateQueueMessageParams, UpdateQueueMessageResult,
 };
 pub use protocol::{Event, Request, Response};
+pub use tools::{FunctionCall, FunctionDefinition, ToolCall, ToolDefinition, ToolInfo};

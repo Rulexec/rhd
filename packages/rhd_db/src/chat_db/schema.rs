@@ -100,6 +100,53 @@ pub(crate) fn init(conn: &Connection) -> DbResult<()> {
         CREATE INDEX IF NOT EXISTS idx_custom_event_acks_plugin ON custom_event_acks(plugin_id);",
     )?;
 
+    // Create messages_queue table
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS messages_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            model TEXT,
+            thinking_content TEXT,
+            tool_calls TEXT,
+            FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_messages_queue_chat_id ON messages_queue(chat_id);",
+    )?;
+
+    // Create message_queue_tags table
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS message_queue_tags (
+            message_id INTEGER NOT NULL,
+            tag TEXT NOT NULL,
+            PRIMARY KEY (message_id, tag),
+            FOREIGN KEY (message_id) REFERENCES messages_queue(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_message_queue_tags_tag ON message_queue_tags(tag);",
+    )?;
+
+    // Create chat_tools table
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS chat_tools (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER NOT NULL,
+            plugin_id TEXT NOT NULL,
+            tool_name TEXT NOT NULL,
+            tool_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE,
+            FOREIGN KEY (plugin_id) REFERENCES plugins(plugin_id) ON DELETE CASCADE,
+            UNIQUE(chat_id, tool_name)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_chat_tools_chat_id ON chat_tools(chat_id);
+        CREATE INDEX IF NOT EXISTS idx_chat_tools_plugin_id ON chat_tools(plugin_id);",
+    )?;
+
     // Migrate existing tables to add new columns
     migrate(conn)?;
 

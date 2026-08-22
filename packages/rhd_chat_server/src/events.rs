@@ -3,9 +3,11 @@
 use rhd_chat_api::common::{ChatSummary, Message};
 use rhd_chat_api::events::{
     ChatCreatedData, ChatDeletedData, ChatUpdatedData, MessageAddedData, MessageDeletedData,
-    MessageUpdatedData,
+    MessageUpdatedData, QueueMessageAddedData, QueueMessageDeletedData, QueueMessageUpdatedData,
+    ToolsUpdatedData,
 };
 use rhd_chat_api::protocol::Event;
+use rhd_chat_api::tools::ToolInfo;
 
 /// Create a `chatCreated` event.
 pub fn chat_created_event(chat: ChatSummary) -> Event {
@@ -41,4 +43,28 @@ pub fn message_updated_event(chat_id: i64, message: Message) -> Event {
 pub fn message_deleted_event(chat_id: i64, message_id: i64) -> Event {
     let data = MessageDeletedData { chat_id, message_id };
     Event::new("messageDeleted", serde_json::to_value(data).unwrap())
+}
+
+/// Create a `queueMessageAdded` event.
+pub fn queue_message_added_event(chat_id: i64, message: Message) -> Event {
+    let data = QueueMessageAddedData { chat_id, message };
+    Event::new("queueMessageAdded", serde_json::to_value(data).unwrap())
+}
+
+/// Create a `queueMessageUpdated` event.
+pub fn queue_message_updated_event(chat_id: i64, message: Message) -> Event {
+    let data = QueueMessageUpdatedData { chat_id, message };
+    Event::new("queueMessageUpdated", serde_json::to_value(data).unwrap())
+}
+
+/// Create a `queueMessageDeleted` event.
+pub fn queue_message_deleted_event(chat_id: i64, message_id: i64) -> Event {
+    let data = QueueMessageDeletedData { chat_id, message_id };
+    Event::new("queueMessageDeleted", serde_json::to_value(data).unwrap())
+}
+
+/// Create a `toolsUpdated` event.
+pub fn tools_updated_event(chat_id: i64, tools: Vec<ToolInfo>) -> Event {
+    let data = ToolsUpdatedData { chat_id, tools };
+    Event::new("toolsUpdated", serde_json::to_value(data).unwrap())
 }

@@ -13,6 +13,10 @@ pub mod message_updated;
 pub mod plugin_registered;
 pub mod plugin_removed;
 pub mod plugin_updated;
+pub mod queue_message_added;
+pub mod queue_message_deleted;
+pub mod queue_message_updated;
+pub mod tools_updated;
 
 pub use chat_created::*;
 pub use chat_deleted::*;
@@ -25,3 +29,7 @@ pub use message_updated::*;
 pub use plugin_registered::*;
 pub use plugin_removed::*;
 pub use plugin_updated::*;
+pub use queue_message_added::*;
+pub use queue_message_deleted::*;
+pub use queue_message_updated::*;
+pub use tools_updated::*;

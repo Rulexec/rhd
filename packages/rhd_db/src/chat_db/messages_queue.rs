@@ -9,7 +9,7 @@ fn now_iso() -> String {
     Utc::now().to_rfc3339()
 }
 
-pub(crate) fn add_message(
+pub(crate) fn add_queue_message(
     conn: &Mutex<Connection>,
     chat_id: i64,
     role: &str,
@@ -23,7 +23,7 @@ pub(crate) fn add_message(
     let tx = conn.unchecked_transaction()?;
     let now = now_iso();
     tx.execute(
-        "INSERT INTO messages (chat_id, role, content, created_at, model, thinking_content) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        "INSERT INTO messages_queue (chat_id, role, content, created_at, model, thinking_content) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         params![chat_id, role, content, now, model, thinking_content],
     )?;
     let message_id = tx.last_insert_rowid();
@@ -35,12 +35,12 @@ pub(crate) fn add_message(
     Ok(message_id)
 }
 
-pub(crate) fn get_messages(conn: &Mutex<Connection>, chat_id: i64) -> DbResult<Vec<Message>> {
+pub(crate) fn get_queue_messages(conn: &Mutex<Connection>, chat_id: i64) -> DbResult<Vec<Message>> {
     let conn = conn
         .lock()
         .map_err(|e| DbError::InitializationError(e.to_string()))?;
     let mut stmt = conn.prepare(
-        "SELECT id, chat_id, role, content, created_at, model, thinking_content, tool_calls FROM messages WHERE chat_id = ?1 ORDER BY id ASC",
+        "SELECT id, chat_id, role, content, created_at, model, thinking_content, tool_calls FROM messages_queue WHERE chat_id = ?1 ORDER BY id ASC",
     )?;
     let rows = stmt.query_map(params![chat_id], |row| {
         let tool_calls_json: Option<String> = row.get(7)?;
@@ -64,27 +64,12 @@ pub(crate) fn get_messages(conn: &Mutex<Connection>, chat_id: i64) -> DbResult<V
     Ok(messages)
 }
 
-pub(crate) fn truncate_messages(
-    conn: &Mutex<Connection>,
-    chat_id: i64,
-    after_message_id: i64,
-) -> DbResult<()> {
-    let conn = conn
-        .lock()
-        .map_err(|e| DbError::InitializationError(e.to_string()))?;
-    conn.execute(
-        "DELETE FROM messages WHERE chat_id = ?1 AND id > ?2",
-        params![chat_id, after_message_id],
-    )?;
-    Ok(())
-}
-
-pub(crate) fn get_message(conn: &Mutex<Connection>, message_id: i64) -> DbResult<Option<Message>> {
+pub(crate) fn get_queue_message(conn: &Mutex<Connection>, message_id: i64) -> DbResult<Option<Message>> {
     let conn = conn
         .lock()
         .map_err(|e| DbError::InitializationError(e.to_string()))?;
     let mut stmt = conn.prepare(
-        "SELECT id, chat_id, role, content, created_at, model, thinking_content, tool_calls FROM messages WHERE id = ?1",
+        "SELECT id, chat_id, role, content, created_at, model, thinking_content, tool_calls FROM messages_queue WHERE id = ?1",
     )?;
     let mut rows = stmt.query_map(params![message_id], |row| {
         let tool_calls_json: Option<String> = row.get(7)?;
@@ -107,7 +92,7 @@ pub(crate) fn get_message(conn: &Mutex<Connection>, message_id: i64) -> DbResult
     }
 }
 
-pub(crate) fn update_message(
+pub(crate) fn update_queue_message(
     conn: &Mutex<Connection>,
     message_id: i64,
     content: &str,
@@ -117,12 +102,12 @@ pub(crate) fn update_message(
         .map_err(|e| DbError::InitializationError(e.to_string()))?;
     let tx = conn.unchecked_transaction()?;
     let chat_id: i64 = tx.query_row(
-        "SELECT chat_id FROM messages WHERE id = ?1",
+        "SELECT chat_id FROM messages_queue WHERE id = ?1",
         params![message_id],
         |row| row.get(0),
     )?;
     tx.execute(
-        "UPDATE messages SET content = ?1 WHERE id = ?2",
+        "UPDATE messages_queue SET content = ?1 WHERE id = ?2",
         params![content, message_id],
     )?;
     let now = now_iso();
@@ -134,8 +119,8 @@ pub(crate) fn update_message(
     Ok(())
 }
 
-/// Insert a message with an explicit ID (for FSM sync)
-pub(crate) fn insert_message(
+/// Insert a queue message with an explicit ID
+pub(crate) fn insert_queue_message(
     conn: &Mutex<Connection>,
     message: &Message,
 ) -> DbResult<Message> {
@@ -148,7 +133,7 @@ pub(crate) fn insert_message(
         .as_ref()
         .map(|tc| serde_json::to_string(tc).unwrap_or_default());
     tx.execute(
-        "INSERT INTO messages (id, chat_id, role, content, created_at, model, thinking_content, tool_calls)
+        "INSERT INTO messages_queue (id, chat_id, role, content, created_at, model, thinking_content, tool_calls)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         params![
             message.id,
@@ -170,8 +155,8 @@ pub(crate) fn insert_message(
     Ok(message.clone())
 }
 
-/// Update a full message (for FSM sync)
-pub(crate) fn update_message_full(
+/// Update a full queue message
+pub(crate) fn update_queue_message_full(
     conn: &Mutex<Connection>,
     message: &Message,
 ) -> DbResult<Message> {
@@ -184,7 +169,7 @@ pub(crate) fn update_message_full(
         .as_ref()
         .map(|tc| serde_json::to_string(tc).unwrap_or_default());
     tx.execute(
-        "UPDATE messages SET role = ?1, content = ?2, thinking_content = ?3, tool_calls = ?4, model = ?5 WHERE id = ?6",
+        "UPDATE messages_queue SET role = ?1, content = ?2, thinking_content = ?3, tool_calls = ?4, model = ?5 WHERE id = ?6",
         params![
             message.role,
             message.content,
@@ -203,33 +188,20 @@ pub(crate) fn update_message_full(
     Ok(message.clone())
 }
 
-/// Delete a message by ID
-pub(crate) fn delete_message(conn: &Mutex<Connection>, message_id: i64) -> DbResult<()> {
+/// Delete a queue message by ID
+pub(crate) fn delete_queue_message(conn: &Mutex<Connection>, message_id: i64) -> DbResult<()> {
     let conn = conn
         .lock()
         .map_err(|e| DbError::InitializationError(e.to_string()))?;
-    conn.execute("DELETE FROM messages WHERE id = ?1", params![message_id])?;
+    conn.execute("DELETE FROM messages_queue WHERE id = ?1", params![message_id])?;
     Ok(())
 }
 
-/// Delete all messages for a chat
-pub(crate) fn delete_all_messages(conn: &Mutex<Connection>, chat_id: i64) -> DbResult<()> {
+/// Delete all queue messages for a chat
+pub(crate) fn delete_all_queue_messages(conn: &Mutex<Connection>, chat_id: i64) -> DbResult<()> {
     let conn = conn
         .lock()
         .map_err(|e| DbError::InitializationError(e.to_string()))?;
-    conn.execute("DELETE FROM messages WHERE chat_id = ?1", params![chat_id])?;
+    conn.execute("DELETE FROM messages_queue WHERE chat_id = ?1", params![chat_id])?;
     Ok(())
-}
-
-/// Get the next message ID for a chat (for FSM initialization)
-pub(crate) fn get_next_message_id(conn: &Mutex<Connection>, chat_id: i64) -> DbResult<i64> {
-    let conn = conn
-        .lock()
-        .map_err(|e| DbError::InitializationError(e.to_string()))?;
-    let max_id: Option<i64> = conn.query_row(
-        "SELECT MAX(id) FROM messages WHERE chat_id = ?1",
-        params![chat_id],
-        |row| row.get(0),
-    )?;
-    Ok(max_id.map(|id| id + 1).unwrap_or(1_000_000))
 }
