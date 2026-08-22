@@ -125,7 +125,20 @@ cargo run --bin rhd_plugin_ai_completions -- \
 - `--config`: Path to configuration file
 - `--plugin-id`: Plugin ID (defaults to "ai_completions")
 
+## Environment Variables
+
+Set log level:
+```bash
+export RUST_LOG=rhd_plugin_ai_completions=info
+```
+
 ## Troubleshooting
+
+### Plugin Not Triggering
+
+1. Check that chat has queued messages or resolved tool calls
+2. Verify chat doesn't have `ai_completions:error` tag
+3. Check logs for trigger detection
 
 ### Plugin fails to connect
 - Verify chat server is running
@@ -142,3 +155,26 @@ cargo run --bin rhd_plugin_ai_completions -- \
 - Verify model configuration
 - Check network connectivity to AI API
 - Review error messages in chat (role: `ai_completions:error`)
+
+## Integration with Other Plugins
+
+This plugin emits `ai_completions:preRequest` before making AI requests. Other plugins can:
+- Listen for this event
+- Add messages to the queue
+- Modify queued messages
+- Acknowledge to allow the request to proceed
+
+Example plugin that listens for preRequest:
+```rust
+client.on_custom_event(|event| async move {
+    if event.event_name == "ai_completions:preRequest" {
+        // Do something before AI request
+        println!("AI request about to be made for chat {}", event.chat_id);
+        
+        // Acknowledge to allow request to proceed
+        client.ack_custom_event(AckCustomEventParams {
+            event_id: event.event_id,
+        }).await;
+    }
+});
+```

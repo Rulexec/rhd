@@ -123,18 +123,29 @@ pub async fn run_plugin(
     loop {
         // Get all chat IDs
         let chat_ids = chat_monitor.get_chat_ids().await;
+        tracing::debug!(
+            monitored_chats = chat_ids.len(),
+            "main loop iteration"
+        );
 
         for chat_id in chat_ids {
             // Get chat state
             if let Some(chat_state) = chat_monitor.get_chat_state(chat_id).await {
+                tracing::debug!(
+                    chat_id = chat_id,
+                    queued_messages_count = chat_state.queued_messages_count,
+                    messages_count = chat_state.messages.len(),
+                    tags = ?chat_state.tags,
+                    "evaluating chat state"
+                );
                 // Check trigger condition
                 let trigger_reason = trigger_detection::should_trigger(&chat_state);
 
                 if trigger_reason != trigger_detection::TriggerReason::None {
                     tracing::info!(
-                        "Triggering AI completion for chat {} with reason {:?}",
-                        chat_id,
-                        trigger_reason
+                        chat_id = chat_id,
+                        trigger_reason = ?trigger_reason,
+                        "triggering AI completion"
                     );
 
                     // Handle AI request

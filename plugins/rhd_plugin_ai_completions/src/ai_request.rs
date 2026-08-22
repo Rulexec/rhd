@@ -70,10 +70,21 @@ pub async fn handle_ai_request(
 
     // Process queued messages if needed
     if trigger_reason == TriggerReason::QueuedMessages {
+        tracing::info!(
+            chat_id = chat_id,
+            trigger_reason = ?trigger_reason,
+            "processing queued messages"
+        );
         process_queued_messages(&client, chat_id).await?;
+        tracing::info!(chat_id = chat_id, "finished processing queued messages");
     }
 
     // Acknowledge own event
+    tracing::debug!(
+        chat_id = chat_id,
+        event_id = %event_id,
+        "acknowledging own event"
+    );
     client
         .ack_custom_event(AckCustomEventParams {
             event_id: event_id.clone(),
@@ -154,14 +165,26 @@ async fn process_queued_messages(
     client: &ChatClient,
     chat_id: i64,
 ) -> Result<(), AiRequestError> {
+    tracing::debug!(chat_id = chat_id, "fetching queued messages");
     // Get queued messages
     let queue_result = client
         .get_queue_messages(GetQueueMessagesParams { chat_id })
         .await
         .map_err(|e| AiRequestError::QueueGet(e.to_string()))?;
 
+    tracing::debug!(
+        chat_id = chat_id,
+        message_count = queue_result.messages.len(),
+        "found queued messages"
+    );
+
     // Delete each queued message and add as regular message
     for queue_msg in queue_result.messages {
+        tracing::debug!(
+            chat_id = chat_id,
+            message_id = queue_msg.id,
+            "deleting message from queue"
+        );
         // Delete from queue
         client
             .delete_queue_message(DeleteQueueMessageParams {
@@ -170,6 +193,12 @@ async fn process_queued_messages(
             .await
             .map_err(|e| AiRequestError::QueueDelete(e.to_string()))?;
 
+        tracing::debug!(
+            chat_id = chat_id,
+            message_id = queue_msg.id,
+            role = %queue_msg.role,
+            "adding message as regular message"
+        );
         // Add as regular message
         client
             .add_message(AddMessageParams {
@@ -181,6 +210,11 @@ async fn process_queued_messages(
             })
             .await
             .map_err(|e| AiRequestError::MessageAdd(e.to_string()))?;
+        tracing::debug!(
+            chat_id = chat_id,
+            message_id = queue_msg.id,
+            "successfully added message"
+        );
     }
 
     Ok(())

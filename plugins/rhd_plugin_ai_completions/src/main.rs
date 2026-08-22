@@ -1,11 +1,7 @@
 use clap::Parser;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
-mod ai_request;
-mod config;
-mod plugin;
-mod tool_resolution;
-mod trigger_detection;
+use rhd_plugin_ai_completions::{config, plugin};
 
 #[derive(Parser, Debug)]
 #[command(name = "rhd_plugin_ai_completions")]

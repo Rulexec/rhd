@@ -1527,6 +1527,8 @@ dependencies = [
  "rhd_ai_client",
  "rhd_chat_api",
  "rhd_chat_client",
+ "rhd_chat_server",
+ "rhd_mock_ai_provider",
  "serde",
  "serde_json",
  "serde_yaml",

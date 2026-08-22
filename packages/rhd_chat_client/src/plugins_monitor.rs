@@ -158,12 +158,25 @@ impl PluginsMonitor {
                     let event_acks = acks.get(event_id).cloned().unwrap_or_default();
 
                     // Check if ALL registered plugins (except excluded ones) have acknowledged
-                    all_plugins.keys().all(|plugin_id| {
+                    let all_acked = all_plugins.keys().all(|plugin_id| {
                         except_set.contains(plugin_id) || event_acks.contains(plugin_id)
-                    })
+                    });
+
+                    if !all_acked {
+                        tracing::debug!(
+                            event_id = %event_id,
+                            pending_plugins = ?all_plugins.keys()
+                                .filter(|id| !except_set.contains(*id) && !event_acks.contains(*id))
+                                .collect::<Vec<_>>(),
+                            "waiting for plugin acknowledgments"
+                        );
+                    }
+
+                    all_acked
                 };
 
                 if all_acked {
+                    tracing::debug!(event_id = %event_id, "all required plugins acknowledged");
                     return Ok(());
                 }
 

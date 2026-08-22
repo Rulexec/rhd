@@ -178,7 +178,11 @@ impl ChatClient {
                     let chat_id = data.chat_id;
                     for sub in &subs.chat_subscriptions {
                         if sub.chat_id == chat_id {
-                            (sub.callback)(ChatEvent::MessageAdded(data.clone())).await;
+                            let callback = sub.callback.clone();
+                            let data_clone = data.clone();
+                            tokio::spawn(async move {
+                                (callback)(ChatEvent::MessageAdded(data_clone)).await;
+                            });
                         }
                     }
                 }
@@ -188,7 +192,11 @@ impl ChatClient {
                     let chat_id = data.chat_id;
                     for sub in &subs.chat_subscriptions {
                         if sub.chat_id == chat_id {
-                            (sub.callback)(ChatEvent::MessageUpdated(data.clone())).await;
+                            let callback = sub.callback.clone();
+                            let data_clone = data.clone();
+                            tokio::spawn(async move {
+                                (callback)(ChatEvent::MessageUpdated(data_clone)).await;
+                            });
                         }
                     }
                 }
@@ -198,7 +206,11 @@ impl ChatClient {
                     let chat_id = data.chat_id;
                     for sub in &subs.chat_subscriptions {
                         if sub.chat_id == chat_id {
-                            (sub.callback)(ChatEvent::MessageDeleted(data.clone())).await;
+                            let callback = sub.callback.clone();
+                            let data_clone = data.clone();
+                            tokio::spawn(async move {
+                                (callback)(ChatEvent::MessageDeleted(data_clone)).await;
+                            });
                         }
                     }
                 }
@@ -208,7 +220,11 @@ impl ChatClient {
                     let chat_id = data.chat_id;
                     for sub in &subs.chat_subscriptions {
                         if sub.chat_id == chat_id {
-                            (sub.callback)(ChatEvent::QueueMessageAdded(data.clone())).await;
+                            let callback = sub.callback.clone();
+                            let data_clone = data.clone();
+                            tokio::spawn(async move {
+                                (callback)(ChatEvent::QueueMessageAdded(data_clone)).await;
+                            });
                         }
                     }
                 }
@@ -218,7 +234,11 @@ impl ChatClient {
                     let chat_id = data.chat_id;
                     for sub in &subs.chat_subscriptions {
                         if sub.chat_id == chat_id {
-                            (sub.callback)(ChatEvent::QueueMessageUpdated(data.clone())).await;
+                            let callback = sub.callback.clone();
+                            let data_clone = data.clone();
+                            tokio::spawn(async move {
+                                (callback)(ChatEvent::QueueMessageUpdated(data_clone)).await;
+                            });
                         }
                     }
                 }
@@ -228,7 +248,11 @@ impl ChatClient {
                     let chat_id = data.chat_id;
                     for sub in &subs.chat_subscriptions {
                         if sub.chat_id == chat_id {
-                            (sub.callback)(ChatEvent::QueueMessageDeleted(data.clone())).await;
+                            let callback = sub.callback.clone();
+                            let data_clone = data.clone();
+                            tokio::spawn(async move {
+                                (callback)(ChatEvent::QueueMessageDeleted(data_clone)).await;
+                            });
                         }
                     }
                 }
@@ -238,15 +262,29 @@ impl ChatClient {
                     let chat_id = data.chat_id;
                     for sub in &subs.chat_subscriptions {
                         if sub.chat_id == chat_id {
-                            (sub.callback)(ChatEvent::ToolsUpdated(data.clone())).await;
+                            let callback = sub.callback.clone();
+                            let data_clone = data.clone();
+                            tokio::spawn(async move {
+                                (callback)(ChatEvent::ToolsUpdated(data_clone)).await;
+                            });
                         }
                     }
                 }
             }
             "chatCreated" => {
                 if let Ok(data) = serde_json::from_value::<rhd_chat_api::ChatCreatedData>(event.data.clone()) {
+                    tracing::debug!(
+                        event = "chatCreated",
+                        chat_id = data.chat.id,
+                        subscription_count = subs.chats_list_subscriptions.len(),
+                        "dispatching event"
+                    );
                     for sub in &subs.chats_list_subscriptions {
-                        (sub.callback)(ChatsListEvent::ChatCreated(data.clone())).await;
+                        let callback = sub.callback.clone();
+                        let data_clone = data.clone();
+                        tokio::spawn(async move {
+                            (callback)(ChatsListEvent::ChatCreated(data_clone)).await;
+                        });
                     }
                 }
             }
@@ -560,7 +598,7 @@ impl ChatClient {
     ///
     /// The callback will be invoked for each event (chatCreated, chatUpdated, chatDeleted).
     /// Returns a cancellation token that can be used to unsubscribe.
-    pub fn on_chats_list_event<F, Fut>(&self, callback: F) -> CancellationToken
+    pub async fn on_chats_list_event<F, Fut>(&self, callback: F) -> CancellationToken
     where
         F: Fn(ChatsListEvent) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = ()> + Send + 'static,
@@ -574,10 +612,8 @@ impl ChatClient {
         };
 
         let subscriptions = Arc::clone(&self.subscriptions);
-        tokio::spawn(async move {
-            let mut subs = subscriptions.lock().await;
-            subs.chats_list_subscriptions.push(subscription);
-        });
+        let mut subs = subscriptions.lock().await;
+        subs.chats_list_subscriptions.push(subscription);
 
         token
     }
