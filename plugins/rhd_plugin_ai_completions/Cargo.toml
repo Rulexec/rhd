@@ -1,0 +1,19 @@
+[package]
+name = "rhd_plugin_ai_completions"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rhd_chat_client = { path = "../../packages/rhd_chat_client" }
+rhd_chat_api = { path = "../../packages/rhd_chat_api" }
+rhd_ai_client = { path = "../../packages/rhd_ai_client" }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap = { version = "4", features = ["derive"] }
+thiserror = "1"
+
+[dev-dependencies]
+tempfile = "3"

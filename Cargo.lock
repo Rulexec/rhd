@@ -1517,6 +1517,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "rhd_plugin_ai_completions"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "rhd_ai_client",
+ "rhd_chat_api",
+ "rhd_chat_client",
+ "serde",
+ "serde_yaml",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "rhd_test"
 version = "0.1.0"
 dependencies = [
