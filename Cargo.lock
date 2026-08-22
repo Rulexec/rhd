@@ -1412,6 +1412,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "rhd_chat_client"
+version = "0.1.0"
+dependencies = [
+ "futures-util",
+ "rhd_chat_api",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tokio-tungstenite",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "rhd_chat_server"
 version = "0.1.0"
 dependencies = [
@@ -1419,6 +1434,7 @@ dependencies = [
  "clap",
  "futures-util",
  "rhd_chat_api",
+ "rhd_chat_client",
  "rhd_db",
  "rhd_util",
  "serde",
