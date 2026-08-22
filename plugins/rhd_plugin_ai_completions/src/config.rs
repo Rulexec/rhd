@@ -1,5 +1,6 @@
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::path::Path;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct PluginConfig {
@@ -35,11 +36,28 @@ pub struct CredentialsConfig {
 }
 
 pub fn load_config(path: &str) -> Result<PluginConfig, ConfigError> {
-    let config_content = std::fs::read_to_string(path)
-        .map_err(|e| ConfigError::FileRead(e.to_string()))?;
+    let config_path = Path::new(path);
+    let config_dir = config_path.parent()
+        .ok_or_else(|| ConfigError::MainConfigFileRead {
+            path: path.to_string(),
+            details: "Cannot determine config file directory".to_string()
+        })?;
     
-    let config: PluginConfig = serde_yaml::from_str(&config_content)
+    let config_content = std::fs::read_to_string(path)
+        .map_err(|e| ConfigError::MainConfigFileRead {
+            path: path.to_string(),
+            details: e.to_string()
+        })?;
+    
+    let mut config: PluginConfig = serde_yaml::from_str(&config_content)
         .map_err(|e| ConfigError::Parse(e.to_string()))?;
+    
+    // Resolve credentials config path relative to main config file
+    let credentials_path = Path::new(&config.credentials_config);
+    if credentials_path.is_relative() {
+        let absolute_path = config_dir.join(credentials_path);
+        config.credentials_config = absolute_path.to_string_lossy().to_string();
+    }
     
     // Validate that default model exists
     if !config.ai_completions.models.contains_key("default") {
@@ -59,7 +77,10 @@ pub fn load_config(path: &str) -> Result<PluginConfig, ConfigError> {
 
 pub fn load_credentials(path: &str) -> Result<CredentialsConfig, ConfigError> {
     let content = std::fs::read_to_string(path)
-        .map_err(|e| ConfigError::FileRead(e.to_string()))?;
+        .map_err(|e| ConfigError::CredentialsFileRead {
+            path: path.to_string(),
+            details: e.to_string()
+        })?;
     
     let creds: CredentialsConfig = serde_yaml::from_str(&content)
         .map_err(|e| ConfigError::Parse(e.to_string()))?;
@@ -77,8 +98,10 @@ pub fn resolve_api_key(config: &PluginConfig, cred_name: &str) -> Result<String,
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
-    #[error("failed to read config file: {0}")]
-    FileRead(String),
+    #[error("failed to read main config file '{path}': {details}")]
+    MainConfigFileRead { path: String, details: String },
+    #[error("failed to read credentials file '{path}': {details}")]
+    CredentialsFileRead { path: String, details: String },
     #[error("failed to parse config: {0}")]
     Parse(String),
     #[error("config validation error: {0}")]
