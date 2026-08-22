@@ -1,6 +1,7 @@
 //! Server configuration.
 
 use clap::Parser;
+use std::format;
 
 /// RHD Chat Server configuration.
 #[derive(Parser, Debug, Clone)]
