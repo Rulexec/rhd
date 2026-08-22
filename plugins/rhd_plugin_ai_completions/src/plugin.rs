@@ -1,48 +1,167 @@
+//! AI completions plugin implementation.
+//!
+//! This module implements the core plugin logic:
+//! 1. Connect to chat server and register as plugin
+//! 2. Process pending acknowledgments
+//! 3. Create monitors for plugins and chats
+//! 4. Main loop: detect trigger conditions and handle AI requests
+
+use std::sync::Arc;
+use std::time::Duration;
+
+use rhd_ai_client::AiClient;
+use rhd_chat_api::{AckCustomEventParams, GetPendingAcksParams, RegisterPluginParams};
 use rhd_chat_client::ChatClient;
-use rhd_chat_api::RegisterPluginParams;
 
-use crate::config::PluginConfig;
+use crate::ai_request;
+use crate::config::{self, PluginConfig};
+use crate::trigger_detection;
 
+/// Run the AI completions plugin.
+///
+/// This function implements the complete plugin lifecycle:
+/// 1. Connect to chat server
+/// 2. Register as plugin
+/// 3. Process pending acks
+/// 4. Create monitors
+/// 5. Subscribe to all chats
+/// 6. Create AI client
+/// 7. Main loop: check triggers and handle AI requests
 pub async fn run_plugin(
     server_url: &str,
     plugin_id: &str,
-    _config: PluginConfig,
+    config: PluginConfig,
 ) -> Result<(), PluginError> {
     // Connect to chat server
-    let client = ChatClient::connect(server_url).await
-        .map_err(|e| PluginError::Connection(e.to_string()))?;
-    
+    let client = Arc::new(
+        ChatClient::connect(server_url)
+            .await
+            .map_err(|e| PluginError::Connection(e.to_string()))?,
+    );
+
     tracing::info!("Connected to chat server");
-    
+
     // Register as plugin
-    client.register_plugin(RegisterPluginParams {
-        plugin_id: plugin_id.to_string(),
-    }).await.map_err(|e| PluginError::Registration(e.to_string()))?;
-    
+    client
+        .register_plugin(RegisterPluginParams {
+            plugin_id: plugin_id.to_string(),
+        })
+        .await
+        .map_err(|e| PluginError::Registration(e.to_string()))?;
+
     tracing::info!("Registered as plugin: {}", plugin_id);
-    
+
     // Get pending acks
-    let pending_acks = client.get_pending_acks(rhd_chat_api::GetPendingAcksParams {})
+    let pending_acks = client
+        .get_pending_acks(GetPendingAcksParams {})
         .await
         .map_err(|e| PluginError::PendingAcks(e.to_string()))?;
-    
+
     tracing::info!("Found {} pending acks", pending_acks.pending_events.len());
-    
-    // Process pending acks (stub - will be implemented in Phase 4)
+
+    // Process pending acks
     for event in pending_acks.pending_events {
         tracing::info!("Processing pending event: {}", event.event_name);
-        // TODO: Implement pending ack processing in Phase 4
+        // Acknowledge pending events
+        client
+            .ack_custom_event(AckCustomEventParams {
+                event_id: event.event_id,
+            })
+            .await
+            .map_err(|e| PluginError::PendingAcks(e.to_string()))?;
     }
-    
-    // TODO: Implement subscription and event handling in Phase 4
-    tracing::info!("Plugin initialization complete");
-    
-    // Keep plugin running
+
+    // Create plugins monitor
+    let plugins_monitor = Arc::new(
+        client
+            .create_plugins_monitor()
+            .await
+            .map_err(|e| PluginError::MonitorCreate(e.to_string()))?,
+    );
+
+    tracing::info!("Created plugins monitor");
+
+    // Create chat monitor
+    let chat_monitor = Arc::new(
+        client
+            .create_chat_monitor()
+            .await
+            .map_err(|e| PluginError::MonitorCreate(e.to_string()))?,
+    );
+
+    tracing::info!("Created chat monitor");
+
+    // Subscribe to all chats
+    chat_monitor
+        .subscribe_to_all_chats()
+        .await
+        .map_err(|e| PluginError::Subscription(e.to_string()))?;
+
+    tracing::info!("Subscribed to all chats");
+
+    // Create AI client
+    let default_model = &config.ai_completions.models["default"];
+    let default_name = "default".to_string();
+    let model_name = default_model.alias.as_ref().unwrap_or(&default_name);
+    let model_config = &config.ai_completions.models[model_name];
+
+    let api_key = config::resolve_api_key(&config, &model_config.api_key.as_ref().unwrap().cred)
+        .map_err(|e| PluginError::Config(e.to_string()))?;
+
+    let ai_client = Arc::new(AiClient::new(
+        model_config
+            .base_url
+            .as_ref()
+            .unwrap_or(&String::new())
+            .clone(),
+        api_key,
+    ));
+
+    tracing::info!("Created AI client");
+
+    // Main loop: check for trigger conditions and handle AI requests
     loop {
-        tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+        // Get all chat IDs
+        let chat_ids = chat_monitor.get_chat_ids().await;
+
+        for chat_id in chat_ids {
+            // Get chat state
+            if let Some(chat_state) = chat_monitor.get_chat_state(chat_id).await {
+                // Check trigger condition
+                let trigger_reason = trigger_detection::should_trigger(&chat_state);
+
+                if trigger_reason != trigger_detection::TriggerReason::None {
+                    tracing::info!(
+                        "Triggering AI completion for chat {} with reason {:?}",
+                        chat_id,
+                        trigger_reason
+                    );
+
+                    // Handle AI request
+                    if let Err(e) = ai_request::handle_ai_request(
+                        Arc::clone(&client),
+                        Arc::clone(&plugins_monitor),
+                        Arc::clone(&ai_client),
+                        &config,
+                        plugin_id,
+                        chat_id,
+                        &chat_state.messages,
+                        trigger_reason,
+                    )
+                    .await
+                    {
+                        tracing::error!("AI request failed for chat {}: {}", chat_id, e);
+                    }
+                }
+            }
+        }
+
+        // Wait before next check
+        tokio::time::sleep(Duration::from_secs(1)).await;
     }
 }
 
+/// Errors that can occur during plugin execution.
 #[derive(Debug, thiserror::Error)]
 pub enum PluginError {
     #[error("failed to connect to server: {0}")]
@@ -51,4 +170,10 @@ pub enum PluginError {
     Registration(String),
     #[error("failed to get pending acks: {0}")]
     PendingAcks(String),
+    #[error("failed to create monitor: {0}")]
+    MonitorCreate(String),
+    #[error("failed to subscribe: {0}")]
+    Subscription(String),
+    #[error("configuration error: {0}")]
+    Config(String),
 }
