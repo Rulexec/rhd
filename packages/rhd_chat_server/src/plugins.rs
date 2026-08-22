@@ -108,3 +108,68 @@ pub async fn deactivate_plugins_on_disconnect(
 
     Ok(plugin_ids)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_plugin_registry_register() {
+        let mut registry = PluginRegistry::new();
+        
+        let is_new = registry.register_plugin("plugin-1", "conn-1");
+        assert!(is_new);
+        
+        assert_eq!(registry.get_connection_for_plugin("plugin-1"), Some("conn-1"));
+        assert_eq!(registry.get_plugins_for_connection("conn-1"), vec!["plugin-1".to_string()]);
+    }
+
+    #[test]
+    fn test_plugin_registry_re_register() {
+        let mut registry = PluginRegistry::new();
+        
+        registry.register_plugin("plugin-1", "conn-1");
+        let is_new = registry.register_plugin("plugin-1", "conn-2");
+        
+        assert!(!is_new);
+        assert_eq!(registry.get_connection_for_plugin("plugin-1"), Some("conn-2"));
+    }
+
+    #[test]
+    fn test_plugin_registry_remove() {
+        let mut registry = PluginRegistry::new();
+        
+        registry.register_plugin("plugin-1", "conn-1");
+        registry.remove_plugin("plugin-1");
+        
+        assert_eq!(registry.get_connection_for_plugin("plugin-1"), None);
+        assert!(registry.get_plugins_for_connection("conn-1").is_empty());
+    }
+
+    #[test]
+    fn test_plugin_registry_remove_plugins_for_connection() {
+        let mut registry = PluginRegistry::new();
+        
+        registry.register_plugin("plugin-1", "conn-1");
+        registry.register_plugin("plugin-2", "conn-1");
+        
+        let removed = registry.remove_plugins_for_connection("conn-1");
+        assert_eq!(removed.len(), 2);
+        assert!(removed.contains(&"plugin-1".to_string()));
+        assert!(removed.contains(&"plugin-2".to_string()));
+        
+        assert_eq!(registry.get_connection_for_plugin("plugin-1"), None);
+        assert_eq!(registry.get_connection_for_plugin("plugin-2"), None);
+    }
+
+    #[test]
+    fn test_plugin_registry_multiple_plugins_per_connection() {
+        let mut registry = PluginRegistry::new();
+        
+        registry.register_plugin("plugin-1", "conn-1");
+        registry.register_plugin("plugin-2", "conn-1");
+        
+        let plugins = registry.get_plugins_for_connection("conn-1");
+        assert_eq!(plugins.len(), 2);
+    }
+}

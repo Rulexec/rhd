@@ -3,22 +3,13 @@
 //! This server provides a WebSocket API for chat persistence, message editing,
 //! and real-time subscriptions. It does not perform AI calls or MCP tool execution.
 
-mod config;
-mod connection;
-mod custom_events;
-mod error;
-mod events;
-mod handlers;
-mod plugins;
-mod server;
-mod subscriptions;
-
 use clap::Parser;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
-use crate::config::Config;
-use crate::error::ServerError;
+use rhd_chat_server::config::Config;
+use rhd_chat_server::error::ServerError;
+use rhd_chat_server::server;
 
 #[tokio::main]
 async fn main() -> Result<(), ServerError> {

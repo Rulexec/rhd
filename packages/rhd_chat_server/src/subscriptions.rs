@@ -176,3 +176,98 @@ pub type SharedSubscriptionManager = Arc<RwLock<SubscriptionManager>>;
 pub fn new_shared_subscription_manager() -> SharedSubscriptionManager {
     Arc::new(RwLock::new(SubscriptionManager::new()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_subscription_manager_chat_subscription() {
+        let mut manager = SubscriptionManager::new();
+        
+        // Register connection
+        let (conn_id, mut receiver) = manager.register_connection();
+        
+        // Subscribe to chat
+        manager.subscribe_chat(&conn_id, 1);
+        
+        // Broadcast event
+        let event = Event::new("test", serde_json::json!({}));
+        manager.broadcast_to_chat(1, event.clone());
+        
+        // Verify event received
+        let received = receiver.recv().await.unwrap();
+        assert_eq!(received, serde_json::to_string(&event).unwrap());
+        
+        // Unsubscribe
+        manager.unsubscribe_chat(&conn_id, 1);
+        manager.broadcast_to_chat(1, event);
+        
+        // Verify no event received (channel should be empty)
+        assert!(receiver.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn test_subscription_manager_chats_list_subscription() {
+        let mut manager = SubscriptionManager::new();
+        
+        let (conn_id, mut receiver) = manager.register_connection();
+        manager.subscribe_chats_list(&conn_id);
+        
+        let event = Event::new("chatCreated", serde_json::json!({}));
+        manager.broadcast_to_chats_list(event.clone());
+        
+        let received = receiver.recv().await.unwrap();
+        assert_eq!(received, serde_json::to_string(&event).unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_subscription_manager_plugins_list_subscription() {
+        let mut manager = SubscriptionManager::new();
+        
+        let (conn_id, mut receiver) = manager.register_connection();
+        manager.subscribe_plugins_list(&conn_id);
+        
+        let event = Event::new("pluginRegistered", serde_json::json!({}));
+        manager.broadcast_to_plugins_list(event.clone());
+        
+        let received = receiver.recv().await.unwrap();
+        assert_eq!(received, serde_json::to_string(&event).unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_subscription_manager_broadcast_to_all() {
+        let mut manager = SubscriptionManager::new();
+        
+        let (_conn_id1, mut receiver1) = manager.register_connection();
+        let (_conn_id2, mut receiver2) = manager.register_connection();
+        
+        let event = Event::new("customEvent", serde_json::json!({}));
+        manager.broadcast_to_all(event.clone());
+        
+        // Both connections should receive the event
+        let received1 = receiver1.recv().await.unwrap();
+        let received2 = receiver2.recv().await.unwrap();
+        assert_eq!(received1, serde_json::to_string(&event).unwrap());
+        assert_eq!(received2, serde_json::to_string(&event).unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_subscription_manager_cleanup_on_disconnect() {
+        let mut manager = SubscriptionManager::new();
+        
+        let (conn_id, _receiver) = manager.register_connection();
+        manager.subscribe_chat(&conn_id, 1);
+        manager.subscribe_chats_list(&conn_id);
+        manager.subscribe_plugins_list(&conn_id);
+        
+        // Unregister
+        manager.unregister_connection(&conn_id);
+        
+        // Verify all subscriptions are cleaned up
+        assert!(manager.chat_subscribers.get(&1).is_none() ||
+                !manager.chat_subscribers.get(&1).unwrap().contains(&conn_id));
+        assert!(!manager.chats_list_subscribers.contains(&conn_id));
+        assert!(!manager.plugins_list_subscribers.contains(&conn_id));
+    }
+}

@@ -88,3 +88,57 @@ pub fn get_pending_events(
         .collect();
     Ok(pending_events)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rhd_db::ChatDb;
+
+    #[test]
+    fn test_create_custom_event() {
+        let db = ChatDb::new(":memory:").unwrap();
+        
+        let (event_id, event) = create_custom_event(
+            &db,
+            "test-event",
+            Some("plugin-1"),
+            Some("{\"key\": \"value\"}"),
+        ).unwrap();
+        
+        assert!(!event_id.is_empty());
+        assert_eq!(event.event, "customEvent");
+        
+        // Verify event was stored
+        let stored = db.get_custom_event(&event_id).unwrap().unwrap();
+        assert_eq!(stored.event_name, "test-event");
+        assert_eq!(stored.sender_plugin_id, Some("plugin-1".to_string()));
+    }
+
+    #[test]
+    fn test_ack_custom_event() {
+        let db = ChatDb::new(":memory:").unwrap();
+        db.register_plugin("sender").unwrap();
+        db.register_plugin("receiver").unwrap();
+        
+        let (event_id, _) = create_custom_event(&db, "test-event", Some("sender"), None).unwrap();
+        
+        let ack_event = ack_custom_event(&db, &event_id, "receiver").unwrap();
+        assert!(ack_event.is_some());
+        assert_eq!(ack_event.unwrap().event, "customEventAcknowledged");
+        
+        // Verify acknowledgment was stored
+        assert!(db.has_plugin_acked(&event_id, "receiver").unwrap());
+    }
+
+    #[test]
+    fn test_get_pending_events() {
+        let db = ChatDb::new(":memory:").unwrap();
+        db.register_plugin("plugin-1").unwrap();
+        
+        create_custom_event(&db, "event-1", None, None).unwrap();
+        create_custom_event(&db, "event-2", None, None).unwrap();
+        
+        let pending = get_pending_events(&db, "plugin-1").unwrap();
+        assert_eq!(pending.len(), 2);
+    }
+}

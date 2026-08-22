@@ -15,6 +15,7 @@ The project is undergoing a **full rewrite**. The old implementation is being re
 - `rhd_fsm` — Finite state machine framework
 - `rhd_mcp_client` — MCP protocol client for tool usage
 - `rhd_chat_api` — API types for chat WebSocket protocol
+- `rhd_chat_server` — WebSocket server for chat storage and management
 
 **Packages kept for reference only (old implementation):**
 - `rhd_api`, `rhd_chat`, `rhd_app`, `rhd_test` — These contain the previous implementation and may be helpful as reference, but will be rewritten.

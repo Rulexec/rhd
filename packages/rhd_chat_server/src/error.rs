@@ -21,15 +21,3 @@ pub enum ServerError {
     Internal(String),
 }
 
-impl ServerError {
-    /// Convert to error code for API response.
-    pub fn to_error_code(&self) -> rhd_chat_api::ErrorCode {
-        match self {
-            ServerError::Database(_) => rhd_chat_api::ErrorCode::InternalError,
-            ServerError::WebSocket(_) => rhd_chat_api::ErrorCode::InternalError,
-            ServerError::Json(_) => rhd_chat_api::ErrorCode::InvalidRequest,
-            ServerError::Io(_) => rhd_chat_api::ErrorCode::InternalError,
-            ServerError::Internal(_) => rhd_chat_api::ErrorCode::InternalError,
-        }
-    }
-}
