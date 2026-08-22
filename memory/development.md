@@ -90,3 +90,19 @@ See [backend-e2e.md](backend-e2e.md)
 - WAL mode enabled for better concurrency and crash recovery
 - Database directory is created automatically if it doesn't exist
 - Fails fast if database cannot be opened or accessed
+
+## Plugin Development
+
+### Pattern: Plugin README Maintenance
+
+**Context:** When implementing or modifying any plugin in the `plugins/` directory
+**Rule:**
+- When **implementing or changing** an existing plugin: maintain (update) the plugin's own `README.md` file to reflect the changes
+- When **developing a new** plugin: consult `plugins/README.md` first for plugin development instructions and conventions
+
+**Why:** Each plugin should have up-to-date documentation describing its purpose, configuration, and usage. The central `plugins/README.md` contains development guidelines that ensure consistency across all plugins.
+
+**Example workflow:**
+1. Starting new plugin work → Read `plugins/README.md` for development guidelines
+2. Implementing feature X in plugin Y → Update `plugins/plugin_y/README.md` to document feature X
+3. Changing plugin configuration → Update the plugin's README with new config options
