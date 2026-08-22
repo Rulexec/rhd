@@ -2,6 +2,8 @@
 members = [
     "packages/rhd_util",
     "packages/rhd_ai",
+    "packages/rhd_ai_client",
+    "packages/rhd_mock_ai_provider",
     "packages/rhd_mcp_client",
     "packages/rhd_api",
     "packages/rhd_db",
