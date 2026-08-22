@@ -8,17 +8,17 @@ RHD is a Rust-based automation tool for AI-assisted task execution. It uses a da
 
 The project is undergoing a **full rewrite**. The old implementation is being replaced with a new architecture.
 
-**Packages being kept (active development):**
+**Active packages:**
 - `rhd_util` — Shared error types, utilities, env var substitution
-- `rhd_ai` — OpenAI-compatible AI client
-- `rhd_db` — SQLite database layer
-- `rhd_fsm` — Finite state machine framework
+- `rhd_ai_client` — AI client wrapper (replaces old rhd_ai)
+- `rhd_mock_ai_provider` — Mock AI provider for testing
 - `rhd_mcp_client` — MCP protocol client for tool usage
+- `rhd_db` — SQLite database layer
 - `rhd_chat_api` — API types for chat WebSocket protocol
 - `rhd_chat_server` — WebSocket server for chat storage and management
-
-**Packages kept for reference only (old implementation):**
-- `rhd_api`, `rhd_chat`, `rhd_app`, `rhd_test` — These contain the previous implementation and may be helpful as reference, but will be rewritten.
+- `rhd_chat_client` — WebSocket client for chat server
+- `rhd_app` — CLI tool for chat server interaction
+- `rhd_plugin_ai_completions` — AI completions plugin
 
 **Important implications for agents:**
 - Existing memory files may describe the **old** architecture and may be **partially or fully unrelated** to the new implementation.
@@ -37,14 +37,16 @@ rhd/
 ├── memory/           # This knowledge base (split by topic)
 │   └── features/     # Product-scoped feature documentation
 ├── packages/
-│   ├── rhd_util/     # Shared error types, utilities, env var substitution
-│   ├── rhd_ai/       # OpenAI-compatible AI client
-│   ├── rhd_api/      # Shared IPC types, protocol definitions, execution tracking types
-│   ├── rhd_db/       # SQLite database for scenario ID persistence
-│   ├── rhd_mcp_client/ # MCP protocol client for tool usage
-│   ├── rhd_chat/     # Chat manager, tool loop, MCP integration for chat
-│   ├── rhd_app/      # Main binary (daemon + client)
-│   └── rhd_test/     # E2E test runner with mock AI server
+│   ├── rhd_util/           # Shared error types, utilities, env var substitution
+│   ├── rhd_ai_client/      # AI client wrapper
+│   ├── rhd_mock_ai_provider/ # Mock AI provider for testing
+│   ├── rhd_db/             # SQLite database layer
+│   ├── rhd_mcp_client/     # MCP protocol client for tool usage
+│   ├── rhd_chat_api/       # Chat API types and protocol definitions
+│   ├── rhd_chat_server/    # WebSocket server for chat management
+│   ├── rhd_chat_client/    # WebSocket client for chat server
+│   ├── rhd_app/            # CLI tool for chat server interaction
+│   └── rhd_plugin_ai_completions/ # AI completions plugin
 ```
 
 ## Documentation Structure
@@ -91,12 +93,10 @@ Detailed documentation is split into topic-specific files. Read the relevant fil
 | [scenarios.md](scenarios.md) | When implementing or modifying scenario execution, action types, MCP tool integration, skip conditions, or placeholder resolution |
 | [configuration.md](configuration.md) | When working on model configs, credentials, CLI arguments, `rhd.yaml`, env var substitution, or model aliases |
 | [protocols.md](protocols.md) | When working on IPC (Unix socket), WebSocket protocol, CWD propagation, or client-daemon communication |
-| [chat.md](chat.md) | When working on ChatManager, chat persistence, chat events, streaming, or chat-related WebSocket handlers |
-| [fsm.md](fsm.md) | When working on ToolLoopFsm, helper FSMs (TodoListFsm, RolesFsm), async wrapper, DB sync listener, or event interception |
 | [logging.md](logging.md) | When working on execution logs, `meta.json` format, log output format, or step timing/tracking |
 | [development.md](development.md) | When planning features, running tests, committing code, or needing to understand project conventions and error handling |
 | [file-structure.md](file-structure.md) | When you need to find which file contains specific functionality or understand the project layout |
-| [backend-e2e.md](backend-e2e.md) | When working on backend E2E tests, rhd_test crate, mock server, or test scenarios |
+| [backend-e2e.md](backend-e2e.md) | When working on backend E2E tests, mock server, or test scenarios |
 | [test-cases.md](test-cases.md) | When creating or modifying test cases, writing test step comments, or understanding test case format |
 | [debugging.md](debugging.md) | When any test fails |
 
@@ -130,7 +130,7 @@ Instead of scanning directories or reading files to find where the tool loop is 
 tokensave_search(query="tool loop")
 ```
 
-This immediately returns that the tool loop code is in [`packages/rhd_chat/src/tools/tool_loop.rs`](packages/rhd_chat/src/tools/tool_loop.rs) (FSM-driven, delegates to `FsmToolLoop`), along with related FSM files in `packages/rhd_fsm/src/` and test functions — no file scanning required.
+This immediately returns relevant symbols and their relationships without manual file scanning.
 
 ### When to Use File Reads
 

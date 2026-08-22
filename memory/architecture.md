@@ -4,26 +4,10 @@
 
 **rhd_util**: Shared error types (`RhdError`, `RhdResult<T>`), `substitute_env_vars()` for `$VAR` expansion in config strings
 
-**rhd_ai**:
-- `ModelConfig`: AI model configuration (model_id, baseUrl, apiKey, model, optional token pricing)
-- `OpenAiClient`: HTTP client for chat completions API with streaming support
-- `ChatMessage`: Public enum for building message history (System, User, Assistant, Tool variants)
-- `chat_stream()`: Streaming chat completion with callback-based chunk processing
-- `chat_stream_cancellable()`: Streaming with `CancellationToken` for abort support
-- `chat_stream_with_tools()`: Streaming with tool definitions for MCP tool loop
-- `StreamChunk`, `StreamResult`: Types for streaming response handling
-- Loads models from `models/*.yaml` at startup
-- Parses token usage from API responses
-
-**rhd_api**:
-- Shared types for execution tracking, WebSocket protocol, and token pricing
-- `ExecutionEvent`, `StepTiming`, `LogSection`, `TokenUsage`, `ScenarioMeta`
-- `WsRequest`, `WsResponse`, `WsEvent`, `ErrorCode` for WebSocket protocol
-- Chat request types: `CreateChat`, `ListChats`, `GetChat`, `DeleteChat`, `SendMessage`, `EditMessage`, `AbortChat`
-- Chat event types: `ChatStreamChunkEvent`, `ChatStreamFinishedEvent`, `ChatStreamErrorEvent`, `ChatMessageAddedEvent`, `ChatUpdatedEvent`
-- `ChatMessageDto`: Data transfer object for chat messages
-- `TokenPriceTier` and `calculate_cost()` for token pricing
-- Error codes: `ChatNotFound`, `MessageNotFound`, `ChatStreamFailed`
+**rhd_ai_client**:
+- AI client wrapper for OpenAI-compatible APIs
+- Replaces the old `rhd_ai` package
+- Provides streaming chat completions with tool support
 
 **rhd_db**:
 - `ScenarioDb`: SQLite database wrapper for persisting scenario execution IDs
@@ -43,31 +27,32 @@
 - Built-in tools support (e.g., `rhd_set_flag`)
 - `pid()`: Returns PID of spawned MCP server process (for logging during reload)
 
-**rhd_chat**:
-- `ChatManager`: Handles all chat operations with streaming AI responses
-- `ChatEvent`: Enum for chat events (StreamChunk, ThinkingChunk, StreamFinished, StreamError, MessageAdded, ToolCallStarted, ToolCallCompleted, ChatPaused, ChatResumed, etc.)
-- `tool_loop()`: FSM-driven tool loop implementation (delegates to `FsmToolLoop` and `ToolLoopFsm`)
-- `FsmToolLoop`: Async wrapper that drives the FSM and handles I/O
-- `BuiltinFsmManager`: Coordinates helper FSMs for built-in tools (todo list, roles)
-- `create_db_sync_listener()`: Synchronizes FSM state to database via event listeners
-- `collect_tools_from_projects()`: Gathers tools from attached projects' MCP clients
-- `ChatLoggers`: Logging infrastructure for chat interactions
-- `ProjectProvider`: Trait for accessing project MCP clients
-- Tool call IDs are made globally unique using FSM's `tool_call_id_counter`
-- Event ordering: ToolCallStarted sent BEFORE MessageAdded (intermediate assistant) to ensure WebSocket client creates temp message first
+**rhd_chat_api**:
+- API types for chat WebSocket protocol
+- Defines request/response types for chat operations
+- Event types for real-time updates
 
-**rhd_app**:
-- **Daemon mode**: Unix socket server on `$HOME/rhd.sock` (default), accepts `RunScenario` and `Reload` requests
-- **WebSocket server**: Optional TCP listener on `127.0.0.1:{ws_port}` for Web UI integration
-- **Client mode**: Connects to daemon, sends scenario name, receives output. Also supports `rhd reload` command
-- **Scenario executor**: Runs action chains sequentially with placeholder resolution
-- **Execution tracking**: Tracks step timings, token usage, log sections
-- **IPC protocol**: rkyv serialization with version-prefixed framing (Unix socket)
-- **WebSocket protocol**: JSON over WebSocket (TCP)
-- **MCP integration**: Loads MCP configs, caches server instances, handles tool calls
-- **Daemon state structure**: `DaemonState` contains `inner: RwLock<ReloadableInner>` for reloadable config (scenarios, models, mcp_configs, default_model, project_manager, config_paths) and `reload_lock: RwLock<()>` for coordinating reload with active executions/chats
-- **Reload mechanism**: `handle_reload()` acquires write lock on `reload_lock`, waits for active executions/chats to finish, reloads configs from disk, diffs MCP configs, stops removed MCP servers (with PID logging), restarts changed MCP servers, updates state
-- **MCP cache extensions**: `stop_specific()` and `restart_specific()` methods for managing specific MCP servers by cache key
-- **Role system**: Projects can define roles in `roles/<roleName>/` directories with `systemPrompt.md` and `whenToUse.md`. Roles are loaded by `project_loader.rs` and exposed via `ProjectProvider` trait. `ChatManager` provides `set_active_role()`, `clear_active_role()`, `get_active_role()`, and `get_available_roles()` methods. Role state tracked in `chats` table (`active_role_project`, `active_role_name`, `roles_list_injected`, `role_prompt_pending` columns).
-- **Todo list system**: AI can manage task tracking via `rhd_set_todo_list` tool. Todo list stored as markdown in `chats.todo_list` column. Parsed into `TodoItem` structs with `TodoStatus` enum (Pending, InProgress, Completed, Discarded). Injected into AI context after each tool loop iteration via `inject_todo_list_message()`. Tool contract injected on first message via `inject_todo_tool_contract()`.
-- **Template system**: Templates loaded at compile-time via `include_str!` macro in `templates.rs`. `TemplateLoader` provides `get_template()` and `render_template()` methods. Templates organized in `templates/mcp_internal/`, `templates/environment/`, and `templates/roles/` directories.
+**rhd_chat_server**:
+- WebSocket server for chat storage and management
+- Handles chat persistence, message streaming, and plugin management
+- Uses `rhd_db` for data persistence
+
+**rhd_chat_client**:
+- WebSocket client for connecting to `rhd_chat_server`
+- Provides methods for chat operations: list chats, get chat, create chat, add messages, etc.
+- Handles real-time event subscriptions and streaming
+
+**rhd_app** (CLI tool):
+- Command-line interface for interacting with `rhd_chat_server`
+- Uses `rhd_chat_client` for WebSocket communication
+- Commands: `chats list`, `messages <chat_id>`, `queue <chat_id>`, `create-chat <title>`, `plugins list`, `plugins remove <plugin_id>`, `queue add <chat_id> <content>`
+- Outputs JSON for easy parsing and scripting
+
+**rhd_plugin_ai_completions**:
+- AI completions plugin for the chat server
+- Processes queued messages and generates AI responses
+- Integrates with `rhd_chat_client` and `rhd_chat_server`
+
+**rhd_mock_ai_provider**:
+- Mock AI provider for testing
+- Simulates AI API responses for integration testing

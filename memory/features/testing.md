@@ -1,65 +1,40 @@
 # Testing Infrastructure
 
 ## Purpose
-End-to-end testing for backend (Rust). Tests validate complete workflows: daemon startup, scenario execution, AI interactions, and WebSocket communication.
+Testing for backend (Rust). Tests validate unit functionality and integration workflows.
 
-## Backend E2E Tests
+## Unit Tests
 
-### Test Runner: `rhd_test`
-Orchestrates full integration tests:
-- Starts mock OpenAI-compatible HTTP server
-- Spawns `rhd daemon` with test configuration
-- Runs `rhd run <scenario>` against daemon
-- Validates AI request payloads (placeholder resolution, CWD propagation)
-- Validates `rhd run` output and exit codes
-- Cleans up daemon and temp directories
+### Cargo Unit Tests
+Run with: `mise run test-cargo`
 
-### Test Modes
-- **Standard test:** Basic scenario execution with runCommand + aiChat + output
-- **MCP test:** Scenario with MCP tool calls (built-in `rhd_set_flag`, skip conditions)
+These tests validate individual components and functions within each package.
 
-### CLI Arguments
-```
---seed NUMBER          # RNG seed for deterministic tests (default: 42)
---repetitions NUMBER   # run tests N times with incrementing seed (default: 10)
-```
+## Manual Testing with CLI
 
-### Mock AI Server
-- HTTP server on random port
-- `POST /v1/chat/completions` endpoint
-- Records all requests for validation
-- Returns configurable responses
-- Supports streaming (SSE) with controlled chunk emission
-- Control server endpoints for test coordination:
-  - `/mock-response` — set AI response content
-  - `/stream-chunk` — emit streaming chunk
-  - `/stream-finish` — finish stream
-  - `/stream-ready` — check stream state
+The CLI tool (`rhd_app`) provides a manual testing workflow for the chat server and plugins:
 
-### Test Scenarios
-Located in `test_e2e/scenarios/`:
-- `rhd_test/` — standard test scenario (runCommand → aiChat → output)
-- `mcp_test/` — MCP tool test scenario (aiChat with tools → runCommand with skip)
+1. **Start server**: Run `rhd_chat_server`
+2. **Create chat**: Use `rhd create-chat <title>`
+3. **Queue message**: Use `rhd queue add <chat_id> <content>`
+4. **Verify processing**: Check server logs for plugin activity
+5. **Check results**: Use `rhd messages --all <chat_id>` to view responses
 
-### Deterministic Testing
-- Seeded RNG for all random generation (AI responses, exit codes)
-- Temp scripts pre-generated with deterministic output
-- Same seed → same test behavior (reproducible failures)
-- Per-repetition state: fresh daemon, new temp dirs, reset mock server
+This workflow is particularly useful for testing `rhd_plugin_ai_completions`.
 
 ## Running Tests
 
 ### Mise Commands
 ```bash
 mise run test-cargo              # cargo unit tests
-mise run test-e2e                # backend E2E (cargo build + rhd_test)
-mise run test-all                # all tests (cargo + e2e)
+mise run check-cargo             # cargo compilation check
 ```
 
 ### Manual Execution
 ```bash
-# Backend E2E
-cargo build
-cargo run -p rhd_test -- --seed 123 --repetitions 5
+# Unit tests
+cargo test
 
+# Compilation check
+cargo check
 ```

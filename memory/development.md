@@ -32,10 +32,7 @@ When splitting, extract test modules first, then split by logical responsibility
 | Command | Description |
 |---------|-------------|
 | `mise run test-cargo` | Cargo unit tests (`cargo test`) |
-| `mise run test-e2e` | Backend e2e tests (`cargo build && cargo run -p rhd_test`) |
-| `mise run test-all` | All tests (cargo + e2e) |
-
-Pass arguments to rhd_test: `mise run test-e2e -- --seed 100 --repetitions 5`
+| `mise run test-all` | All tests (cargo) |
 
 ### Mise Check Commands
 
