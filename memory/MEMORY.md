@@ -4,28 +4,6 @@
 
 RHD is a Rust-based automation tool for AI-assisted task execution. It uses a daemon/client architecture where a long-running daemon process executes scenarios (action chains) on behalf of client requests via Unix socket IPC. The system also includes a persistent chat feature for direct AI conversations with streaming responses and MCP tool integration.
 
-## ⚠️ Current State: Full Rewrite In Progress
-
-The project is undergoing a **full rewrite**. The old implementation is being replaced with a new architecture.
-
-**Active packages:**
-- `rhd_util` — Shared error types, utilities, env var substitution
-- `rhd_ai_client` — AI client wrapper (replaces old rhd_ai)
-- `rhd_mock_ai_provider` — Mock AI provider for testing
-- `rhd_mcp_client` — MCP protocol client for tool usage
-- `rhd_db` — SQLite database layer
-- `rhd_chat_api` — API types for chat WebSocket protocol
-- `rhd_chat_server` — WebSocket server for chat storage and management
-- `rhd_chat_client` — WebSocket client for chat server
-- `rhd_app` — CLI tool for chat server interaction
-- `rhd_plugin_ai_completions` — AI completions plugin
-
-**Important implications for agents:**
-- Existing memory files may describe the **old** architecture and may be **partially or fully unrelated** to the new implementation.
-- **Before editing existing code**, ask the user whether the old code should be modified or whether new code should be written instead.
-- Memory files in `memory/` and `memory/features/` reflect the previous state of the project and should be treated as historical context, not current truth.
-- When in doubt about whether something is still relevant, **ask the user**.
-
 ## Multi-Crate Workspace Structure
 
 ```
@@ -147,10 +125,11 @@ Product-scoped feature documentation (what the feature does, not how it's implem
 | File | When to read |
 |------|-------------|
 | [features/scenario-execution.md](features/scenario-execution.md) | Understanding how scenarios run, action types, placeholders, abort, pause/resume |
-| [features/chat.md](features/chat.md) | Understanding chat feature, streaming, model selection, message editing, delete all chats, auto-scroll |
+| [features/chat.md](features/chat.md) | Understanding chat feature, streaming, model selection, message editing, delete all chats, auto-scroll, queue messages, tools management |
 | [features/mcp-tools.md](features/mcp-tools.md) | Understanding MCP tool integration, built-in tools, flags, skip conditions, tool call error UI |
 | [features/configuration.md](features/configuration.md) | Understanding config files, credentials, model aliases, CLI arguments |
 | [features/testing.md](features/testing.md) | Understanding E2E test infrastructure, mock server, test utilities |
 | [features/logging-monitoring.md](features/logging-monitoring.md) | Understanding log files, meta.json, WebSocket events, notifications |
 | [features/projects.md](features/projects.md) | Understanding projects feature, project structure, attaching projects to chats, MCP server lifecycle, system prompt injection |
 | [features/roles.md](features/roles.md) | Understanding roles feature, role selection, AI-driven role switching, role conflict detection, role injection |
+| [features/plugins.md](features/plugins.md) | Understanding plugin system, plugin lifecycle, custom event coordination, plugin monitoring, AI completions plugin |

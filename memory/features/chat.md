@@ -25,6 +25,26 @@ Persistent conversational interface for direct AI interaction. Users create chat
 - Shows confirmation dialog before deleting
 - Disabled when no chats exist
 
+## Queue Messages
+- Separate message queue alongside regular messages
+- Queue messages wait to be processed by plugins (e.g., AI completions)
+- CRUD operations: add, update, delete, list queue messages
+- Queue messages have the same structure as regular messages (role, content, model, etc.)
+- Tags can be applied to queue messages
+- Real-time events: queueMessageAdded, queueMessageUpdated, queueMessageDeleted
+- Plugins can monitor queue and process messages when ready
+- Queue is per-chat, independent from message history
+
+## Tools Management
+- Chat-level tool management for plugins
+- Plugins can register tools for a specific chat
+- Tools have: name, description, parameters (JSON schema)
+- Each tool is associated with the plugin that registered it
+- CRUD operations: addTools, removeTools, getTools
+- Tools are scoped to a chat, not global
+- Real-time events: toolsUpdated when tools change
+- Plugins validate tool registration (must be registered for the connection)
+
 ## How It Works
 
 ### Chat Lifecycle
