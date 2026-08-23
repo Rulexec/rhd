@@ -2,8 +2,6 @@
 
 ## Core Components
 
-**rhd_util**: Shared error types (`RhdError`, `RhdResult<T>`), `substitute_env_vars()` for `$VAR` expansion in config strings
-
 **rhd_ai_client**:
 - AI client wrapper for OpenAI-compatible APIs
 - Replaces the old `rhd_ai` package

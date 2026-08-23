@@ -15,7 +15,6 @@ rhd/
 ├── memory/           # This knowledge base (split by topic)
 │   └── features/     # Product-scoped feature documentation
 ├── packages/
-│   ├── rhd_util/           # Shared error types, utilities, env var substitution
 │   ├── rhd_ai_client/      # AI client wrapper
 │   ├── rhd_mock_ai_provider/ # Mock AI provider for testing
 │   ├── rhd_db/             # SQLite database layer

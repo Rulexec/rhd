@@ -16,10 +16,6 @@ packages/rhd_app/src/
     ├── remove_plugin.rs # Remove plugin command
     └── add_queue.rs  # Add queued message command
 
-packages/rhd_util/src/
-├── lib.rs            # RhdError, RhdResult, substitute_env_vars()
-└── tests.rs          # Util tests
-
 packages/rhd_db/src/
 ├── lib.rs            # Module exports, ScenarioDb, DbError
 ├── tests.rs          # DB tests
@@ -27,17 +23,13 @@ packages/rhd_db/src/
     ├── mod.rs        # ChatDb, ChatInfo, Message, chat/message persistence
     ├── chats.rs      # Chat CRUD operations
     ├── messages.rs   # Message CRUD operations
-    ├── projects.rs   # Project-related DB operations
     ├── schema.rs     # Database schema definitions
     └── tests/
         ├── mod.rs
         ├── helpers.rs
         ├── chat_tests.rs
         ├── message_tests.rs
-        ├── migration_tests.rs
-        ├── project_tests.rs
-        ├── role_tests.rs
-        └── todo_tests.rs
+        └── migration_tests.rs
 
 packages/rhd_mcp_client/src/
 ├── lib.rs            # McpConfig, ToolDefinition, ToolResult, McpClientTrait
