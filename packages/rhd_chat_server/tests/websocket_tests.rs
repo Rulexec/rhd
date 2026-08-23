@@ -130,7 +130,7 @@ async fn test_get_chat() {
 
     // Get chat
     let result = client
-        .get_chat(GetChatParams { chat_id })
+        .get_chat(GetChatParams { chat_id, if_version_higher_than: None })
         .await
         .unwrap();
 
@@ -177,7 +177,7 @@ async fn test_get_chat_includes_queue_count() {
 
     // Get chat
     let result = client
-        .get_chat(GetChatParams { chat_id })
+        .get_chat(GetChatParams { chat_id, if_version_higher_than: None })
         .await
         .unwrap();
 

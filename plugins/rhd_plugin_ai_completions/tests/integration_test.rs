@@ -191,6 +191,7 @@ async fn test_plugin_triggers_on_queued_messages() {
         let chat_result = client
             .get_chat(GetChatParams {
                 chat_id: create_result.chat_id,
+                if_version_higher_than: None,
             })
             .await
             .expect("Failed to get chat");
@@ -259,6 +260,7 @@ async fn test_plugin_skips_chats_with_error_tag() {
         let chat_result = client
             .get_chat(GetChatParams {
                 chat_id: create_result.chat_id,
+                if_version_higher_than: None,
             })
             .await
             .expect("Failed to get chat");
@@ -431,6 +433,7 @@ ai_completions:
         let chat_result = client
             .get_chat(GetChatParams {
                 chat_id: create_result.chat_id,
+                if_version_higher_than: None,
             })
             .await
             .expect("Failed to get chat");

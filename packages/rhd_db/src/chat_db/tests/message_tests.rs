@@ -9,8 +9,8 @@ fn test_add_and_get_messages() {
     let db = ChatDb::new(path).unwrap();
     let chat_id = db.create_chat("Chat").unwrap();
 
-    let msg1 = db.add_message(chat_id, "user", "Hello", Some("gpt4"), None).unwrap();
-    let msg2 = db.add_message(chat_id, "assistant", "Hi there", Some("gpt4"), None).unwrap();
+    let (msg1, _) = db.add_message(chat_id, "user", "Hello", Some("gpt4"), None).unwrap();
+    let (msg2, _) = db.add_message(chat_id, "assistant", "Hi there", Some("gpt4"), None).unwrap();
     assert_eq!(msg1, 1);
     assert_eq!(msg2, 2);
 
@@ -33,9 +33,9 @@ fn test_update_message() {
 
     let db = ChatDb::new(path).unwrap();
     let chat_id = db.create_chat("Chat").unwrap();
-    let msg_id = db.add_message(chat_id, "user", "Original", None, None).unwrap();
+    let (msg_id, _) = db.add_message(chat_id, "user", "Original", None, None).unwrap();
 
-    db.update_message(msg_id, "Updated").unwrap();
+    let _version = db.update_message(msg_id, "Updated").unwrap();
 
     let msg = db.get_message(msg_id).unwrap().unwrap();
     assert_eq!(msg.content, "Updated");

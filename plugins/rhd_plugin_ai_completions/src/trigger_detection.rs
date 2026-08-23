@@ -82,6 +82,7 @@ mod tests {
             messages,
             queued_messages_count: queued_count,
             tags,
+            version: 1,
         }
     }
 

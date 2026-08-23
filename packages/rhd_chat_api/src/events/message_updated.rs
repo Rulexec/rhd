@@ -29,6 +29,8 @@ pub struct MessageUpdatedData {
     pub chat_id: i64,
     /// The updated message.
     pub message: Message,
+    /// Version of the chat after message update.
+    pub chat_version: i64,
 }
 
 #[cfg(test)]
@@ -49,6 +51,7 @@ mod tests {
                 reasoning_content: Some("Updated reasoning".to_string()),
                 tags: vec!["tag1".to_string()],
             },
+            chat_version: 3,
         };
 
         let json = serde_json::to_string(&data).unwrap();

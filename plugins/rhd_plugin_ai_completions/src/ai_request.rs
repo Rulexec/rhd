@@ -38,6 +38,7 @@ pub async fn handle_ai_request(
     chat_id: i64,
     messages: &[Message],
     trigger_reason: TriggerReason,
+    known_version: Option<i64>,
 ) -> Result<(), AiRequestError> {
     // Send preRequest event
     let event_result = client
@@ -78,19 +79,53 @@ pub async fn handle_ai_request(
         process_queued_messages(&client, chat_id).await?;
         tracing::info!(chat_id = chat_id, "finished processing queued messages");
 
-        // Refetch messages after processing queued messages
+        // Refetch messages after processing queued messages using conditional fetch
         let chat_result = client
-            .get_chat(GetChatParams { chat_id })
+            .get_chat(GetChatParams {
+                chat_id,
+                if_version_higher_than: known_version,
+            })
             .await
             .map_err(|e| AiRequestError::MessageAdd(e.to_string()))?;
         tracing::info!(
             chat_id = chat_id,
             messages_count = chat_result.messages.len(),
+            chat_version = chat_result.chat.version,
             "refetched messages after processing queue"
         );
         chat_result.messages
     } else {
-        messages.to_vec()
+        // Verify state freshness before AI request
+        if let Some(version) = known_version {
+            tracing::debug!(
+                chat_id = chat_id,
+                known_version = version,
+                "verifying state freshness before AI request"
+            );
+            let chat_result = client
+                .get_chat(GetChatParams {
+                    chat_id,
+                    if_version_higher_than: Some(version),
+                })
+                .await
+                .map_err(|e| AiRequestError::MessageAdd(e.to_string()))?;
+            
+            // If we got a response, state was stale and we have fresh data
+            if chat_result.chat.version > version {
+                tracing::info!(
+                    chat_id = chat_id,
+                    old_version = version,
+                    new_version = chat_result.chat.version,
+                    "state was stale, using fresh data"
+                );
+                chat_result.messages
+            } else {
+                // State is still fresh, use provided messages
+                messages.to_vec()
+            }
+        } else {
+            messages.to_vec()
+        }
     };
 
     // Acknowledge own event

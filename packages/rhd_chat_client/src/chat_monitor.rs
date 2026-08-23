@@ -18,6 +18,8 @@ pub struct ChatState {
     pub messages: Vec<Message>,
     pub queued_messages_count: i64,
     pub tags: Vec<String>,
+    /// Last known version of the chat. Used to detect missed events.
+    pub version: i64,
 }
 
 /// Monitor that tracks chats and their state.
@@ -56,7 +58,7 @@ impl ChatMonitor {
                             chat_id = chat_id,
                             "received chat created event"
                         );
-                        match client.get_chat(GetChatParams { chat_id }).await {
+                        match client.get_chat(GetChatParams { chat_id, if_version_higher_than: None }).await {
                             Ok(chat_result) => {
                                 tracing::debug!(
                                     chat_id = chat_id,
@@ -69,6 +71,7 @@ impl ChatMonitor {
                                 messages: chat_result.messages,
                                 queued_messages_count: chat_result.queued_messages_count,
                                 tags: data.chat.tags.clone(),
+                                version: chat_result.chat.version,
                             };
                             states.write().await.insert(chat_id, state);
                             
@@ -77,12 +80,13 @@ impl ChatMonitor {
                             
                             // Fetch chat state again after subscribing to catch any changes
                             // that happened between the initial get_chat and subscribe
-                            if let Ok(latest_chat_result) = client.get_chat(GetChatParams { chat_id }).await {
+                            if let Ok(latest_chat_result) = client.get_chat(GetChatParams { chat_id, if_version_higher_than: None }).await {
                                 let state = ChatState {
                                     chat_id,
                                     messages: latest_chat_result.messages,
                                     queued_messages_count: latest_chat_result.queued_messages_count,
                                     tags: data.chat.tags.clone(),
+                                    version: latest_chat_result.chat.version,
                                 };
                                 states.write().await.insert(chat_id, state);
                             }
@@ -94,6 +98,69 @@ impl ChatMonitor {
                                 let states = Arc::clone(&chat_states_for_sub);
                                 let client = Arc::clone(&client_for_sub);
                                 async move {
+                                    // Extract version from event
+                                    let event_version = match &event {
+                                        ChatEvent::MessageAdded(data) => data.chat_version,
+                                        ChatEvent::MessageUpdated(data) => data.chat_version,
+                                        ChatEvent::MessageDeleted(data) => data.chat_version,
+                                        ChatEvent::QueueMessageAdded(data) => data.chat_version,
+                                        ChatEvent::QueueMessageUpdated(data) => data.chat_version,
+                                        ChatEvent::QueueMessageDeleted(data) => data.chat_version,
+                                        ChatEvent::ToolsUpdated(data) => data.chat_version,
+                                    };
+
+                                    // Check local state version
+                                    let local_version = {
+                                        let states_read = states.read().await;
+                                        states_read.get(&chat_id).map(|s| s.version)
+                                    };
+
+                                    // Validate version
+                                    match local_version {
+                                        Some(local_ver) if event_version <= local_ver => {
+                                            // Stale event, ignore
+                                            tracing::debug!(
+                                                chat_id = chat_id,
+                                                event_version = event_version,
+                                                local_version = local_ver,
+                                                "ignoring stale event"
+                                            );
+                                            return;
+                                        }
+                                        Some(local_ver) if event_version > local_ver + 1 => {
+                                            // Version gap detected, refetch state
+                                            tracing::warn!(
+                                                chat_id = chat_id,
+                                                event_version = event_version,
+                                                local_version = local_ver,
+                                                "version gap detected, refetching state"
+                                            );
+                                            if let Ok(chat_result) = client
+                                                .get_chat(GetChatParams {
+                                                    chat_id,
+                                                    if_version_higher_than: Some(local_ver),
+                                                })
+                                                .await
+                                            {
+                                                let mut states_write = states.write().await;
+                                                if let Some(state) = states_write.get_mut(&chat_id) {
+                                                    state.messages = chat_result.messages;
+                                                    state.queued_messages_count = chat_result.queued_messages_count;
+                                                    state.version = chat_result.chat.version;
+                                                }
+                                            }
+                                            return;
+                                        }
+                                        _ => {
+                                            // Normal case: event_version == local_ver + 1 or first event
+                                            tracing::debug!(
+                                                chat_id = chat_id,
+                                                event_version = event_version,
+                                                "processing event"
+                                            );
+                                        }
+                                    }
+
                                     match event {
                                         ChatEvent::MessageAdded(_)
                                         | ChatEvent::MessageUpdated(_)
@@ -103,12 +170,13 @@ impl ChatMonitor {
                                         | ChatEvent::QueueMessageDeleted(_) => {
                                             tracing::debug!(chat_id = chat_id, "updating chat state after event");
                                             if let Ok(chat_result) =
-                                                client.get_chat(GetChatParams { chat_id }).await
+                                                client.get_chat(GetChatParams { chat_id, if_version_higher_than: None }).await
                                             {
                                                 let mut states = states.write().await;
                                                 if let Some(state) = states.get_mut(&chat_id) {
                                                     state.messages = chat_result.messages;
                                                     state.queued_messages_count = chat_result.queued_messages_count;
+                                                    state.version = chat_result.chat.version;
                                                 }
                                             }
                                         }
@@ -127,13 +195,14 @@ impl ChatMonitor {
                     }
                     ChatsListEvent::ChatUpdated(data) => {
                         if let Ok(chat_result) =
-                            client.get_chat(GetChatParams { chat_id: data.chat.id }).await
+                            client.get_chat(GetChatParams { chat_id: data.chat.id, if_version_higher_than: None }).await
                         {
                             let state = ChatState {
                                 chat_id: data.chat.id,
                                 messages: chat_result.messages,
                                 queued_messages_count: chat_result.queued_messages_count,
                                 tags: data.chat.tags,
+                                version: chat_result.chat.version,
                             };
                             states.write().await.insert(data.chat.id, state);
                         }
@@ -148,13 +217,14 @@ impl ChatMonitor {
         // Fetch initial chat list
         let list_result = client.list_chats(ListChatsParams { tags: vec![] }).await?;
         for chat_summary in list_result.chats {
-            if let Ok(chat_result) = client.get_chat(GetChatParams { chat_id: chat_summary.id }).await
+            if let Ok(chat_result) = client.get_chat(GetChatParams { chat_id: chat_summary.id, if_version_higher_than: None }).await
             {
                 let state = ChatState {
                     chat_id: chat_summary.id,
                     messages: chat_result.messages,
                     queued_messages_count: chat_result.queued_messages_count,
                     tags: chat_summary.tags,
+                    version: chat_result.chat.version,
                 };
                 chat_states.write().await.insert(chat_summary.id, state);
             }
@@ -194,6 +264,69 @@ impl ChatMonitor {
             let states = Arc::clone(&chat_states);
             let client = Arc::clone(&client);
             async move {
+                // Extract version from event
+                let event_version = match &event {
+                    ChatEvent::MessageAdded(data) => data.chat_version,
+                    ChatEvent::MessageUpdated(data) => data.chat_version,
+                    ChatEvent::MessageDeleted(data) => data.chat_version,
+                    ChatEvent::QueueMessageAdded(data) => data.chat_version,
+                    ChatEvent::QueueMessageUpdated(data) => data.chat_version,
+                    ChatEvent::QueueMessageDeleted(data) => data.chat_version,
+                    ChatEvent::ToolsUpdated(data) => data.chat_version,
+                };
+
+                // Check local state version
+                let local_version = {
+                    let states_read = states.read().await;
+                    states_read.get(&chat_id).map(|s| s.version)
+                };
+
+                // Validate version
+                match local_version {
+                    Some(local_ver) if event_version <= local_ver => {
+                        // Stale event, ignore
+                        tracing::debug!(
+                            chat_id = chat_id,
+                            event_version = event_version,
+                            local_version = local_ver,
+                            "ignoring stale event"
+                        );
+                        return;
+                    }
+                    Some(local_ver) if event_version > local_ver + 1 => {
+                        // Version gap detected, refetch state
+                        tracing::warn!(
+                            chat_id = chat_id,
+                            event_version = event_version,
+                            local_version = local_ver,
+                            "version gap detected, refetching state"
+                        );
+                        if let Ok(chat_result) = client
+                            .get_chat(GetChatParams {
+                                chat_id,
+                                if_version_higher_than: Some(local_ver),
+                            })
+                            .await
+                        {
+                            let mut states_write = states.write().await;
+                            if let Some(state) = states_write.get_mut(&chat_id) {
+                                state.messages = chat_result.messages;
+                                state.queued_messages_count = chat_result.queued_messages_count;
+                                state.version = chat_result.chat.version;
+                            }
+                        }
+                        return;
+                    }
+                    _ => {
+                        // Normal case: event_version == local_ver + 1 or first event
+                        tracing::debug!(
+                            chat_id = chat_id,
+                            event_version = event_version,
+                            "processing event"
+                        );
+                    }
+                }
+
                 match event {
                     ChatEvent::MessageAdded(_)
                     | ChatEvent::MessageUpdated(_)
@@ -202,12 +335,13 @@ impl ChatMonitor {
                     | ChatEvent::QueueMessageUpdated(_)
                     | ChatEvent::QueueMessageDeleted(_) => {
                         if let Ok(chat_result) =
-                            client.get_chat(GetChatParams { chat_id }).await
+                            client.get_chat(GetChatParams { chat_id, if_version_higher_than: None }).await
                         {
                             let mut states = states.write().await;
                             if let Some(state) = states.get_mut(&chat_id) {
                                 state.messages = chat_result.messages;
                                 state.queued_messages_count = chat_result.queued_messages_count;
+                                state.version = chat_result.chat.version;
                             }
                         }
                     }
@@ -234,12 +368,13 @@ impl ChatMonitor {
 
     /// Refresh chat state from server.
     pub async fn refresh_chat(&self, chat_id: i64) -> Result<(), ClientError> {
-        let chat_result = self.client.get_chat(GetChatParams { chat_id }).await?;
+        let chat_result = self.client.get_chat(GetChatParams { chat_id, if_version_higher_than: None }).await?;
         let state = ChatState {
             chat_id,
             messages: chat_result.messages,
             queued_messages_count: chat_result.queued_messages_count,
             tags: chat_result.chat.tags,
+            version: chat_result.chat.version,
         };
         self.chat_states.write().await.insert(chat_id, state);
         Ok(())

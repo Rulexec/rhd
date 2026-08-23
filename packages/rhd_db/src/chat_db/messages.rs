@@ -16,7 +16,7 @@ pub(crate) fn add_message(
     content: &str,
     model: Option<&str>,
     thinking_content: Option<&str>,
-) -> DbResult<i64> {
+) -> DbResult<(i64, i64)> {
     let conn = conn
         .lock()
         .map_err(|e| DbError::InitializationError(e.to_string()))?;
@@ -28,11 +28,16 @@ pub(crate) fn add_message(
     )?;
     let message_id = tx.last_insert_rowid();
     tx.execute(
-        "UPDATE chats SET updated_at = ?1 WHERE id = ?2",
+        "UPDATE chats SET updated_at = ?1, version = version + 1 WHERE id = ?2",
         params![now, chat_id],
     )?;
+    let new_version: i64 = tx.query_row(
+        "SELECT version FROM chats WHERE id = ?1",
+        params![chat_id],
+        |row| row.get(0),
+    )?;
     tx.commit()?;
-    Ok(message_id)
+    Ok((message_id, new_version))
 }
 
 pub(crate) fn get_messages(conn: &Mutex<Connection>, chat_id: i64) -> DbResult<Vec<Message>> {
@@ -96,7 +101,7 @@ pub(crate) fn update_message(
     conn: &Mutex<Connection>,
     message_id: i64,
     content: &str,
-) -> DbResult<()> {
+) -> DbResult<i64> {
     let conn = conn
         .lock()
         .map_err(|e| DbError::InitializationError(e.to_string()))?;
@@ -112,19 +117,41 @@ pub(crate) fn update_message(
     )?;
     let now = now_iso();
     tx.execute(
-        "UPDATE chats SET updated_at = ?1 WHERE id = ?2",
+        "UPDATE chats SET updated_at = ?1, version = version + 1 WHERE id = ?2",
         params![now, chat_id],
     )?;
+    let new_version: i64 = tx.query_row(
+        "SELECT version FROM chats WHERE id = ?1",
+        params![chat_id],
+        |row| row.get(0),
+    )?;
     tx.commit()?;
-    Ok(())
+    Ok(new_version)
 }
 
 /// Delete a message by ID
-pub(crate) fn delete_message(conn: &Mutex<Connection>, message_id: i64) -> DbResult<()> {
+pub(crate) fn delete_message(conn: &Mutex<Connection>, message_id: i64) -> DbResult<i64> {
     let conn = conn
         .lock()
         .map_err(|e| DbError::InitializationError(e.to_string()))?;
-    conn.execute("DELETE FROM messages WHERE id = ?1", params![message_id])?;
-    Ok(())
+    let tx = conn.unchecked_transaction()?;
+    let chat_id: i64 = tx.query_row(
+        "SELECT chat_id FROM messages WHERE id = ?1",
+        params![message_id],
+        |row| row.get(0),
+    )?;
+    tx.execute("DELETE FROM messages WHERE id = ?1", params![message_id])?;
+    let now = now_iso();
+    tx.execute(
+        "UPDATE chats SET updated_at = ?1, version = version + 1 WHERE id = ?2",
+        params![now, chat_id],
+    )?;
+    let new_version: i64 = tx.query_row(
+        "SELECT version FROM chats WHERE id = ?1",
+        params![chat_id],
+        |row| row.get(0),
+    )?;
+    tx.commit()?;
+    Ok(new_version)
 }
 

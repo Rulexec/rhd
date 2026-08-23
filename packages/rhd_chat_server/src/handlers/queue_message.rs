@@ -64,7 +64,7 @@ pub async fn add_queue_message(
     }
 
     // Add queue message
-    let message_id = db.add_queue_message(
+    let (message_id, mut chat_version) = db.add_queue_message(
         params.chat_id,
         &params.role,
         &params.content,
@@ -74,17 +74,14 @@ pub async fn add_queue_message(
 
     // Set tags if provided
     if !params.tags.is_empty() {
-        db.set_queue_message_tags(message_id, &params.tags)?;
+        chat_version = db.set_queue_message_tags(message_id, &params.tags)?;
     }
-
-    // Touch chat to update updated_at
-    db.touch_chat(params.chat_id)?;
 
     // Broadcast queueMessageAdded event
     let msg_tags = db.get_queue_message_tags(message_id)?;
     let db_message = db.get_queue_message(message_id)?.unwrap();
     let message = convert_message_to_api(db_message, msg_tags)?;
-    let event = queue_message_added_event(params.chat_id, message);
+    let event = queue_message_added_event(params.chat_id, message, chat_version);
     let manager = subscription_manager.read().await;
     manager.broadcast_to_chat(params.chat_id, event);
 
@@ -124,29 +121,27 @@ pub async fn update_queue_message(
     };
 
     // Update content if provided
+    let mut chat_version = db.get_chat(message.chat_id)?.map(|c| c.version).unwrap_or(1);
     if let Some(content) = params.content {
-        db.update_queue_message(params.message_id, &content)?;
+        chat_version = db.update_queue_message(params.message_id, &content)?;
     }
 
     // Add tags if provided
     if !params.add_tags.is_empty() {
-        db.add_queue_message_tags(params.message_id, &params.add_tags)?;
+        chat_version = db.add_queue_message_tags(params.message_id, &params.add_tags)?;
     }
 
     // Remove tags if provided
     if !params.remove_tags.is_empty() {
-        db.remove_queue_message_tags(params.message_id, &params.remove_tags)?;
+        chat_version = db.remove_queue_message_tags(params.message_id, &params.remove_tags)?;
     }
-
-    // Touch chat to update updated_at
-    db.touch_chat(message.chat_id)?;
 
     // Broadcast queueMessageUpdated event
     let msg_tags = db.get_queue_message_tags(params.message_id)?;
     let db_message = db.get_queue_message(params.message_id)?.unwrap();
     let api_message = convert_message_to_api(db_message, msg_tags)?;
     let chat_id = api_message.chat_id;
-    let event = queue_message_updated_event(chat_id, api_message);
+    let event = queue_message_updated_event(chat_id, api_message, chat_version);
     let manager = subscription_manager.read().await;
     manager.broadcast_to_chat(chat_id, event);
 
@@ -185,16 +180,13 @@ pub async fn delete_queue_message(
         }
     };
 
-    // Broadcast queueMessageDeleted event before deletion
-    let event = queue_message_deleted_event(message.chat_id, params.message_id);
+    // Delete queue message (tags will be deleted by CASCADE)
+    let chat_version = db.delete_queue_message(params.message_id)?;
+
+    // Broadcast queueMessageDeleted event after deletion
+    let event = queue_message_deleted_event(message.chat_id, params.message_id, chat_version);
     let manager = subscription_manager.read().await;
     manager.broadcast_to_chat(message.chat_id, event);
-
-    // Delete queue message (tags will be deleted by CASCADE)
-    db.delete_queue_message(params.message_id)?;
-
-    // Touch chat to update updated_at
-    db.touch_chat(message.chat_id)?;
 
     let result = DeleteQueueMessageResult {};
     Ok(serde_json::to_value(Response::success(

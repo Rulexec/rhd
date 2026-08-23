@@ -20,6 +20,8 @@ pub struct MessageDeletedData {
     pub chat_id: i64,
     /// ID of the deleted message.
     pub message_id: i64,
+    /// Version of the chat after message deletion.
+    pub chat_version: i64,
 }
 
 #[cfg(test)]
@@ -31,6 +33,7 @@ mod tests {
         let data = MessageDeletedData {
             chat_id: 123,
             message_id: 456,
+            chat_version: 4,
         };
 
         let json = serde_json::to_string(&data).unwrap();

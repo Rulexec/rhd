@@ -36,6 +36,7 @@ fn convert_chat_info_to_api(
         created_at,
         updated_at,
         tags,
+        version: chat_info.version,
     })
 }
 
@@ -59,6 +60,7 @@ fn convert_chat_info_to_summary(
         created_at,
         updated_at,
         tags,
+        version: chat_info.version,
     })
 }
 
@@ -111,8 +113,9 @@ pub async fn create_chat(
     // Broadcast chatCreated event
     let chat_tags = db.get_chat_tags(chat_id)?;
     let chat_info = db.get_chat(chat_id)?.unwrap();
+    let chat_version = chat_info.version;
     let chat_summary = convert_chat_info_to_summary(chat_info, chat_tags)?;
-    let event = chat_created_event(chat_summary);
+    let event = chat_created_event(chat_summary, chat_version);
     let manager = subscription_manager.read().await;
     manager.broadcast_to_chats_list(event);
 
@@ -207,6 +210,7 @@ pub async fn get_chat(
         chat,
         messages,
         queued_messages_count,
+        status: None,
     };
     Ok(serde_json::to_value(Response::success(request_id, serde_json::to_value(result)?))?)
 }
@@ -233,8 +237,11 @@ pub async fn delete_chat(
         return Ok(serde_json::to_value(ErrorResponse::chat_not_found(request_id, params.chat_id))?);
     }
 
+    // Get chat version before deletion
+    let chat_version = db.get_chat(params.chat_id)?.map(|c| c.version).unwrap_or(0);
+
     // Broadcast chatDeleted event before deletion
-    let event = chat_deleted_event(params.chat_id);
+    let event = chat_deleted_event(params.chat_id, chat_version);
     let manager = subscription_manager.read().await;
     manager.broadcast_to_chat_and_list(params.chat_id, event);
 
@@ -282,14 +289,14 @@ pub async fn update_chat(
         db.remove_chat_tags(params.chat_id, &params.remove_tags)?;
     }
 
-    // Touch chat to update updated_at
-    db.touch_chat(params.chat_id)?;
+    // Touch chat to update updated_at and get new version
+    let chat_version = db.touch_chat(params.chat_id)?;
 
     // Broadcast chatUpdated event
     let chat_tags = db.get_chat_tags(params.chat_id)?;
     let chat_info = db.get_chat(params.chat_id)?.unwrap();
     let chat_summary = convert_chat_info_to_summary(chat_info, chat_tags)?;
-    let event = chat_updated_event(chat_summary);
+    let event = chat_updated_event(chat_summary, chat_version);
     let manager = subscription_manager.read().await;
     manager.broadcast_to_chats_list(event);
 

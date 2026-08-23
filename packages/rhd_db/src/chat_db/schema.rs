@@ -14,7 +14,8 @@ pub(crate) fn init(conn: &Connection) -> DbResult<()> {
             title TEXT NOT NULL,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
-            active_model TEXT
+            active_model TEXT,
+            version INTEGER NOT NULL DEFAULT 1
         );
 
         CREATE TABLE IF NOT EXISTS messages (
@@ -192,6 +193,16 @@ fn migrate(conn: &Connection) -> DbResult<()> {
 
     if !has_tool_calls {
         conn.execute_batch("ALTER TABLE messages ADD COLUMN tool_calls TEXT")?;
+    }
+
+    // Check if version column exists in chats table
+    let has_version: bool = conn
+        .prepare("SELECT COUNT(*) FROM pragma_table_info('chats') WHERE name='version'")?
+        .query_row([], |row| row.get::<_, i64>(0))?
+        > 0;
+
+    if !has_version {
+        conn.execute_batch("ALTER TABLE chats ADD COLUMN version INTEGER NOT NULL DEFAULT 1")?;
     }
 
     Ok(())

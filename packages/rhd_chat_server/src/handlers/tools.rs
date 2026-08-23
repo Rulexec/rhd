@@ -84,8 +84,8 @@ pub async fn add_tools(
     let db_tools: Vec<rhd_db::ToolDefinition> = params.tools.iter().map(api_to_db_tool).collect();
     db.add_chat_tools(params.chat_id, plugin_id, &db_tools)?;
 
-    // Touch chat to update updated_at
-    db.touch_chat(params.chat_id)?;
+    // Touch chat to update updated_at and get new version
+    let chat_version = db.touch_chat(params.chat_id)?;
 
     // Get all tools for the chat to broadcast
     let all_tools = db.get_chat_tools(params.chat_id)?;
@@ -98,7 +98,7 @@ pub async fn add_tools(
         .collect();
 
     // Broadcast toolsUpdated event
-    let event = tools_updated_event(params.chat_id, tool_infos);
+    let event = tools_updated_event(params.chat_id, tool_infos, chat_version);
     let manager = subscription_manager.read().await;
     manager.broadcast_to_chat(params.chat_id, event);
 
@@ -152,8 +152,8 @@ pub async fn remove_tools(
     // Remove tools from the database
     db.remove_chat_tools(params.chat_id, plugin_id, &params.tool_names)?;
 
-    // Touch chat to update updated_at
-    db.touch_chat(params.chat_id)?;
+    // Touch chat to update updated_at and get new version
+    let chat_version = db.touch_chat(params.chat_id)?;
 
     // Get all tools for the chat to broadcast
     let all_tools = db.get_chat_tools(params.chat_id)?;
@@ -166,7 +166,7 @@ pub async fn remove_tools(
         .collect();
 
     // Broadcast toolsUpdated event
-    let event = tools_updated_event(params.chat_id, tool_infos);
+    let event = tools_updated_event(params.chat_id, tool_infos, chat_version);
     let manager = subscription_manager.read().await;
     manager.broadcast_to_chat(params.chat_id, event);
 

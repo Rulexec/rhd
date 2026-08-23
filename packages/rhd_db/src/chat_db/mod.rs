@@ -27,6 +27,7 @@ pub struct ChatInfo {
     pub created_at: String,
     pub updated_at: String,
     pub active_model: Option<String>,
+    pub version: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -89,12 +90,24 @@ impl ChatDb {
         chats::delete_chat(&self.conn, id)
     }
 
-    pub fn update_chat_title(&self, id: i64, title: &str) -> DbResult<()> {
+    pub fn update_chat_title(&self, id: i64, title: &str) -> DbResult<i64> {
         chats::update_chat_title(&self.conn, id, title)
     }
 
-    pub fn touch_chat(&self, id: i64) -> DbResult<()> {
+    pub fn touch_chat(&self, id: i64) -> DbResult<i64> {
         chats::touch_chat(&self.conn, id)
+    }
+
+    pub fn increment_chat_version(&self, id: i64) -> DbResult<i64> {
+        chats::increment_chat_version(&self.conn, id)
+    }
+
+    pub fn get_chat_if_version_higher(
+        &self,
+        id: i64,
+        if_version_higher_than: i64,
+    ) -> DbResult<chats::ChatVersionResult> {
+        chats::get_chat_if_version_higher(&self.conn, id, if_version_higher_than)
     }
 
     pub fn add_message(
@@ -104,7 +117,7 @@ impl ChatDb {
         content: &str,
         model: Option<&str>,
         thinking_content: Option<&str>,
-    ) -> DbResult<i64> {
+    ) -> DbResult<(i64, i64)> {
         messages::add_message(&self.conn, chat_id, role, content, model, thinking_content)
     }
 
@@ -116,11 +129,11 @@ impl ChatDb {
         messages::get_message(&self.conn, message_id)
     }
 
-    pub fn update_message(&self, message_id: i64, content: &str) -> DbResult<()> {
+    pub fn update_message(&self, message_id: i64, content: &str) -> DbResult<i64> {
         messages::update_message(&self.conn, message_id, content)
     }
 
-    pub fn delete_message(&self, message_id: i64) -> DbResult<()> {
+    pub fn delete_message(&self, message_id: i64) -> DbResult<i64> {
         messages::delete_message(&self.conn, message_id)
     }
 
@@ -133,27 +146,27 @@ impl ChatDb {
         tags::get_message_tags(&self.conn, message_id)
     }
 
-    pub fn set_chat_tags(&self, chat_id: i64, tags: &[String]) -> DbResult<()> {
+    pub fn set_chat_tags(&self, chat_id: i64, tags: &[String]) -> DbResult<i64> {
         tags::set_chat_tags(&self.conn, chat_id, tags)
     }
 
-    pub fn set_message_tags(&self, message_id: i64, tags: &[String]) -> DbResult<()> {
+    pub fn set_message_tags(&self, message_id: i64, tags: &[String]) -> DbResult<i64> {
         tags::set_message_tags(&self.conn, message_id, tags)
     }
 
-    pub fn add_chat_tags(&self, chat_id: i64, tags: &[String]) -> DbResult<()> {
+    pub fn add_chat_tags(&self, chat_id: i64, tags: &[String]) -> DbResult<i64> {
         tags::add_chat_tags(&self.conn, chat_id, tags)
     }
 
-    pub fn add_message_tags(&self, message_id: i64, tags: &[String]) -> DbResult<()> {
+    pub fn add_message_tags(&self, message_id: i64, tags: &[String]) -> DbResult<i64> {
         tags::add_message_tags(&self.conn, message_id, tags)
     }
 
-    pub fn remove_chat_tags(&self, chat_id: i64, tags: &[String]) -> DbResult<()> {
+    pub fn remove_chat_tags(&self, chat_id: i64, tags: &[String]) -> DbResult<i64> {
         tags::remove_chat_tags(&self.conn, chat_id, tags)
     }
 
-    pub fn remove_message_tags(&self, message_id: i64, tags: &[String]) -> DbResult<()> {
+    pub fn remove_message_tags(&self, message_id: i64, tags: &[String]) -> DbResult<i64> {
         tags::remove_message_tags(&self.conn, message_id, tags)
     }
 
@@ -213,7 +226,7 @@ impl ChatDb {
         content: &str,
         model: Option<&str>,
         thinking_content: Option<&str>,
-    ) -> DbResult<i64> {
+    ) -> DbResult<(i64, i64)> {
         messages_queue::add_queue_message(&self.conn, chat_id, role, content, model, thinking_content)
     }
 
@@ -225,23 +238,23 @@ impl ChatDb {
         messages_queue::get_queue_message(&self.conn, message_id)
     }
 
-    pub fn update_queue_message(&self, message_id: i64, content: &str) -> DbResult<()> {
+    pub fn update_queue_message(&self, message_id: i64, content: &str) -> DbResult<i64> {
         messages_queue::update_queue_message(&self.conn, message_id, content)
     }
 
-    pub fn insert_queue_message(&self, message: &Message) -> DbResult<Message> {
+    pub fn insert_queue_message(&self, message: &Message) -> DbResult<(Message, i64)> {
         messages_queue::insert_queue_message(&self.conn, message)
     }
 
-    pub fn update_queue_message_full(&self, message: &Message) -> DbResult<Message> {
+    pub fn update_queue_message_full(&self, message: &Message) -> DbResult<(Message, i64)> {
         messages_queue::update_queue_message_full(&self.conn, message)
     }
 
-    pub fn delete_queue_message(&self, message_id: i64) -> DbResult<()> {
+    pub fn delete_queue_message(&self, message_id: i64) -> DbResult<i64> {
         messages_queue::delete_queue_message(&self.conn, message_id)
     }
 
-    pub fn delete_all_queue_messages(&self, chat_id: i64) -> DbResult<()> {
+    pub fn delete_all_queue_messages(&self, chat_id: i64) -> DbResult<i64> {
         messages_queue::delete_all_queue_messages(&self.conn, chat_id)
     }
 
@@ -254,15 +267,15 @@ impl ChatDb {
         tags::get_queue_message_tags(&self.conn, message_id)
     }
 
-    pub fn set_queue_message_tags(&self, message_id: i64, tags: &[String]) -> DbResult<()> {
+    pub fn set_queue_message_tags(&self, message_id: i64, tags: &[String]) -> DbResult<i64> {
         tags::set_queue_message_tags(&self.conn, message_id, tags)
     }
 
-    pub fn add_queue_message_tags(&self, message_id: i64, tags: &[String]) -> DbResult<()> {
+    pub fn add_queue_message_tags(&self, message_id: i64, tags: &[String]) -> DbResult<i64> {
         tags::add_queue_message_tags(&self.conn, message_id, tags)
     }
 
-    pub fn remove_queue_message_tags(&self, message_id: i64, tags: &[String]) -> DbResult<()> {
+    pub fn remove_queue_message_tags(&self, message_id: i64, tags: &[String]) -> DbResult<i64> {
         tags::remove_queue_message_tags(&self.conn, message_id, tags)
     }
 

@@ -24,6 +24,8 @@ use serde::{Deserialize, Serialize};
 pub struct ChatCreatedData {
     /// The newly created chat.
     pub chat: ChatSummary,
+    /// Version of the chat after creation.
+    pub chat_version: i64,
 }
 
 #[cfg(test)]
@@ -40,7 +42,9 @@ mod tests {
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
                 tags: vec!["tag1".to_string()],
+                version: 1,
             },
+            chat_version: 1,
         };
 
         let json = serde_json::to_string(&data).unwrap();

@@ -27,6 +27,8 @@ pub struct QueueMessageAddedData {
     pub chat_id: i64,
     /// The newly added queue message.
     pub message: Message,
+    /// Version of the chat after queue message addition.
+    pub chat_version: i64,
 }
 
 #[cfg(test)]
@@ -47,6 +49,7 @@ mod tests {
                 reasoning_content: None,
                 tags: vec![],
             },
+            chat_version: 2,
         };
 
         let json = serde_json::to_string(&data).unwrap();

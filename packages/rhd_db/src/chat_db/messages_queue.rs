@@ -16,7 +16,7 @@ pub(crate) fn add_queue_message(
     content: &str,
     model: Option<&str>,
     thinking_content: Option<&str>,
-) -> DbResult<i64> {
+) -> DbResult<(i64, i64)> {
     let conn = conn
         .lock()
         .map_err(|e| DbError::InitializationError(e.to_string()))?;
@@ -28,11 +28,16 @@ pub(crate) fn add_queue_message(
     )?;
     let message_id = tx.last_insert_rowid();
     tx.execute(
-        "UPDATE chats SET updated_at = ?1 WHERE id = ?2",
+        "UPDATE chats SET updated_at = ?1, version = version + 1 WHERE id = ?2",
         params![now, chat_id],
     )?;
+    let new_version: i64 = tx.query_row(
+        "SELECT version FROM chats WHERE id = ?1",
+        params![chat_id],
+        |row| row.get(0),
+    )?;
     tx.commit()?;
-    Ok(message_id)
+    Ok((message_id, new_version))
 }
 
 pub(crate) fn get_queue_messages(conn: &Mutex<Connection>, chat_id: i64) -> DbResult<Vec<Message>> {
@@ -96,7 +101,7 @@ pub(crate) fn update_queue_message(
     conn: &Mutex<Connection>,
     message_id: i64,
     content: &str,
-) -> DbResult<()> {
+) -> DbResult<i64> {
     let conn = conn
         .lock()
         .map_err(|e| DbError::InitializationError(e.to_string()))?;
@@ -112,18 +117,23 @@ pub(crate) fn update_queue_message(
     )?;
     let now = now_iso();
     tx.execute(
-        "UPDATE chats SET updated_at = ?1 WHERE id = ?2",
+        "UPDATE chats SET updated_at = ?1, version = version + 1 WHERE id = ?2",
         params![now, chat_id],
     )?;
+    let new_version: i64 = tx.query_row(
+        "SELECT version FROM chats WHERE id = ?1",
+        params![chat_id],
+        |row| row.get(0),
+    )?;
     tx.commit()?;
-    Ok(())
+    Ok(new_version)
 }
 
 /// Insert a queue message with an explicit ID
 pub(crate) fn insert_queue_message(
     conn: &Mutex<Connection>,
     message: &Message,
-) -> DbResult<Message> {
+) -> DbResult<(Message, i64)> {
     let conn = conn
         .lock()
         .map_err(|e| DbError::InitializationError(e.to_string()))?;
@@ -148,18 +158,23 @@ pub(crate) fn insert_queue_message(
     )?;
     let now = now_iso();
     tx.execute(
-        "UPDATE chats SET updated_at = ?1 WHERE id = ?2",
+        "UPDATE chats SET updated_at = ?1, version = version + 1 WHERE id = ?2",
         params![now, message.chat_id],
     )?;
+    let new_version: i64 = tx.query_row(
+        "SELECT version FROM chats WHERE id = ?1",
+        params![message.chat_id],
+        |row| row.get(0),
+    )?;
     tx.commit()?;
-    Ok(message.clone())
+    Ok((message.clone(), new_version))
 }
 
 /// Update a full queue message
 pub(crate) fn update_queue_message_full(
     conn: &Mutex<Connection>,
     message: &Message,
-) -> DbResult<Message> {
+) -> DbResult<(Message, i64)> {
     let conn = conn
         .lock()
         .map_err(|e| DbError::InitializationError(e.to_string()))?;
@@ -181,29 +196,63 @@ pub(crate) fn update_queue_message_full(
     )?;
     let now = now_iso();
     tx.execute(
-        "UPDATE chats SET updated_at = ?1 WHERE id = ?2",
+        "UPDATE chats SET updated_at = ?1, version = version + 1 WHERE id = ?2",
         params![now, message.chat_id],
     )?;
+    let new_version: i64 = tx.query_row(
+        "SELECT version FROM chats WHERE id = ?1",
+        params![message.chat_id],
+        |row| row.get(0),
+    )?;
     tx.commit()?;
-    Ok(message.clone())
+    Ok((message.clone(), new_version))
 }
 
 /// Delete a queue message by ID
-pub(crate) fn delete_queue_message(conn: &Mutex<Connection>, message_id: i64) -> DbResult<()> {
+pub(crate) fn delete_queue_message(conn: &Mutex<Connection>, message_id: i64) -> DbResult<i64> {
     let conn = conn
         .lock()
         .map_err(|e| DbError::InitializationError(e.to_string()))?;
-    conn.execute("DELETE FROM messages_queue WHERE id = ?1", params![message_id])?;
-    Ok(())
+    let tx = conn.unchecked_transaction()?;
+    let chat_id: i64 = tx.query_row(
+        "SELECT chat_id FROM messages_queue WHERE id = ?1",
+        params![message_id],
+        |row| row.get(0),
+    )?;
+    tx.execute("DELETE FROM messages_queue WHERE id = ?1", params![message_id])?;
+    let now = now_iso();
+    tx.execute(
+        "UPDATE chats SET updated_at = ?1, version = version + 1 WHERE id = ?2",
+        params![now, chat_id],
+    )?;
+    let new_version: i64 = tx.query_row(
+        "SELECT version FROM chats WHERE id = ?1",
+        params![chat_id],
+        |row| row.get(0),
+    )?;
+    tx.commit()?;
+    Ok(new_version)
 }
 
 /// Delete all queue messages for a chat
-pub(crate) fn delete_all_queue_messages(conn: &Mutex<Connection>, chat_id: i64) -> DbResult<()> {
+pub(crate) fn delete_all_queue_messages(conn: &Mutex<Connection>, chat_id: i64) -> DbResult<i64> {
     let conn = conn
         .lock()
         .map_err(|e| DbError::InitializationError(e.to_string()))?;
-    conn.execute("DELETE FROM messages_queue WHERE chat_id = ?1", params![chat_id])?;
-    Ok(())
+    let tx = conn.unchecked_transaction()?;
+    tx.execute("DELETE FROM messages_queue WHERE chat_id = ?1", params![chat_id])?;
+    let now = now_iso();
+    tx.execute(
+        "UPDATE chats SET updated_at = ?1, version = version + 1 WHERE id = ?2",
+        params![now, chat_id],
+    )?;
+    let new_version: i64 = tx.query_row(
+        "SELECT version FROM chats WHERE id = ?1",
+        params![chat_id],
+        |row| row.get(0),
+    )?;
+    tx.commit()?;
+    Ok(new_version)
 }
 
 /// Count queue messages for a chat

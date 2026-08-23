@@ -156,6 +156,7 @@ pub async fn run_plugin(
                     let plugin_id_clone = plugin_id.to_string();
                     let messages_clone = chat_state.messages.clone();
                     let trigger_reason_clone = trigger_reason.clone();
+                    let known_version = chat_state.version;
                     
                     tokio::spawn(async move {
                         if let Err(e) = ai_request::handle_ai_request(
@@ -167,6 +168,7 @@ pub async fn run_plugin(
                             chat_id,
                             &messages_clone,
                             trigger_reason_clone,
+                            Some(known_version),
                         )
                         .await
                         {

@@ -35,6 +35,8 @@ pub struct Chat {
     pub updated_at: DateTime<Utc>,
     /// Tags associated with the chat.
     pub tags: Vec<String>,
+    /// Version number for consistency tracking. Increments on any change.
+    pub version: i64,
 }
 
 /// A message within a chat.
@@ -100,6 +102,8 @@ pub struct ChatSummary {
     pub updated_at: DateTime<Utc>,
     /// Tags associated with the chat.
     pub tags: Vec<String>,
+    /// Version number for consistency tracking. Increments on any change.
+    pub version: i64,
 }
 
 /// A plugin with its active status.
@@ -155,6 +159,7 @@ impl From<Chat> for ChatSummary {
             created_at: chat.created_at,
             updated_at: chat.updated_at,
             tags: chat.tags,
+            version: chat.version,
         }
     }
 }
@@ -171,6 +176,7 @@ mod tests {
             created_at: "2026-08-20T18:00:00Z".parse().unwrap(),
             updated_at: "2026-08-20T18:30:00Z".parse().unwrap(),
             tags: vec!["tag1".to_string(), "tag2".to_string()],
+            version: 1,
         };
 
         let json = serde_json::to_string(&chat).unwrap();
@@ -235,6 +241,7 @@ mod tests {
             created_at: "2026-08-20T18:00:00Z".parse().unwrap(),
             updated_at: "2026-08-20T18:30:00Z".parse().unwrap(),
             tags: vec!["tag1".to_string()],
+            version: 1,
         };
 
         let summary: ChatSummary = chat.clone().into();

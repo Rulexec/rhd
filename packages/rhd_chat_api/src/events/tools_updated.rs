@@ -33,6 +33,8 @@ pub struct ToolsUpdatedData {
     pub chat_id: i64,
     /// The updated list of tools with plugin information.
     pub tools: Vec<ToolInfo>,
+    /// Version of the chat after tools update.
+    pub chat_version: i64,
 }
 
 #[cfg(test)]
@@ -55,6 +57,7 @@ mod tests {
                     },
                 },
             }],
+            chat_version: 5,
         };
 
         let json = serde_json::to_string(&data).unwrap();

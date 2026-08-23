@@ -18,6 +18,21 @@ use serde::{Deserialize, Serialize};
 pub struct GetChatParams {
     /// ID of the chat to retrieve.
     pub chat_id: i64,
+    /// If provided, only return chat if its version is higher than this value.
+    /// Returns error if current version is lower (should not happen).
+    /// Returns "actual" status if versions match.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub if_version_higher_than: Option<i64>,
+}
+
+/// Status of the getChat response when using if_version_higher_than.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum GetChatStatus {
+    /// Chat state is newer than requested version.
+    NewerVersion,
+    /// Chat state matches requested version (actual).
+    Actual,
 }
 
 /// Result of the `getChat` method.
@@ -54,6 +69,9 @@ pub struct GetChatResult {
     pub messages: Vec<Message>,
     /// Number of messages in the queue.
     pub queued_messages_count: i64,
+    /// Status of the response (only present when if_version_higher_than was used).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<GetChatStatus>,
 }
 
 #[cfg(test)]
@@ -62,10 +80,28 @@ mod tests {
 
     #[test]
     fn test_get_chat_params_serialization() {
-        let params = GetChatParams { chat_id: 123 };
+        let params = GetChatParams {
+            chat_id: 123,
+            if_version_higher_than: None,
+        };
 
         let json = serde_json::to_string(&params).unwrap();
         assert!(json.contains("\"chatId\":123"));
+
+        let deserialized: GetChatParams = serde_json::from_str(&json).unwrap();
+        assert_eq!(params, deserialized);
+    }
+
+    #[test]
+    fn test_get_chat_params_with_version_serialization() {
+        let params = GetChatParams {
+            chat_id: 123,
+            if_version_higher_than: Some(5),
+        };
+
+        let json = serde_json::to_string(&params).unwrap();
+        assert!(json.contains("\"chatId\":123"));
+        assert!(json.contains("\"ifVersionHigherThan\":5"));
 
         let deserialized: GetChatParams = serde_json::from_str(&json).unwrap();
         assert_eq!(params, deserialized);
@@ -82,15 +118,42 @@ mod tests {
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
                 tags: vec![],
+                version: 1,
             },
             messages: vec![],
             queued_messages_count: 5,
+            status: None,
         };
 
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("\"chat\""));
         assert!(json.contains("\"messages\""));
         assert!(json.contains("\"queuedMessagesCount\":5"));
+
+        let deserialized: GetChatResult = serde_json::from_str(&json).unwrap();
+        assert_eq!(result, deserialized);
+    }
+
+    #[test]
+    fn test_get_chat_result_with_status_serialization() {
+        use chrono::Utc;
+
+        let result = GetChatResult {
+            chat: Chat {
+                id: 123,
+                title: "Test".to_string(),
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+                tags: vec![],
+                version: 5,
+            },
+            messages: vec![],
+            queued_messages_count: 5,
+            status: Some(GetChatStatus::NewerVersion),
+        };
+
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains("\"status\":\"newerVersion\""));
 
         let deserialized: GetChatResult = serde_json::from_str(&json).unwrap();
         assert_eq!(result, deserialized);

@@ -20,6 +20,8 @@ pub struct QueueMessageDeletedData {
     pub chat_id: i64,
     /// ID of the deleted queue message.
     pub message_id: i64,
+    /// Version of the chat after queue message deletion.
+    pub chat_version: i64,
 }
 
 #[cfg(test)]
@@ -31,6 +33,7 @@ mod tests {
         let data = QueueMessageDeletedData {
             chat_id: 123,
             message_id: 456,
+            chat_version: 4,
         };
 
         let json = serde_json::to_string(&data).unwrap();
