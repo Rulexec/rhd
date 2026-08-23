@@ -88,37 +88,6 @@ impl PluginsMonitor {
         })
     }
 
-    /// Get current set of ALL registered plugin IDs (active and inactive).
-    pub async fn get_all_plugin_ids(&self) -> HashSet<String> {
-        self.all_plugins.read().await.keys().cloned().collect()
-    }
-
-    /// Get current set of active plugin IDs.
-    pub async fn get_active_plugin_ids(&self) -> HashSet<String> {
-        self.all_plugins
-            .read()
-            .await
-            .iter()
-            .filter(|(_, info)| info.is_active)
-            .map(|(id, _)| id.clone())
-            .collect()
-    }
-
-    /// Check if a specific plugin is registered (active or inactive).
-    pub async fn is_plugin_registered(&self, plugin_id: &str) -> bool {
-        self.all_plugins.read().await.contains_key(plugin_id)
-    }
-
-    /// Check if a specific plugin is active.
-    pub async fn is_plugin_active(&self, plugin_id: &str) -> bool {
-        self.all_plugins
-            .read()
-            .await
-            .get(plugin_id)
-            .map(|info| info.is_active)
-            .unwrap_or(false)
-    }
-
     /// Record that a plugin has acknowledged an event.
     ///
     /// This is called when a custom event acknowledgment is received.
@@ -195,12 +164,4 @@ impl PluginsMonitor {
         }
     }
 
-    /// Clean up old acknowledgment records.
-    ///
-    /// This should be called periodically to prevent memory leaks.
-    pub async fn cleanup_old_acks(&self, _max_age: Duration) {
-        // Note: This requires tracking timestamps for acknowledgments
-        // For now, we'll skip this implementation as it's not critical
-        // In production, you'd want to add timestamps and clean up old entries
-    }
 }

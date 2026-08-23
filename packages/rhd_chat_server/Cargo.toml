@@ -22,7 +22,6 @@ thiserror = { workspace = true }
 
 rhd_chat_api = { path = "../rhd_chat_api" }
 rhd_db = { path = "../rhd_db" }
-rhd_util = { path = "../rhd_util" }
 
 [dev-dependencies]
 rhd_chat_client = { path = "../rhd_chat_client" }

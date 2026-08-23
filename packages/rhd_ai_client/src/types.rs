@@ -29,16 +29,6 @@ pub enum ChatMessage {
     },
 }
 
-impl ChatMessage {
-    pub fn content(&self) -> Option<&str> {
-        match self {
-            ChatMessage::System { content } | ChatMessage::User { content } => Some(content),
-            ChatMessage::Assistant { content, .. } => content.as_deref(),
-            ChatMessage::Tool { content, .. } => Some(content),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ToolDefinition {
     #[serde(rename = "type")]

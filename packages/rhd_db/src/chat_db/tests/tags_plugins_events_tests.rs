@@ -28,10 +28,6 @@ fn test_chat_tags() {
     db.remove_chat_tags(chat_id, &["tag2".to_string()]).unwrap();
     let tags = db.get_chat_tags(chat_id).unwrap();
     assert_eq!(tags, vec!["tag1", "tag3"]);
-    
-    // Get chats by tag
-    let chat_ids = db.get_chats_by_tag("tag1").unwrap();
-    assert_eq!(chat_ids, vec![chat_id]);
 }
 
 #[test]
@@ -76,15 +72,18 @@ fn test_plugins() {
     assert!(plugins[0].is_active);
     
     // Check if active
-    assert!(db.is_plugin_active("plugin-1").unwrap());
+    let plugins = db.get_plugins().unwrap();
+    assert!(plugins.iter().any(|p| p.plugin_id == "plugin-1" && p.is_active));
     
     // Deactivate plugin
     db.deactivate_plugin("plugin-1").unwrap();
-    assert!(!db.is_plugin_active("plugin-1").unwrap());
+    let plugins = db.get_plugins().unwrap();
+    assert!(plugins.iter().any(|p| p.plugin_id == "plugin-1" && !p.is_active));
     
     // Re-register (marks as active)
     db.register_plugin("plugin-1").unwrap();
-    assert!(db.is_plugin_active("plugin-1").unwrap());
+    let plugins = db.get_plugins().unwrap();
+    assert!(plugins.iter().any(|p| p.plugin_id == "plugin-1" && p.is_active));
     
     // Remove plugin
     db.remove_plugin("plugin-1").unwrap();

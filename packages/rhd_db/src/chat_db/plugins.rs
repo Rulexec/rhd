@@ -74,31 +74,3 @@ pub fn get_plugins(conn: &Mutex<Connection>) -> DbResult<Vec<PluginInfo>> {
     Ok(plugins)
 }
 
-/// Get a specific plugin.
-pub fn get_plugin(conn: &Mutex<Connection>, plugin_id: &str) -> DbResult<Option<PluginInfo>> {
-    let conn_guard = conn.lock().map_err(|e| DbError::InitializationError(e.to_string()))?;
-    let mut stmt = conn_guard.prepare(
-        "SELECT plugin_id, is_active, created_at FROM plugins WHERE plugin_id = ?"
-    )?;
-    let plugin = stmt
-        .query_map([plugin_id], |row| {
-            Ok(PluginInfo {
-                plugin_id: row.get::<_, String>(0)?,
-                is_active: row.get::<_, i64>(1)? != 0,
-                created_at: row.get::<_, String>(2)?,
-            })
-        })?
-        .next()
-        .transpose()?;
-    Ok(plugin)
-}
-
-/// Check if a plugin exists and is active.
-pub fn is_plugin_active(conn: &Mutex<Connection>, plugin_id: &str) -> DbResult<bool> {
-    let conn_guard = conn.lock().map_err(|e| DbError::InitializationError(e.to_string()))?;
-    let is_active: Option<bool> = conn_guard
-        .prepare("SELECT is_active FROM plugins WHERE plugin_id = ?")?
-        .query_row([plugin_id], |row| Ok(row.get::<_, i64>(0)? != 0))
-        .ok();
-    Ok(is_active.unwrap_or(false))
-}

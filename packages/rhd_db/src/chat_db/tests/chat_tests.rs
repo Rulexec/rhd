@@ -55,24 +55,6 @@ fn test_delete_chat() {
 }
 
 #[test]
-fn test_delete_all_chats() {
-    let path = "test_chat_delete_all.db";
-    cleanup(path);
-
-    let db = ChatDb::new(path).unwrap();
-    let id1 = db.create_chat("First").unwrap();
-    let id2 = db.create_chat("Second").unwrap();
-    assert_eq!(db.list_chats().unwrap().len(), 2);
-
-    db.delete_all_chats().unwrap();
-    assert!(db.list_chats().unwrap().is_empty());
-    assert!(db.get_chat(id1).unwrap().is_none());
-    assert!(db.get_chat(id2).unwrap().is_none());
-
-    cleanup(path);
-}
-
-#[test]
 fn test_update_chat_title() {
     let path = "test_chat_title.db";
     cleanup(path);

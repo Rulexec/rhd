@@ -16,10 +16,6 @@ impl BuiltinTools {
         }
     }
 
-    pub fn flags(&self) -> Arc<Mutex<HashMap<String, bool>>> {
-        self.flags.clone()
-    }
-
     pub fn list_tool_definitions() -> Vec<ToolDefinition> {
         vec![ToolDefinition {
             name: "rhd_set_flag".to_string(),

@@ -1,7 +1,5 @@
-use std::time::Duration;
-
 use rhd_ai_client::{AiClient, ChatCompletionRequest, ChatMessage, ToolDefinition};
-use rhd_mock_ai_provider::{MockAiProvider, RecordingListener, SimpleListener, StreamBuilder};
+use rhd_mock_ai_provider::{MockAiProvider, RecordingListener, SimpleListener};
 
 #[tokio::test]
 async fn test_server_starts_on_random_port() {
@@ -40,56 +38,6 @@ async fn test_non_streaming_text_completion() {
     // Verify request was recorded
     let requests = listener.get_requests();
     assert_eq!(requests.len(), 1);
-
-    provider.shutdown().await;
-}
-
-#[tokio::test]
-async fn test_streaming_with_predefined_chunks() {
-    let listener = SimpleListener::new();
-
-    // Use StreamBuilder to create a stream with delays
-    let stream = StreamBuilder::new()
-        .text("Hello")
-        .text_delayed(", ", Duration::from_millis(100))
-        .text_delayed("world!", Duration::from_millis(100))
-        .finish("stop")
-        .build();
-
-    listener.push_stream_receiver(stream);
-
-    let provider = MockAiProvider::start(listener).await.unwrap();
-    let client = AiClient::new(provider.base_url(), "test-key");
-
-    let request = ChatCompletionRequest {
-        model: "test-model".to_string(),
-        messages: vec![ChatMessage::User {
-            content: "Hi".to_string(),
-        }],
-        tools: None,
-        stream: true,
-    };
-
-    let mut chunks = Vec::new();
-    let start = std::time::Instant::now();
-    let result = client
-        .chat_completion_stream(request, |chunk| {
-            chunks.push(chunk);
-            true
-        })
-        .await
-        .unwrap();
-
-    let elapsed = start.elapsed();
-
-    assert_eq!(chunks.len(), 3);
-    assert_eq!(chunks[0].content.as_deref(), Some("Hello"));
-    assert_eq!(chunks[1].content.as_deref(), Some(", "));
-    assert_eq!(chunks[2].content.as_deref(), Some("world!"));
-    assert_eq!(result.finish_reason.as_deref(), Some("stop"));
-
-    // Verify delays were applied (should take at least 200ms)
-    assert!(elapsed >= Duration::from_millis(200));
 
     provider.shutdown().await;
 }

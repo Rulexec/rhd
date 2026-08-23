@@ -64,21 +64,6 @@ pub(crate) fn get_messages(conn: &Mutex<Connection>, chat_id: i64) -> DbResult<V
     Ok(messages)
 }
 
-pub(crate) fn truncate_messages(
-    conn: &Mutex<Connection>,
-    chat_id: i64,
-    after_message_id: i64,
-) -> DbResult<()> {
-    let conn = conn
-        .lock()
-        .map_err(|e| DbError::InitializationError(e.to_string()))?;
-    conn.execute(
-        "DELETE FROM messages WHERE chat_id = ?1 AND id > ?2",
-        params![chat_id, after_message_id],
-    )?;
-    Ok(())
-}
-
 pub(crate) fn get_message(conn: &Mutex<Connection>, message_id: i64) -> DbResult<Option<Message>> {
     let conn = conn
         .lock()
@@ -134,75 +119,6 @@ pub(crate) fn update_message(
     Ok(())
 }
 
-/// Insert a message with an explicit ID (for FSM sync)
-pub(crate) fn insert_message(
-    conn: &Mutex<Connection>,
-    message: &Message,
-) -> DbResult<Message> {
-    let conn = conn
-        .lock()
-        .map_err(|e| DbError::InitializationError(e.to_string()))?;
-    let tx = conn.unchecked_transaction()?;
-    let tool_calls_json = message
-        .tool_calls
-        .as_ref()
-        .map(|tc| serde_json::to_string(tc).unwrap_or_default());
-    tx.execute(
-        "INSERT INTO messages (id, chat_id, role, content, created_at, model, thinking_content, tool_calls)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-        params![
-            message.id,
-            message.chat_id,
-            message.role,
-            message.content,
-            message.created_at,
-            message.model,
-            message.thinking_content,
-            tool_calls_json,
-        ],
-    )?;
-    let now = now_iso();
-    tx.execute(
-        "UPDATE chats SET updated_at = ?1 WHERE id = ?2",
-        params![now, message.chat_id],
-    )?;
-    tx.commit()?;
-    Ok(message.clone())
-}
-
-/// Update a full message (for FSM sync)
-pub(crate) fn update_message_full(
-    conn: &Mutex<Connection>,
-    message: &Message,
-) -> DbResult<Message> {
-    let conn = conn
-        .lock()
-        .map_err(|e| DbError::InitializationError(e.to_string()))?;
-    let tx = conn.unchecked_transaction()?;
-    let tool_calls_json = message
-        .tool_calls
-        .as_ref()
-        .map(|tc| serde_json::to_string(tc).unwrap_or_default());
-    tx.execute(
-        "UPDATE messages SET role = ?1, content = ?2, thinking_content = ?3, tool_calls = ?4, model = ?5 WHERE id = ?6",
-        params![
-            message.role,
-            message.content,
-            message.thinking_content,
-            tool_calls_json,
-            message.model,
-            message.id,
-        ],
-    )?;
-    let now = now_iso();
-    tx.execute(
-        "UPDATE chats SET updated_at = ?1 WHERE id = ?2",
-        params![now, message.chat_id],
-    )?;
-    tx.commit()?;
-    Ok(message.clone())
-}
-
 /// Delete a message by ID
 pub(crate) fn delete_message(conn: &Mutex<Connection>, message_id: i64) -> DbResult<()> {
     let conn = conn
@@ -212,24 +128,3 @@ pub(crate) fn delete_message(conn: &Mutex<Connection>, message_id: i64) -> DbRes
     Ok(())
 }
 
-/// Delete all messages for a chat
-pub(crate) fn delete_all_messages(conn: &Mutex<Connection>, chat_id: i64) -> DbResult<()> {
-    let conn = conn
-        .lock()
-        .map_err(|e| DbError::InitializationError(e.to_string()))?;
-    conn.execute("DELETE FROM messages WHERE chat_id = ?1", params![chat_id])?;
-    Ok(())
-}
-
-/// Get the next message ID for a chat (for FSM initialization)
-pub(crate) fn get_next_message_id(conn: &Mutex<Connection>, chat_id: i64) -> DbResult<i64> {
-    let conn = conn
-        .lock()
-        .map_err(|e| DbError::InitializationError(e.to_string()))?;
-    let max_id: Option<i64> = conn.query_row(
-        "SELECT MAX(id) FROM messages WHERE chat_id = ?1",
-        params![chat_id],
-        |row| row.get(0),
-    )?;
-    Ok(max_id.map(|id| id + 1).unwrap_or(1_000_000))
-}

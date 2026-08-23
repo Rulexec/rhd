@@ -27,27 +27,6 @@ fn test_add_and_get_messages() {
 }
 
 #[test]
-fn test_truncate_messages() {
-    let path = "test_chat_truncate.db";
-    cleanup(path);
-
-    let db = ChatDb::new(path).unwrap();
-    let chat_id = db.create_chat("Chat").unwrap();
-
-    let msg1 = db.add_message(chat_id, "user", "First", None, None).unwrap();
-    let _msg2 = db.add_message(chat_id, "assistant", "Second", None, None).unwrap();
-    let _msg3 = db.add_message(chat_id, "user", "Third", None, None).unwrap();
-
-    db.truncate_messages(chat_id, msg1).unwrap();
-
-    let messages = db.get_messages(chat_id).unwrap();
-    assert_eq!(messages.len(), 1);
-    assert_eq!(messages[0].content, "First");
-
-    cleanup(path);
-}
-
-#[test]
 fn test_update_message() {
     let path = "test_chat_update_msg.db";
     cleanup(path);
@@ -92,20 +71,3 @@ fn test_count_queue_messages() {
     cleanup(path);
 }
 
-#[test]
-fn test_update_chat_active_model() {
-    let path = "test_chat_active_model.db";
-    cleanup(path);
-
-    let db = ChatDb::new(path).unwrap();
-    let id = db.create_chat("Test").unwrap();
-
-    let chat = db.get_chat(id).unwrap().unwrap();
-    assert_eq!(chat.active_model, None);
-
-    db.update_chat_active_model(id, "gpt4").unwrap();
-    let chat = db.get_chat(id).unwrap().unwrap();
-    assert_eq!(chat.active_model, Some("gpt4".to_string()));
-
-    cleanup(path);
-}

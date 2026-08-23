@@ -58,10 +58,6 @@ fn test_migration_from_old_schema() {
     assert_eq!(messages[0].model, None);
 
     // Verify we can use the new columns
-    db.update_chat_active_model(1, "gpt4").unwrap();
-    let chat = db.get_chat(1).unwrap().unwrap();
-    assert_eq!(chat.active_model, Some("gpt4".to_string()));
-
     let msg_id = db.add_message(1, "assistant", "New message", Some("gpt4"), None).unwrap();
     let msg = db.get_message(msg_id).unwrap().unwrap();
     assert_eq!(msg.model, Some("gpt4".to_string()));

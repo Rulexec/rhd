@@ -54,10 +54,6 @@ impl SimpleListener {
         });
     }
 
-    /// Add a streaming response from a receiver
-    pub fn push_stream_receiver(&self, receiver: mpsc::Receiver<rhd_ai_client::StreamChunk>) {
-        self.push_response(MockAiResponse::Stream(receiver));
-    }
 }
 
 impl Default for SimpleListener {
@@ -123,10 +119,6 @@ impl RecordingListener {
         self.inner.push_error(status, message);
     }
 
-    /// Add a streaming response from a receiver
-    pub fn push_stream_receiver(&self, receiver: mpsc::Receiver<rhd_ai_client::StreamChunk>) {
-        self.inner.push_stream_receiver(receiver);
-    }
 }
 
 impl Default for RecordingListener {

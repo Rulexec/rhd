@@ -119,30 +119,6 @@ pub fn remove_message_tags(conn: &Mutex<Connection>, message_id: i64, tags: &[St
     Ok(())
 }
 
-/// Get all chat IDs that have a specific tag.
-pub fn get_chats_by_tag(conn: &Mutex<Connection>, tag: &str) -> DbResult<Vec<i64>> {
-    let conn_guard = conn.lock().map_err(|e| DbError::InitializationError(e.to_string()))?;
-    let mut stmt = conn_guard.prepare(
-        "SELECT chat_id FROM chat_tags WHERE tag = ? ORDER BY chat_id"
-    )?;
-    let chat_ids = stmt
-        .query_map([tag], |row| row.get::<_, i64>(0))?
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(chat_ids)
-}
-
-/// Get all message IDs that have a specific tag.
-pub fn get_messages_by_tag(conn: &Mutex<Connection>, tag: &str) -> DbResult<Vec<i64>> {
-    let conn_guard = conn.lock().map_err(|e| DbError::InitializationError(e.to_string()))?;
-    let mut stmt = conn_guard.prepare(
-        "SELECT message_id FROM message_tags WHERE tag = ? ORDER BY message_id"
-    )?;
-    let message_ids = stmt
-        .query_map([tag], |row| row.get::<_, i64>(0))?
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(message_ids)
-}
-
 /// Get all tags for a queue message.
 pub fn get_queue_message_tags(conn: &Mutex<Connection>, message_id: i64) -> DbResult<Vec<String>> {
     let conn_guard = conn.lock().map_err(|e| DbError::InitializationError(e.to_string()))?;

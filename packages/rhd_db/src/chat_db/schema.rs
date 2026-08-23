@@ -184,56 +184,6 @@ fn migrate(conn: &Connection) -> DbResult<()> {
         conn.execute_batch("ALTER TABLE messages ADD COLUMN thinking_content TEXT")?;
     }
 
-    // Check if active_role_project column exists in chats table
-    let has_active_role_project: bool = conn
-        .prepare("SELECT COUNT(*) FROM pragma_table_info('chats') WHERE name='active_role_project'")?
-        .query_row([], |row| row.get::<_, i64>(0))?
-        > 0;
-
-    if !has_active_role_project {
-        conn.execute_batch("ALTER TABLE chats ADD COLUMN active_role_project TEXT")?;
-    }
-
-    // Check if active_role_name column exists in chats table
-    let has_active_role_name: bool = conn
-        .prepare("SELECT COUNT(*) FROM pragma_table_info('chats') WHERE name='active_role_name'")?
-        .query_row([], |row| row.get::<_, i64>(0))?
-        > 0;
-
-    if !has_active_role_name {
-        conn.execute_batch("ALTER TABLE chats ADD COLUMN active_role_name TEXT")?;
-    }
-
-    // Check if roles_list_injected column exists in chats table
-    let has_roles_list_injected: bool = conn
-        .prepare("SELECT COUNT(*) FROM pragma_table_info('chats') WHERE name='roles_list_injected'")?
-        .query_row([], |row| row.get::<_, i64>(0))?
-        > 0;
-
-    if !has_roles_list_injected {
-        conn.execute_batch("ALTER TABLE chats ADD COLUMN roles_list_injected BOOLEAN NOT NULL DEFAULT 0")?;
-    }
-
-    // Check if role_prompt_pending column exists in chats table
-    let has_role_prompt_pending: bool = conn
-        .prepare("SELECT COUNT(*) FROM pragma_table_info('chats') WHERE name='role_prompt_pending'")?
-        .query_row([], |row| row.get::<_, i64>(0))?
-        > 0;
-
-    if !has_role_prompt_pending {
-        conn.execute_batch("ALTER TABLE chats ADD COLUMN role_prompt_pending BOOLEAN NOT NULL DEFAULT 0")?;
-    }
-
-    // Check if todo_list column exists in chats table
-    let has_todo_list: bool = conn
-        .prepare("SELECT COUNT(*) FROM pragma_table_info('chats') WHERE name='todo_list'")?
-        .query_row([], |row| row.get::<_, i64>(0))?
-        > 0;
-
-    if !has_todo_list {
-        conn.execute_batch("ALTER TABLE chats ADD COLUMN todo_list TEXT")?;
-    }
-
     // Check if tool_calls column exists in messages table
     let has_tool_calls: bool = conn
         .prepare("SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name='tool_calls'")?
