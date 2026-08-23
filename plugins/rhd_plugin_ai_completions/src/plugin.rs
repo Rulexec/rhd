@@ -148,21 +148,31 @@ pub async fn run_plugin(
                         "triggering AI completion"
                     );
 
-                    // Handle AI request
-                    if let Err(e) = ai_request::handle_ai_request(
-                        Arc::clone(&client),
-                        Arc::clone(&plugins_monitor),
-                        Arc::clone(&ai_client),
-                        &config,
-                        plugin_id,
-                        chat_id,
-                        &chat_state.messages,
-                        trigger_reason,
-                    )
-                    .await
-                    {
-                        tracing::error!("AI request failed for chat {}: {}", chat_id, e);
-                    }
+                    // Handle AI request in a separate task to avoid blocking the main loop
+                    let client_clone = Arc::clone(&client);
+                    let plugins_monitor_clone = Arc::clone(&plugins_monitor);
+                    let ai_client_clone = Arc::clone(&ai_client);
+                    let config_clone = config.clone();
+                    let plugin_id_clone = plugin_id.to_string();
+                    let messages_clone = chat_state.messages.clone();
+                    let trigger_reason_clone = trigger_reason.clone();
+                    
+                    tokio::spawn(async move {
+                        if let Err(e) = ai_request::handle_ai_request(
+                            client_clone,
+                            plugins_monitor_clone,
+                            ai_client_clone,
+                            &config_clone,
+                            &plugin_id_clone,
+                            chat_id,
+                            &messages_clone,
+                            trigger_reason_clone,
+                        )
+                        .await
+                        {
+                            tracing::error!("AI request failed for chat {}: {}", chat_id, e);
+                        }
+                    });
                 }
             }
         }

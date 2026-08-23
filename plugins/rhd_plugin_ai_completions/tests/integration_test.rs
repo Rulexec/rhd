@@ -329,3 +329,140 @@ async fn test_plugin_processes_pending_acks() {
     .await
     .expect("Test timed out");
 }
+
+#[tokio::test]
+async fn test_plugin_handles_ai_error() {
+    init_tracing();
+    timeout(Duration::from_secs(15), async {
+        // Start chat server on random port
+        let chat_config = rhd_chat_server::config::Config {
+            host: "127.0.0.1".to_string(),
+            port: 0,
+            db_path: ":memory:".to_string(),
+        };
+        let (chat_server_port, _server_handle) = rhd_chat_server::server::start(chat_config)
+            .await
+            .expect("Failed to start chat server");
+
+        // Start mock AI provider with error response
+        let listener = SimpleListener::new();
+        listener.push_error(500, "Internal server error from mock AI");
+        let mock_ai = MockAiProvider::start(listener)
+            .await
+            .expect("Failed to start mock AI provider");
+
+        // Create credentials file
+        let mut creds_file = NamedTempFile::new().expect("Failed to create creds file");
+        std::io::Write::write_all(
+            &mut creds_file,
+            b"testApiKey: test-api-key-12345\n",
+        )
+        .expect("Failed to write creds");
+
+        // Create config file
+        let mut config_file = NamedTempFile::new().expect("Failed to create config file");
+        let config_content = format!(
+            r#"
+credentialsConfig: {}
+ai_completions:
+  models:
+    default:
+      alias: test
+    test:
+      baseUrl: "{}"
+      apiKey:
+        cred: testApiKey
+      model: "test-model"
+"#,
+            creds_file.path().to_str().unwrap(),
+            mock_ai.base_url()
+        );
+        std::io::Write::write_all(&mut config_file, config_content.as_bytes())
+            .expect("Failed to write config");
+
+        // Load config
+        let config = rhd_plugin_ai_completions::config::load_config(
+            config_file.path().to_str().unwrap(),
+        )
+        .expect("Failed to load config");
+
+        // Start plugin in background
+        let plugin_handle = tokio::spawn({
+            let url = format!("ws://127.0.0.1:{}/", chat_server_port);
+            let config = config.clone();
+            async move {
+                plugin::run_plugin(&url, "test_plugin", config).await
+            }
+        });
+
+        // Wait for plugin to initialize
+        sleep(Duration::from_millis(500)).await;
+
+        // Connect client
+        let client = ChatClient::connect(&format!("ws://127.0.0.1:{}/", chat_server_port))
+            .await
+            .expect("Failed to connect");
+
+        // Create a chat
+        let create_result = client
+            .create_chat(CreateChatParams {
+                title: "Error Test Chat".to_string(),
+                tags: vec![],
+            })
+            .await
+            .expect("Failed to create chat");
+
+        // Add a queued message to trigger AI request
+        client
+            .add_queue_message(AddQueueMessageParams {
+                chat_id: create_result.chat_id,
+                role: "user".to_string(),
+                content: "Hello".to_string(),
+                reasoning_content: None,
+                tags: vec![],
+            })
+            .await
+            .expect("Failed to add queue message");
+
+        // Wait for plugin to process and encounter error
+        sleep(Duration::from_secs(3)).await;
+
+        // Check that error tag was added to chat
+        let chat_result = client
+            .get_chat(GetChatParams {
+                chat_id: create_result.chat_id,
+            })
+            .await
+            .expect("Failed to get chat");
+
+        // Verify error tag is present
+        assert!(
+            chat_result.chat.tags.contains(&"ai_completions:error".to_string()),
+            "Chat should have error tag"
+        );
+
+        // Verify error message was added
+        let error_messages: Vec<_> = chat_result
+            .messages
+            .iter()
+            .filter(|m| m.tags.contains(&"ai_completions:error".to_string()))
+            .collect();
+
+        assert!(
+            !error_messages.is_empty(),
+            "Should have at least one error message"
+        );
+
+        // Verify error message content
+        let error_msg = error_messages.first().unwrap();
+        assert!(
+            error_msg.content.contains("AI request failed"),
+            "Error message should contain 'AI request failed'"
+        );
+
+        // Cleanup
+        plugin_handle.abort();
+    })
+    .await
+    .expect("Test timed out");
+}

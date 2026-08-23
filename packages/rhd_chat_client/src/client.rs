@@ -97,7 +97,7 @@ impl ChatClient {
             while let Some(msg) = read.next().await {
                 match msg {
                     Ok(Message::Text(text)) => {
-                        debug!("Received: {}", text);
+                        debug!("Received raw message: {}", text);
                         Self::handle_incoming_message(
                             &text,
                             &pending_requests_read,
@@ -148,9 +148,25 @@ impl ChatClient {
         // Try to parse as a response first
         if let Ok(response) = serde_json::from_str::<Response>(text) {
             if response.r#type == "response" {
+                tracing::debug!(
+                    response_id = %response.id,
+                    success = response.success,
+                    "received response"
+                );
                 let mut pending = pending_requests.lock().await;
                 if let Some(sender) = pending.remove(&response.id) {
+                    tracing::debug!(
+                        response_id = %response.id,
+                        remaining_pending = pending.len(),
+                        "matched response to pending request"
+                    );
                     let _ = sender.send(Ok(response));
+                } else {
+                    tracing::warn!(
+                        response_id = %response.id,
+                        pending_count = pending.len(),
+                        "no pending request found for response"
+                    );
                 }
                 return;
             }
@@ -291,14 +307,22 @@ impl ChatClient {
             "chatUpdated" => {
                 if let Ok(data) = serde_json::from_value::<rhd_chat_api::ChatUpdatedData>(event.data.clone()) {
                     for sub in &subs.chats_list_subscriptions {
-                        (sub.callback)(ChatsListEvent::ChatUpdated(data.clone())).await;
+                        let callback = sub.callback.clone();
+                        let data_clone = data.clone();
+                        tokio::spawn(async move {
+                            (callback)(ChatsListEvent::ChatUpdated(data_clone)).await;
+                        });
                     }
                 }
             }
             "chatDeleted" => {
                 if let Ok(data) = serde_json::from_value::<rhd_chat_api::ChatDeletedData>(event.data.clone()) {
                     for sub in &subs.chats_list_subscriptions {
-                        (sub.callback)(ChatsListEvent::ChatDeleted(data.clone())).await;
+                        let callback = sub.callback.clone();
+                        let data_clone = data.clone();
+                        tokio::spawn(async move {
+                            (callback)(ChatsListEvent::ChatDeleted(data_clone)).await;
+                        });
                     }
                 }
             }
@@ -354,6 +378,12 @@ impl ChatClient {
         let request = Request::new(&request_id, method, params_value);
         let request_json = serde_json::to_string(&request)?;
 
+        tracing::debug!(
+            method = method,
+            request_id = %request_id,
+            "sending request"
+        );
+
         // Create oneshot channel for the response
         let (response_tx, response_rx) = oneshot::channel();
 
@@ -361,6 +391,11 @@ impl ChatClient {
         {
             let mut pending = self.pending_requests.lock().await;
             pending.insert(request_id.clone(), response_tx);
+            tracing::debug!(
+                request_id = %request_id,
+                pending_count = pending.len(),
+                "registered pending request"
+            );
         }
 
         // Send the request

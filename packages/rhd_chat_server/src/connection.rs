@@ -57,6 +57,13 @@ pub async fn handle_connection(
     let write_connection_id = connection_id.clone();
     let write_task = tokio::spawn(async move {
         while let Some(msg) = outgoing_rx.recv().await {
+            // Log the first 100 chars of the message to identify what's being sent
+            let msg_preview = if msg.len() > 100 { &msg[..100] } else { &msg };
+            debug!(
+                connection_id = %write_connection_id,
+                message_preview = %msg_preview,
+                "Writing message to WebSocket"
+            );
             if let Err(e) = write.send(Message::Text(msg)).await {
                 error!("Failed to send message to connection {}: {}", write_connection_id, e);
                 break;
@@ -132,6 +139,7 @@ async fn process_messages(
                 debug!("Parsed request: method={}, id={}", request.method, request.id);
 
                 // Route to appropriate handler
+                debug!("Calling handler for method={}", request.method);
                 let response_value = match handlers::handle_request(
                     request.clone(),
                     &db,
@@ -139,13 +147,28 @@ async fn process_messages(
                     subscription_manager.clone(),
                     plugin_registry.clone(),
                 ).await {
-                    Ok(resp) => resp,
+                    Ok(resp) => {
+                        debug!("Handler returned success for method={}", request.method);
+                        resp
+                    },
                     Err(e) => {
                         error!("Handler error: {}", e);
                         serde_json::to_value(ErrorResponse::internal_error(request.id, format!("Internal error: {}", e)))?
                     }
                 };
-                let _ = outgoing_tx.send(serde_json::to_string(&response_value)?);
+                let response_str = serde_json::to_string(&response_value)?;
+                debug!(
+                    connection_id = %connection_id,
+                    method = %request.method,
+                    "Sending response"
+                );
+                if let Err(e) = outgoing_tx.send(response_str) {
+                    error!(
+                        connection_id = %connection_id,
+                        error = %e,
+                        "Failed to send response"
+                    );
+                }
             }
             Message::Binary(_) => {
                 debug!("Received binary message (ignoring)");

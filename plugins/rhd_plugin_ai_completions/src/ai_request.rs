@@ -12,8 +12,8 @@ use std::time::Duration;
 
 use rhd_ai_client::{AiClient, ChatCompletionRequest, ChatMessage};
 use rhd_chat_api::{
-    AckCustomEventParams, AddMessageParams, DeleteQueueMessageParams, GetQueueMessagesParams,
-    Message, SendCustomEventParams, UpdateChatParams,
+    AckCustomEventParams, AddMessageParams, DeleteQueueMessageParams, GetChatParams,
+    GetQueueMessagesParams, Message, SendCustomEventParams, UpdateChatParams,
 };
 use rhd_chat_client::{ChatClient, PluginsMonitor};
 
@@ -69,7 +69,7 @@ pub async fn handle_ai_request(
         .map_err(|e| AiRequestError::WaitTimeout(e.to_string()))?;
 
     // Process queued messages if needed
-    if trigger_reason == TriggerReason::QueuedMessages {
+    let current_messages = if trigger_reason == TriggerReason::QueuedMessages {
         tracing::info!(
             chat_id = chat_id,
             trigger_reason = ?trigger_reason,
@@ -77,7 +77,21 @@ pub async fn handle_ai_request(
         );
         process_queued_messages(&client, chat_id).await?;
         tracing::info!(chat_id = chat_id, "finished processing queued messages");
-    }
+
+        // Refetch messages after processing queued messages
+        let chat_result = client
+            .get_chat(GetChatParams { chat_id })
+            .await
+            .map_err(|e| AiRequestError::MessageAdd(e.to_string()))?;
+        tracing::info!(
+            chat_id = chat_id,
+            messages_count = chat_result.messages.len(),
+            "refetched messages after processing queue"
+        );
+        chat_result.messages
+    } else {
+        messages.to_vec()
+    };
 
     // Acknowledge own event
     tracing::debug!(
@@ -93,7 +107,7 @@ pub async fn handle_ai_request(
         .map_err(|e| AiRequestError::EventAck(e.to_string()))?;
 
     // Build AI request
-    let filtered_messages = filter_messages_for_ai(messages);
+    let filtered_messages = filter_messages_for_ai(&current_messages);
     let ai_messages = convert_to_ai_messages(&filtered_messages);
 
     // Get model config
@@ -109,9 +123,27 @@ pub async fn handle_ai_request(
         stream: false,
     };
 
+    // Log the exact request body being sent to the AI provider
+    let request_body = serde_json::to_string(&request)
+        .map_err(|e| AiRequestError::EventSend(e.to_string()))?;
+    tracing::info!(
+        chat_id = chat_id,
+        request_body = %request_body,
+        "sending AI completion request"
+    );
+
     // Make AI completion request
     match ai_client.chat_completion(request).await {
         Ok(response) => {
+            // Log the full raw AI provider response
+            let response_body = serde_json::to_string(&response)
+                .map_err(|e| AiRequestError::EventSend(e.to_string()))?;
+            tracing::info!(
+                chat_id = chat_id,
+                response_body = %response_body,
+                "received AI completion response"
+            );
+
             // Add assistant message to chat
             if let Some(choice) = response.choices.first() {
                 let content = choice.message.content.clone().unwrap_or_default();
@@ -131,7 +163,15 @@ pub async fn handle_ai_request(
             Ok(())
         }
         Err(e) => {
+            // Log the exact error at ERROR level
+            tracing::error!(
+                chat_id = chat_id,
+                error = %e,
+                "AI request failed"
+            );
+
             // Add error tag to chat
+            tracing::debug!(chat_id = chat_id, "adding error tag to chat");
             client
                 .update_chat(UpdateChatParams {
                     chat_id,
@@ -140,20 +180,49 @@ pub async fn handle_ai_request(
                     remove_tags: vec![],
                 })
                 .await
-                .map_err(|e| AiRequestError::TagAdd(e.to_string()))?;
+                .map_err(|e| {
+                    tracing::error!(chat_id = chat_id, error = %e, "failed to add error tag");
+                    AiRequestError::TagAdd(e.to_string())
+                })?;
+            tracing::debug!(chat_id = chat_id, "error tag added successfully");
 
             // Add error message
             let error_content = format!("AI request failed: {}", e);
-            client
+            tracing::info!(
+                chat_id = chat_id,
+                role = "assistant",
+                content_length = error_content.len(),
+                tags = ?vec!["ai_completions:error"],
+                "attempting to add error message to chat"
+            );
+            
+            let add_result = client
                 .add_message(AddMessageParams {
                     chat_id,
-                    role: "ai_completions:error".to_string(),
-                    content: error_content,
+                    role: "assistant".to_string(),
+                    content: error_content.clone(),
                     reasoning_content: None,
-                    tags: vec![],
+                    tags: vec!["ai_completions:error".to_string()],
                 })
-                .await
-                .map_err(|e| AiRequestError::MessageAdd(e.to_string()))?;
+                .await;
+            
+            match add_result {
+                Ok(result) => {
+                    tracing::info!(
+                        chat_id = chat_id,
+                        message_id = result.message_id,
+                        "error message added successfully"
+                    );
+                }
+                Err(e) => {
+                    tracing::error!(
+                        chat_id = chat_id,
+                        error = %e,
+                        "failed to add error message to chat"
+                    );
+                    return Err(AiRequestError::MessageAdd(e.to_string()));
+                }
+            }
 
             Err(AiRequestError::AiRequest(e.to_string()))
         }

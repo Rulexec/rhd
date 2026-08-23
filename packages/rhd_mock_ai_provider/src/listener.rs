@@ -46,6 +46,14 @@ impl SimpleListener {
         self.push_response(MockAiResponse::tool_call(name, arguments));
     }
 
+    /// Add an error response
+    pub fn push_error(&self, status: u16, message: impl Into<String>) {
+        self.push_response(MockAiResponse::Error {
+            status,
+            message: message.into(),
+        });
+    }
+
     /// Add a streaming response from a receiver
     pub fn push_stream_receiver(&self, receiver: mpsc::Receiver<rhd_ai_client::StreamChunk>) {
         self.push_response(MockAiResponse::Stream(receiver));
@@ -108,6 +116,11 @@ impl RecordingListener {
     /// Add a tool call response
     pub fn push_tool_call(&self, name: impl Into<String>, arguments: impl Into<String>) {
         self.inner.push_tool_call(name, arguments);
+    }
+
+    /// Add an error response
+    pub fn push_error(&self, status: u16, message: impl Into<String>) {
+        self.inner.push_error(status, message);
     }
 
     /// Add a streaming response from a receiver
