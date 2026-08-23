@@ -1,2 +1,0 @@
-cmd: target/debug/rhd_test
-args: ["mcp-server"]

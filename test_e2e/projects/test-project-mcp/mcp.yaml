@@ -1,5 +1,0 @@
-mcp:
-  - name: mock-mcp
-    id: mock1
-    cmd: target/debug/rhd_test
-    args: ["mcp-server"]

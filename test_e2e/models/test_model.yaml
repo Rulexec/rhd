@@ -1,3 +1,0 @@
-baseUrl: "http://localhost:$E2E_MODEL_PORT/v1"
-apiKey: "test-key"
-model: "test-model"
