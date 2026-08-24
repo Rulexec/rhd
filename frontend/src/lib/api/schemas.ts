@@ -226,17 +226,31 @@ export const GetPluginsResultSchema = z.object({
 });
 
 // ============================================================================
-// Type Exports (for JSDoc type inference)
+// Type Exports
 // ============================================================================
 
-/** @typedef {z.infer<typeof ChatSchema>} Chat */
-/** @typedef {z.infer<typeof MessageSchema>} Message */
-/** @typedef {z.infer<typeof PluginSummarySchema>} PluginSummary */
-/** @typedef {z.infer<typeof RequestSchema>} Request */
-/** @typedef {z.infer<typeof ResponseSchema>} Response */
-/** @typedef {z.infer<typeof EventSchema>} Event */
-/** @typedef {z.infer<typeof ListChatsResultSchema>} ListChatsResult */
-/** @typedef {z.infer<typeof CreateChatResultSchema>} CreateChatResult */
-/** @typedef {z.infer<typeof GetChatResultSchema>} GetChatResult */
-/** @typedef {z.infer<typeof GetQueueMessagesResultSchema>} GetQueueMessagesResult */
-/** @typedef {z.infer<typeof GetPluginsResultSchema>} GetPluginsResult */
+export type Chat = z.infer<typeof ChatSchema>;
+export type Message = z.infer<typeof MessageSchema>;
+export type PluginSummary = z.infer<typeof PluginSummarySchema>;
+export type Request = z.infer<typeof RequestSchema>;
+export type Response = z.infer<typeof ResponseSchema>;
+export type Event = z.infer<typeof EventSchema>;
+export type WebSocketMessage = z.infer<typeof WebSocketMessageSchema>;
+export type ListChatsResult = z.infer<typeof ListChatsResultSchema>;
+export type CreateChatResult = z.infer<typeof CreateChatResultSchema>;
+export type GetChatResult = z.infer<typeof GetChatResultSchema>;
+export type GetQueueMessagesResult = z.infer<typeof GetQueueMessagesResultSchema>;
+export type GetPluginsResult = z.infer<typeof GetPluginsResultSchema>;
+
+export type ChatCreatedData = z.infer<typeof ChatCreatedDataSchema>;
+export type ChatUpdatedData = z.infer<typeof ChatUpdatedDataSchema>;
+export type ChatDeletedData = z.infer<typeof ChatDeletedDataSchema>;
+export type MessageAddedData = z.infer<typeof MessageAddedDataSchema>;
+export type MessageUpdatedData = z.infer<typeof MessageUpdatedDataSchema>;
+export type MessageDeletedData = z.infer<typeof MessageDeletedDataSchema>;
+export type QueueMessageAddedData = z.infer<typeof QueueMessageAddedDataSchema>;
+export type QueueMessageUpdatedData = z.infer<typeof QueueMessageUpdatedDataSchema>;
+export type QueueMessageDeletedData = z.infer<typeof QueueMessageDeletedDataSchema>;
+export type PluginRegisteredData = z.infer<typeof PluginRegisteredDataSchema>;
+export type PluginUpdatedData = z.infer<typeof PluginUpdatedDataSchema>;
+export type PluginRemovedData = z.infer<typeof PluginRemovedDataSchema>;

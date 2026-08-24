@@ -1,38 +1,42 @@
-import { writable } from 'svelte/store';
+import { writable, type Writable } from 'svelte/store';
 import {
   WebSocketMessageSchema,
-  ResponseSchema,
-  EventSchema
+  type WebSocketMessage,
+  type Response,
+  type Event
 } from './schemas.js';
 
 const WS_URL = 'ws://localhost:8080';
+
+export type ConnectionStatus = 'connected' | 'disconnected' | 'connecting';
+
+export interface ConnectionState {
+  status: ConnectionStatus;
+  error: string | null;
+}
+
+interface PendingRequest {
+  resolve: (value: unknown) => void;
+  reject: (reason: Error) => void;
+}
+
+type EventCallback = (data: unknown) => void;
 
 /**
  * WebSocket client for chat server communication.
  * Handles connection lifecycle, request/response correlation, and event dispatch.
  */
 class WebSocketClient {
-  constructor() {
-    /** @type {WebSocket | null} */
-    this.ws = null;
-    
-    /** @type {Map<string, { resolve: Function, reject: Function }>} */
-    this.pendingRequests = new Map();
-    
-    /** @type {Map<string, Set<Function>>} */
-    this.eventListeners = new Map();
-    
-    /** @type {boolean} */
-    this.isConnected = false;
-    
-    /** @type {string | null} */
-    this.errorMessage = null;
-  }
+  private ws: WebSocket | null = null;
+  private pendingRequests: Map<string, PendingRequest> = new Map();
+  private eventListeners: Map<string, Set<EventCallback>> = new Map();
+  public isConnected: boolean = false;
+  public errorMessage: string | null = null;
 
   /**
    * Connect to the WebSocket server.
    */
-  connect() {
+  connect(): void {
     if (this.ws && (this.ws.readyState === WebSocket.CONNECTING || this.ws.readyState === WebSocket.OPEN)) {
       console.warn('WebSocket already connected or connecting');
       return;
@@ -78,7 +82,7 @@ class WebSocketClient {
   /**
    * Disconnect from the WebSocket server.
    */
-  disconnect() {
+  disconnect(): void {
     if (this.ws) {
       this.ws.close();
       this.ws = null;
@@ -90,11 +94,11 @@ class WebSocketClient {
 
   /**
    * Send a request and wait for a response.
-   * @param {string} method - Method name
-   * @param {any} params - Method parameters
-   * @returns {Promise<any>} - Resolves with response data
+   * @param method - Method name
+   * @param params - Method parameters
+   * @returns Resolves with response data
    */
-  request(method, params = {}) {
+  request(method: string, params: unknown = {}): Promise<unknown> {
     return new Promise((resolve, reject) => {
       if (!this.isConnected || !this.ws) {
         reject(new Error('WebSocket not connected'));
@@ -104,20 +108,15 @@ class WebSocketClient {
       const requestId = crypto.randomUUID();
       
       const request = {
-        type: 'request',
+        type: 'request' as const,
         id: requestId,
         method,
         params
       };
 
-      // Validate request schema
-      try {
-        // We don't need to validate outgoing requests, but we ensure the structure is correct
-        if (request.type !== 'request' || !request.id || !request.method) {
-          throw new Error('Invalid request structure');
-        }
-      } catch (error) {
-        reject(new Error(`Invalid request: ${error.message}`));
+      // Validate request structure
+      if (request.type !== 'request' || !request.id || !request.method) {
+        reject(new Error('Invalid request structure'));
         return;
       }
 
@@ -129,22 +128,22 @@ class WebSocketClient {
         this.ws.send(JSON.stringify(request));
       } catch (error) {
         this.pendingRequests.delete(requestId);
-        reject(new Error(`Failed to send request: ${error.message}`));
+        reject(new Error(`Failed to send request: ${error instanceof Error ? error.message : String(error)}`));
       }
     });
   }
 
   /**
    * Subscribe to an event type.
-   * @param {string} eventName - Event name
-   * @param {Function} callback - Callback function
-   * @returns {Function} - Unsubscribe function
+   * @param eventName - Event name
+   * @param callback - Callback function
+   * @returns Unsubscribe function
    */
-  on(eventName, callback) {
+  on(eventName: string, callback: EventCallback): () => void {
     if (!this.eventListeners.has(eventName)) {
       this.eventListeners.set(eventName, new Set());
     }
-    this.eventListeners.get(eventName).add(callback);
+    this.eventListeners.get(eventName)!.add(callback);
 
     // Return unsubscribe function
     return () => {
@@ -160,10 +159,10 @@ class WebSocketClient {
 
   /**
    * Handle incoming WebSocket message.
-   * @param {string} data - Raw message data
+   * @param data - Raw message data
    */
-  handleMessage(data) {
-    let parsed;
+  private handleMessage(data: string): void {
+    let parsed: unknown;
     try {
       parsed = JSON.parse(data);
     } catch (error) {
@@ -172,7 +171,7 @@ class WebSocketClient {
     }
 
     // Validate message schema
-    let message;
+    let message: WebSocketMessage;
     try {
       message = WebSocketMessageSchema.parse(parsed);
     } catch (error) {
@@ -193,9 +192,9 @@ class WebSocketClient {
 
   /**
    * Handle response message.
-   * @param {any} message - Parsed response message
+   * @param message - Parsed response message
    */
-  handleResponse(message) {
+  private handleResponse(message: Response): void {
     const pending = this.pendingRequests.get(message.id);
     if (!pending) {
       console.warn('Received response for unknown request:', message.id);
@@ -207,15 +206,16 @@ class WebSocketClient {
     if (message.success) {
       pending.resolve(message.data);
     } else {
-      pending.reject(new Error(message.data?.error || 'Request failed'));
+      const errorData = message.data as { error?: string } | null;
+      pending.reject(new Error(errorData?.error || 'Request failed'));
     }
   }
 
   /**
    * Handle event message.
-   * @param {any} message - Parsed event message
+   * @param message - Parsed event message
    */
-  handleEvent(message) {
+  private handleEvent(message: Event): void {
     const listeners = this.eventListeners.get(message.event);
     if (!listeners || listeners.size === 0) {
       return;
@@ -233,10 +233,10 @@ class WebSocketClient {
 
   /**
    * Reject all pending requests.
-   * @param {string} reason - Rejection reason
+   * @param reason - Rejection reason
    */
-  rejectAllPending(reason) {
-    for (const [id, { reject }] of this.pendingRequests) {
+  private rejectAllPending(reason: string): void {
+    for (const [, { reject }] of this.pendingRequests) {
       reject(new Error(reason));
     }
     this.pendingRequests.clear();
@@ -249,9 +249,8 @@ class WebSocketClient {
 
 /**
  * Connection status store.
- * @type {import('svelte/store').Writable<{ status: 'connected' | 'disconnected' | 'connecting', error: string | null }>}
  */
-export const connectionStore = writable({
+export const connectionStore: Writable<ConnectionState> = writable({
   status: 'disconnected',
   error: null
 });
