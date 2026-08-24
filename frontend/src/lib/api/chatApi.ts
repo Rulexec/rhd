@@ -18,6 +18,9 @@ import {
   PluginRegisteredDataSchema,
   PluginUpdatedDataSchema,
   PluginRemovedDataSchema,
+  StreamChunkDataSchema,
+  StreamFinishedDataSchema,
+  StreamSubscribeResultSchema,
   type ListChatsResult,
   type CreateChatResult,
   type GetChatResult,
@@ -34,7 +37,10 @@ import {
   type QueueMessageDeletedData,
   type PluginRegisteredData,
   type PluginUpdatedData,
-  type PluginRemovedData
+  type PluginRemovedData,
+  type StreamChunkData,
+  type StreamFinishedData,
+  type StreamSubscribeResult
 } from './schemas.js';
 
 /**
@@ -348,6 +354,56 @@ export function onPluginListEvents(handlers: PluginListEventHandlers): () => voi
     unsubs.push(websocket.on('pluginRemoved', (data) => {
       const parsed = PluginRemovedDataSchema.parse(data);
       handlers.onPluginRemoved!(parsed);
+    }));
+  }
+
+  return () => {
+    unsubs.forEach(unsub => unsub());
+  };
+}
+
+// ============================================================================
+// Stream API Methods
+// ============================================================================
+
+/**
+ * Subscribe to a stream and get current accumulated content.
+ * @param chatId - Chat ID to subscribe to
+ */
+export async function streamSubscribe(chatId: number): Promise<StreamSubscribeResult> {
+  const data = await websocket.request('streamSubscribe', { chatId });
+  return StreamSubscribeResultSchema.parse(data);
+}
+
+export interface StreamEventHandlers {
+  onStreamChunk?: (data: StreamChunkData) => void;
+  onStreamFinished?: (data: StreamFinishedData) => void;
+}
+
+/**
+ * Register event listeners for stream events.
+ * @param chatId - Chat ID to listen for
+ * @param handlers - Event handlers
+ * @returns Cleanup function that removes all listeners
+ */
+export function onStreamEvents(chatId: number, handlers: StreamEventHandlers): () => void {
+  const unsubs: Array<() => void> = [];
+
+  if (handlers.onStreamChunk) {
+    unsubs.push(websocket.on('streamChunk', (data) => {
+      const parsed = StreamChunkDataSchema.parse(data);
+      if (parsed.chatId === chatId) {
+        handlers.onStreamChunk!(parsed);
+      }
+    }));
+  }
+
+  if (handlers.onStreamFinished) {
+    unsubs.push(websocket.on('streamFinished', (data) => {
+      const parsed = StreamFinishedDataSchema.parse(data);
+      if (parsed.chatId === chatId) {
+        handlers.onStreamFinished!(parsed);
+      }
     }));
   }
 

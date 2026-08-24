@@ -1,7 +1,10 @@
 <script lang="ts">
+  import { onMount, onDestroy } from 'svelte';
   import { currentChat, allMessages, chatLoading, chatError } from '../stores/chat.js';
   import Message from './Message.svelte';
   import MessageInput from './MessageInput.svelte';
+  import { streamSubscribe, onStreamEvents } from '../api/chatApi.js';
+  import type { Message as MessageType, StreamChunkData, StreamFinishedData, StreamToolCallDelta } from '../api/schemas.js';
 
   function dismissError() {
     chatError.set(null);
@@ -9,6 +12,100 @@
 
   let messagesContainer: HTMLDivElement | null = $state(null);
   let isAtBottom: boolean = $state(true);
+
+  // Track active stream subscriptions
+  interface StreamSubscription {
+    reasoningContent: string;
+    content: string;
+    toolCalls: StreamToolCallDelta[];
+    isFinished: boolean;
+  }
+
+  let streamSubscriptions: Map<number, StreamSubscription> = $state(new Map());
+
+  // Subscribe to stream events
+  let unsubscribeStreamEvents: (() => void) | null = $state(null);
+
+  onMount(() => {
+    // Subscribe to stream events for the current chat
+    if ($currentChat) {
+      unsubscribeStreamEvents = onStreamEvents($currentChat.id, {
+        onStreamChunk: (data: StreamChunkData) => {
+          const chatId = data.chatId;
+          const subscription = streamSubscriptions.get(chatId);
+          
+          if (subscription) {
+            if (data.type === 'reasoningDelta' && data.content) {
+              subscription.reasoningContent += data.content;
+            } else if (data.type === 'contentDelta' && data.content) {
+              subscription.content += data.content;
+            } else if (data.type === 'toolCallDelta' && data.toolCalls) {
+              // Merge tool calls by ID
+              for (const tc of data.toolCalls) {
+                const existing = subscription.toolCalls.find(t => t.id === tc.id);
+                if (existing) {
+                  existing.arguments += tc.arguments;
+                } else {
+                  subscription.toolCalls.push({ ...tc });
+                }
+              }
+            }
+            
+            // Trigger reactivity
+            streamSubscriptions = new Map(streamSubscriptions);
+          }
+        },
+        onStreamFinished: (data: StreamFinishedData) => {
+          const chatId = data.chatId;
+          const subscription = streamSubscriptions.get(chatId);
+          
+          if (subscription) {
+            subscription.isFinished = true;
+            // Trigger reactivity
+            streamSubscriptions = new Map(streamSubscriptions);
+            
+            // Clean up subscription after a delay (allow final render)
+            setTimeout(() => {
+              streamSubscriptions.delete(chatId);
+              streamSubscriptions = new Map(streamSubscriptions);
+            }, 1000);
+          }
+        }
+      });
+    }
+  });
+
+  onDestroy(() => {
+    unsubscribeStreamEvents?.();
+  });
+
+  /**
+   * Check if a message is streaming and subscribe to its stream if needed.
+   */
+  async function ensureStreamSubscription(message: MessageType) {
+    if (message.isStreaming && !streamSubscriptions.has(message.chatId)) {
+      try {
+        const result = await streamSubscribe(message.chatId);
+        streamSubscriptions.set(message.chatId, {
+          reasoningContent: result.reasoningContent,
+          content: result.content,
+          toolCalls: result.toolCalls || [],
+          isFinished: result.isFinished,
+        });
+        // Trigger reactivity
+        streamSubscriptions = new Map(streamSubscriptions);
+      } catch (error) {
+        console.error('Failed to subscribe to stream:', error);
+      }
+    }
+  }
+
+  /**
+   * Get the streaming content for a message, if any.
+   */
+  function getStreamContent(message: MessageType): StreamSubscription | null {
+    return streamSubscriptions.get(message.chatId) || null;
+  }
 
   /**
    * Check if user is at the bottom of the message list.
@@ -62,6 +159,17 @@
       setTimeout(() => scrollToBottom(), 0);
     }
   });
+
+  // Auto-scroll when streaming content updates
+  $effect(() => {
+    if (streamSubscriptions.size > 0 && isAtBottom) {
+      setTimeout(() => {
+        if (isAtBottom) {
+          scrollToBottom();
+        }
+      }, 0);
+    }
+  });
 </script>
 
 <div class="chat-view">
@@ -104,7 +212,14 @@
       {:else}
         <div class="messages-list">
           {#each $allMessages as message (message.id)}
-            <Message {message} isQueue={message.isQueue} />
+            {#if message.isStreaming}
+              {#await ensureStreamSubscription(message)}
+                <!-- Loading state -->
+              {:then}
+                <!-- Subscription established -->
+              {/await}
+            {/if}
+            <Message {message} isQueue={message.isQueue} streamContent={getStreamContent(message)} />
           {/each}
         </div>
       {/if}

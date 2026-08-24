@@ -28,7 +28,9 @@ export const MessageSchema = z.object({
   content: z.string(),
   createdAt: z.string(), // ISO 8601 date string
   reasoningContent: z.string().optional(),
-  tags: z.array(z.string()).default([])
+  tags: z.array(z.string()).default([]),
+  isFinished: z.boolean().default(true),
+  isStreaming: z.boolean().default(false)
 });
 
 /**
@@ -186,6 +188,46 @@ export const PluginRemovedDataSchema = z.object({
 });
 
 // ============================================================================
+// Stream Event Data Schemas
+// ============================================================================
+
+/**
+ * Stream tool call delta schema.
+ */
+export const StreamToolCallDeltaSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  arguments: z.string()
+});
+
+/**
+ * Stream chunk event data schema.
+ */
+export const StreamChunkDataSchema = z.object({
+  chatId: z.number(),
+  type: z.enum(['reasoningDelta', 'contentDelta', 'toolCallDelta']),
+  content: z.string().optional(),
+  toolCalls: z.array(StreamToolCallDeltaSchema).optional()
+});
+
+/**
+ * Stream finished event data schema.
+ */
+export const StreamFinishedDataSchema = z.object({
+  chatId: z.number()
+});
+
+/**
+ * Stream subscribe result schema.
+ */
+export const StreamSubscribeResultSchema = z.object({
+  reasoningContent: z.string(),
+  content: z.string(),
+  toolCalls: z.array(StreamToolCallDeltaSchema).default([]),
+  isFinished: z.boolean()
+});
+
+// ============================================================================
 // Method Result Schemas
 // ============================================================================
 
@@ -254,3 +296,7 @@ export type QueueMessageDeletedData = z.infer<typeof QueueMessageDeletedDataSche
 export type PluginRegisteredData = z.infer<typeof PluginRegisteredDataSchema>;
 export type PluginUpdatedData = z.infer<typeof PluginUpdatedDataSchema>;
 export type PluginRemovedData = z.infer<typeof PluginRemovedDataSchema>;
+export type StreamChunkData = z.infer<typeof StreamChunkDataSchema>;
+export type StreamFinishedData = z.infer<typeof StreamFinishedDataSchema>;
+export type StreamToolCallDelta = z.infer<typeof StreamToolCallDeltaSchema>;
+export type StreamSubscribeResult = z.infer<typeof StreamSubscribeResultSchema>;

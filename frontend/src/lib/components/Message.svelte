@@ -1,20 +1,45 @@
 <script lang="ts">
   import { marked } from 'marked';
-  import type { Message as MessageType } from '../api/schemas.js';
+  import type { Message as MessageType, StreamToolCallDelta } from '../api/schemas.js';
+
+  interface StreamContent {
+    reasoningContent: string;
+    content: string;
+    toolCalls: StreamToolCallDelta[];
+    isFinished: boolean;
+  }
 
   interface Props {
     message: MessageType;
     isQueue?: boolean;
+    streamContent?: StreamContent | null;
   }
 
-  let { message, isQueue = false }: Props = $props();
+  let { message, isQueue = false, streamContent = null }: Props = $props();
 
   let showMarkdown: boolean = $state(true);
   let reasoningExpanded: boolean = $state(false);
   let reasoningContentEl: HTMLDivElement | null = $state(null);
 
+  // Determine what content to display based on streaming state
+  let displayContent: string = $derived(
+    streamContent && !streamContent.isFinished
+      ? streamContent.content
+      : message.content
+  );
+
+  let displayReasoning: string = $derived(
+    streamContent && !streamContent.isFinished
+      ? streamContent.reasoningContent
+      : (message.reasoningContent ?? '')
+  );
+
+  let isStreaming: boolean = $derived(
+    message.isStreaming && streamContent !== null && !streamContent.isFinished
+  );
+
   let hasReasoning: boolean = $derived(
-    message.reasoningContent != null && message.reasoningContent.length > 0
+    displayReasoning != null && displayReasoning.length > 0
   );
 
   /**
@@ -48,6 +73,13 @@
     }
   });
 
+  // Scroll to bottom when streaming reasoning content updates
+  $effect(() => {
+    if (isStreaming && hasReasoning && !reasoningExpanded) {
+      scrollReasoningToBottom();
+    }
+  });
+
   function toggleReasoning(): void {
     reasoningExpanded = !reasoningExpanded;
   }
@@ -71,7 +103,7 @@
   }
 </script>
 
-<div class="message" class:queue={isQueue}>
+<div class="message" class:queue={isQueue} class:streaming={isStreaming}>
   <div class="message-header">
     <div class="message-meta">
       <span class="role-badge {getRoleBadgeClass(message.role)}">
@@ -80,6 +112,13 @@
       <span class="timestamp text-muted">
         {formatTimestamp(message.createdAt)}
       </span>
+      {#if isStreaming}
+        <span class="streaming-indicator">
+          <span class="dot"></span>
+          <span class="dot"></span>
+          <span class="dot"></span>
+        </span>
+      {/if}
       {#if message.tags && message.tags.length > 0}
         <div class="message-tags">
           {#each message.tags as tag}
@@ -105,21 +144,35 @@
         bind:this={reasoningContentEl}
       >
         {#if showMarkdown}
-          {@html renderContent(message.reasoningContent!)}
+          {@html renderContent(displayReasoning)}
         {:else}
-          <pre>{message.reasoningContent}</pre>
+          <pre>{displayReasoning}</pre>
         {/if}
       </div>
     </div>
   {/if}
 
   <div class="message-content">
-    {#if showMarkdown}
-      {@html renderContent(message.content)}
+    {#if isStreaming && !displayContent}
+      <span class="streaming-placeholder">Generating response...</span>
+    {:else if showMarkdown}
+      {@html renderContent(displayContent)}
     {:else}
-      <pre>{message.content}</pre>
+      <pre>{displayContent}</pre>
     {/if}
   </div>
+
+  <!-- Tool calls (shown during streaming) -->
+  {#if streamContent && streamContent.toolCalls.length > 0}
+    <div class="tool-calls">
+      {#each streamContent.toolCalls as toolCall}
+        <div class="tool-call">
+          <span class="tool-name">{toolCall.name}</span>
+          <pre class="tool-arguments">{toolCall.arguments}</pre>
+        </div>
+      {/each}
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -131,6 +184,82 @@
 
   .message.queue {
     opacity: 0.8;
+  }
+
+  .message.streaming {
+    border-left: 3px solid var(--color-primary, #3b82f6);
+    padding-left: calc(var(--spacing-md) - 3px);
+  }
+
+  .streaming-indicator {
+    display: inline-flex;
+    gap: 3px;
+    margin-left: var(--spacing-xs);
+    align-items: center;
+  }
+
+  .streaming-indicator .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: var(--color-primary, #3b82f6);
+    animation: pulse 1.4s infinite;
+  }
+
+  .streaming-indicator .dot:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+
+  .streaming-indicator .dot:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+
+  @keyframes pulse {
+    0%, 100% {
+      opacity: 0.3;
+      transform: scale(0.8);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  .streaming-placeholder {
+    color: var(--color-text-muted);
+    font-style: italic;
+  }
+
+  .tool-calls {
+    margin-top: var(--spacing-sm);
+    padding: var(--spacing-sm);
+    background: var(--color-bg-tertiary);
+    border-radius: var(--radius-sm);
+  }
+
+  .tool-call {
+    margin-bottom: var(--spacing-xs);
+  }
+
+  .tool-call:last-child {
+    margin-bottom: 0;
+  }
+
+  .tool-name {
+    font-weight: 600;
+    color: var(--color-success);
+    font-size: var(--font-size-sm);
+  }
+
+  .tool-arguments {
+    margin-top: var(--spacing-xs);
+    padding: var(--spacing-xs);
+    background: var(--color-bg-secondary);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-xs);
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-wrap: break-word;
   }
 
   .message-header {
