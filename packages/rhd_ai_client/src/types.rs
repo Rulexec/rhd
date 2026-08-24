@@ -108,6 +108,7 @@ pub struct Usage {
 
 #[derive(Debug, Clone, Default)]
 pub struct StreamChunk {
+    pub reasoning_content: Option<String>,
     pub content: Option<String>,
     pub tool_calls: Option<Vec<ToolCallDelta>>,
     pub finish_reason: Option<String>,
@@ -128,6 +129,7 @@ pub struct StreamChoice {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct StreamDelta {
+    pub reasoning_content: Option<String>,
     pub content: Option<String>,
     pub tool_calls: Option<Vec<ToolCallDelta>>,
 }

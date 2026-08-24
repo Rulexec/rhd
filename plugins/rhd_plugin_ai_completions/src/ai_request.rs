@@ -10,10 +10,12 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use futures::StreamExt;
 use rhd_ai_client::{AiClient, ChatCompletionRequest, ChatMessage};
 use rhd_chat_api::{
     AckCustomEventParams, AddMessageParams, DeleteQueueMessageParams, GetChatParams,
-    GetQueueMessagesParams, Message, SendCustomEventParams, UpdateChatParams,
+    GetQueueMessagesParams, Message, SendCustomEventParams, StreamFinishParams, StreamPushParams,
+    StreamToolCallDelta, UpdateChatParams, UpdateMessageParams,
 };
 use rhd_chat_client::{ChatClient, PluginsMonitor};
 
@@ -151,11 +153,29 @@ pub async fn handle_ai_request(
     let model_name = default_model.alias.as_ref().unwrap_or(&default_name);
     let model_config = &config.ai_completions.models[model_name];
 
+    // Create message with streaming flags BEFORE AI request
+    let add_result = client
+        .add_message(AddMessageParams {
+            chat_id,
+            role: "assistant".to_string(),
+            content: String::new(),
+            reasoning_content: None,
+            tags: vec![],
+            is_finished: false,
+            is_streaming: true,
+        })
+        .await
+        .map_err(|e| AiRequestError::MessageAdd(e.to_string()))?;
+
+    let message_id = add_result.message_id;
+    tracing::info!(chat_id = chat_id, message_id = message_id, "created streaming message");
+
+    // Build streaming AI request
     let request = ChatCompletionRequest {
         model: model_config.model.clone().unwrap_or_else(|| "default".to_string()),
         messages: ai_messages,
         tools: None, // TODO: Add tools support
-        stream: false,
+        stream: true,
     };
 
     // Log the exact request body being sent to the AI provider
@@ -164,51 +184,212 @@ pub async fn handle_ai_request(
     tracing::info!(
         chat_id = chat_id,
         request_body = %request_body,
-        "sending AI completion request"
+        "sending streaming AI request"
     );
 
-    // Make AI completion request
-    match ai_client.chat_completion(request).await {
-        Ok(response) => {
-            // Log the full raw AI provider response
-            let response_body = serde_json::to_string(&response)
-                .map_err(|e| AiRequestError::EventSend(e.to_string()))?;
+    // Accumulate final content
+    let mut final_reasoning = String::new();
+    let mut final_content = String::new();
+    let mut final_tool_calls: Vec<StreamToolCallDelta> = Vec::new();
+
+    // Make streaming AI request
+    match ai_client.chat_completion_stream(request).await {
+        Ok(mut stream) => {
+            // Process each chunk from the stream
+            while let Some(chunk_result) = stream.next().await {
+                match chunk_result {
+                    Ok(chunk) => {
+                        // Reasoning content delta
+                        if let Some(reasoning) = &chunk.reasoning_content {
+                            if !reasoning.is_empty() {
+                                final_reasoning.push_str(reasoning);
+                                client
+                                    .stream_push(StreamPushParams {
+                                        chat_id,
+                                        reasoning_content: Some(reasoning.clone()),
+                                        content: None,
+                                        tool_calls: None,
+                                    })
+                                    .await
+                                    .map_err(|e| {
+                                        tracing::error!(chat_id = chat_id, error = %e, "failed to push reasoning delta");
+                                        AiRequestError::StreamPush(e.to_string())
+                                    })?;
+                            }
+                        }
+
+                        // Content delta
+                        if let Some(content) = &chunk.content {
+                            if !content.is_empty() {
+                                final_content.push_str(content);
+                                client
+                                    .stream_push(StreamPushParams {
+                                        chat_id,
+                                        reasoning_content: None,
+                                        content: Some(content.clone()),
+                                        tool_calls: None,
+                                    })
+                                    .await
+                                    .map_err(|e| {
+                                        tracing::error!(chat_id = chat_id, error = %e, "failed to push content delta");
+                                        AiRequestError::StreamPush(e.to_string())
+                                    })?;
+                            }
+                        }
+
+                        // Tool call deltas
+                        if let Some(tool_calls) = &chunk.tool_calls {
+                            let mut tool_deltas = Vec::new();
+                            for tc in tool_calls {
+                                let id = tc.id.clone().unwrap_or_default();
+                                let name = tc.function.as_ref().and_then(|f| f.name.clone()).unwrap_or_default();
+                                let arguments = tc.function.as_ref().and_then(|f| f.arguments.clone()).unwrap_or_default();
+
+                                // Merge with existing tool call by ID
+                                if let Some(existing) = final_tool_calls.iter_mut().find(|t| t.id == id) {
+                                    existing.arguments.push_str(&arguments);
+                                } else {
+                                    final_tool_calls.push(StreamToolCallDelta {
+                                        id: id.clone(),
+                                        name,
+                                        arguments,
+                                    });
+                                }
+
+                                tool_deltas.push(StreamToolCallDelta {
+                                    id,
+                                    name: tc.function.as_ref().and_then(|f| f.name.clone()).unwrap_or_default(),
+                                    arguments: tc.function.as_ref().and_then(|f| f.arguments.clone()).unwrap_or_default(),
+                                });
+                            }
+
+                            if !tool_deltas.is_empty() {
+                                client
+                                    .stream_push(StreamPushParams {
+                                        chat_id,
+                                        reasoning_content: None,
+                                        content: None,
+                                        tool_calls: Some(tool_deltas),
+                                    })
+                                    .await
+                                    .map_err(|e| {
+                                        tracing::error!(chat_id = chat_id, error = %e, "failed to push tool call delta");
+                                        AiRequestError::StreamPush(e.to_string())
+                                    })?;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!(chat_id = chat_id, error = %e, "error during streaming");
+                        // Finish stream and update message with error
+                        let _ = client
+                            .stream_finish(StreamFinishParams {
+                                chat_id,
+                                reasoning_content: None,
+                                content: None,
+                                tool_calls: None,
+                            })
+                            .await;
+
+                        let error_content = format!("AI streaming error: {}", e);
+                        client
+                            .update_message(UpdateMessageParams {
+                                message_id,
+                                content: Some(error_content.clone()),
+                                reasoning_content: None,
+                                role: None,
+                                add_tags: vec!["ai_completions:error".to_string()],
+                                remove_tags: vec![],
+                                is_finished: Some(true),
+                                is_streaming: Some(false),
+                                tool_calls: None,
+                            })
+                            .await
+                            .map_err(|e| AiRequestError::MessageUpdate(e.to_string()))?;
+
+                        return Err(AiRequestError::AiRequest(e.to_string()));
+                    }
+                }
+            }
+
+            // Stream completed successfully
             tracing::info!(
                 chat_id = chat_id,
-                response_body = %response_body,
-                "received AI completion response"
+                message_id = message_id,
+                content_length = final_content.len(),
+                reasoning_length = final_reasoning.len(),
+                tool_calls_count = final_tool_calls.len(),
+                "streaming completed successfully"
             );
 
-            // Add assistant message to chat
-            if let Some(choice) = response.choices.first() {
-                let content = choice.message.content.clone().unwrap_or_default();
+            // Finish the stream
+            client
+                .stream_finish(StreamFinishParams {
+                    chat_id,
+                    reasoning_content: if final_reasoning.is_empty() { None } else { Some(final_reasoning.clone()) },
+                    content: if final_content.is_empty() { None } else { Some(final_content.clone()) },
+                    tool_calls: if final_tool_calls.is_empty() { None } else { Some(final_tool_calls.clone()) },
+                })
+                .await
+                .map_err(|e| {
+                    tracing::error!(chat_id = chat_id, error = %e, "failed to finish stream");
+                    AiRequestError::StreamFinish(e.to_string())
+                })?;
 
-                client
-                    .add_message(AddMessageParams {
-                        chat_id,
-                        role: "assistant".to_string(),
-                        content,
-                        reasoning_content: None,
-                        tags: vec![],
-                        is_finished: true,
-                        is_streaming: false,
+            // Update message with final content
+            let tool_calls_json = if final_tool_calls.is_empty() {
+                None
+            } else {
+                // Convert StreamToolCallDelta to ToolCall format for storage
+                let tool_calls: Vec<rhd_chat_api::ToolCall> = final_tool_calls
+                    .iter()
+                    .map(|tc| rhd_chat_api::ToolCall {
+                        id: tc.id.clone(),
+                        call_type: "function".to_string(),
+                        function: rhd_chat_api::FunctionCall {
+                            name: tc.name.clone(),
+                            arguments: tc.arguments.clone(),
+                        },
                     })
-                    .await
-                    .map_err(|e| AiRequestError::MessageAdd(e.to_string()))?;
-            }
+                    .collect();
+                Some(serde_json::to_string(&tool_calls).unwrap_or_default())
+            };
+
+            client
+                .update_message(UpdateMessageParams {
+                    message_id,
+                    content: Some(final_content),
+                    reasoning_content: if final_reasoning.is_empty() { None } else { Some(final_reasoning) },
+                    role: None,
+                    add_tags: vec![],
+                    remove_tags: vec![],
+                    is_finished: Some(true),
+                    is_streaming: Some(false),
+                    tool_calls: tool_calls_json,
+                })
+                .await
+                .map_err(|e| {
+                    tracing::error!(chat_id = chat_id, error = %e, "failed to update message after streaming");
+                    AiRequestError::MessageUpdate(e.to_string())
+                })?;
 
             Ok(())
         }
         Err(e) => {
-            // Log the exact error at ERROR level
-            tracing::error!(
-                chat_id = chat_id,
-                error = %e,
-                "AI request failed"
-            );
+            // AI request failed before streaming started
+            tracing::error!(chat_id = chat_id, error = %e, "AI request failed");
+
+            // Finish the stream
+            let _ = client
+                .stream_finish(StreamFinishParams {
+                    chat_id,
+                    reasoning_content: None,
+                    content: None,
+                    tool_calls: None,
+                })
+                .await;
 
             // Add error tag to chat
-            tracing::debug!(chat_id = chat_id, "adding error tag to chat");
             client
                 .update_chat(UpdateChatParams {
                     chat_id,
@@ -221,47 +402,23 @@ pub async fn handle_ai_request(
                     tracing::error!(chat_id = chat_id, error = %e, "failed to add error tag");
                     AiRequestError::TagAdd(e.to_string())
                 })?;
-            tracing::debug!(chat_id = chat_id, "error tag added successfully");
 
-            // Add error message
+            // Update message with error content
             let error_content = format!("AI request failed: {}", e);
-            tracing::info!(
-                chat_id = chat_id,
-                role = "assistant",
-                content_length = error_content.len(),
-                tags = ?vec!["ai_completions:error"],
-                "attempting to add error message to chat"
-            );
-            
-            let add_result = client
-                .add_message(AddMessageParams {
-                    chat_id,
-                    role: "assistant".to_string(),
-                    content: error_content.clone(),
+            client
+                .update_message(UpdateMessageParams {
+                    message_id,
+                    content: Some(error_content),
                     reasoning_content: None,
-                    tags: vec!["ai_completions:error".to_string()],
-                    is_finished: true,
-                    is_streaming: false,
+                    role: None,
+                    add_tags: vec!["ai_completions:error".to_string()],
+                    remove_tags: vec![],
+                    is_finished: Some(true),
+                    is_streaming: Some(false),
+                    tool_calls: None,
                 })
-                .await;
-            
-            match add_result {
-                Ok(result) => {
-                    tracing::info!(
-                        chat_id = chat_id,
-                        message_id = result.message_id,
-                        "error message added successfully"
-                    );
-                }
-                Err(e) => {
-                    tracing::error!(
-                        chat_id = chat_id,
-                        error = %e,
-                        "failed to add error message to chat"
-                    );
-                    return Err(AiRequestError::MessageAdd(e.to_string()));
-                }
-            }
+                .await
+                .map_err(|e| AiRequestError::MessageUpdate(e.to_string()))?;
 
             Err(AiRequestError::AiRequest(e.to_string()))
         }
@@ -385,8 +542,14 @@ pub enum AiRequestError {
     QueueDelete(String),
     #[error("failed to add message: {0}")]
     MessageAdd(String),
+    #[error("failed to update message: {0}")]
+    MessageUpdate(String),
     #[error("failed to add tag: {0}")]
     TagAdd(String),
+    #[error("failed to push to stream: {0}")]
+    StreamPush(String),
+    #[error("failed to finish stream: {0}")]
+    StreamFinish(String),
     #[error("AI request failed: {0}")]
     AiRequest(String),
 }

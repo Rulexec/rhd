@@ -139,6 +139,10 @@ fn create_sse_stream(
 fn chunk_to_sse_event(chunk: &StreamChunk) -> Event {
     let mut delta = serde_json::Map::new();
 
+    if let Some(ref reasoning_content) = chunk.reasoning_content {
+        delta.insert("reasoning_content".to_string(), serde_json::Value::String(reasoning_content.clone()));
+    }
+
     if let Some(ref content) = chunk.content {
         delta.insert("content".to_string(), serde_json::Value::String(content.clone()));
     }

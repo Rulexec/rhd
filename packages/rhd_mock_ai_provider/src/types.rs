@@ -87,6 +87,7 @@ impl StreamController {
     /// Send a text chunk immediately
     pub async fn send_text(&self, content: impl Into<String>) -> Result<(), StreamError> {
         self.send_chunk(StreamChunk {
+            reasoning_content: None,
             content: Some(content.into()),
             tool_calls: None,
             finish_reason: None,
@@ -140,6 +141,7 @@ impl StreamBuilder {
     /// Add a text chunk to be sent immediately
     pub fn text(self, content: impl Into<String>) -> Self {
         self.chunk(StreamChunk {
+            reasoning_content: None,
             content: Some(content.into()),
             tool_calls: None,
             finish_reason: None,
@@ -156,6 +158,7 @@ impl StreamBuilder {
     pub fn text_delayed(self, content: impl Into<String>, delay: Duration) -> Self {
         self.chunk_delayed(
             StreamChunk {
+                reasoning_content: None,
                 content: Some(content.into()),
                 tool_calls: None,
                 finish_reason: None,
@@ -172,6 +175,7 @@ impl StreamBuilder {
             // If no chunks exist, create an empty one with finish_reason
             self.chunks.push((
                 StreamChunk {
+                    reasoning_content: None,
                     content: None,
                     tool_calls: None,
                     finish_reason: Some(reason.into()),
