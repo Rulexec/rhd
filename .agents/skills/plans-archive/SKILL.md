@@ -1,6 +1,7 @@
 ---
 name: plans-archive
 description: Archives completed implementation plans and consolidates their knowledge into product feature documentation. Use when plans in plans/ are implemented and no longer active.
+disable-model-invocation: true
 ---
 
 # Plans Archive
@@ -23,6 +24,13 @@ The plans archive process extracts product-level knowledge from implementation p
 ### Step 1: Read All Active Plans
 
 Read all plan files in `plans/` directory (excluding `archive/` and `milestones/` subdirectories).
+
+**Note on subfolders**: Subfolders within `plans/` (other than `archive/`) may contain:
+- **Subplans**: Phase-specific implementation plans derived from a grand plan
+- **Development states**: Intermediate snapshots or progress tracking files
+- **Assets**: Supporting documents, diagrams, or reference materials
+
+These files should be read and analyzed alongside their parent plans to extract complete product-level knowledge. However, after analysis, they should be **removed** (not moved to `plans/archive/`), as they are transient working artifacts rather than standalone completed plans.
 
 For each plan file, extract:
 - What feature/capability it implements
@@ -98,9 +106,9 @@ If you created new feature files or significantly updated existing ones:
 | [features/projects.md](features/projects.md) | Understanding projects feature, project structure, attaching projects to chats, MCP server lifecycle, system prompt injection |
 ```
 
-### Step 5: Move Plans to Archive
+### Step 5: Archive Plans and Clean Up Subfolders
 
-Move all processed plan files from `plans/` to `plans/archive/`.
+**For top-level plan files in `plans/`**: Move all processed plan files from `plans/` to `plans/archive/`.
 
 **Preferred method**: Use file moving tools provided by your AI assistant (e.g., filesystem MCP tools). Multiple files can be moved in parallel by calling the move tool multiple times in a single message.
 
@@ -109,8 +117,19 @@ Move all processed plan files from `plans/` to `plans/archive/`.
 mv plans/filename.md plans/archive/
 ```
 
+**For subfolder contents (subplans, development states, assets)**: After analyzing and extracting relevant knowledge, **delete** these files rather than moving them to `plans/archive/`. They are working artifacts tied to the parent plan's development process, not standalone completed plans.
+
+```bash
+# Remove subplans, state files, and assets after analysis
+rm plans/feature-name/subplan-phase-1.md
+rm plans/feature-name/development-state.md
+# Remove empty subfolder if no longer needed
+rmdir plans/feature-name/
+```
+
 **Verify**:
-- All processed plans are now in `plans/archive/`
+- All processed top-level plans are now in `plans/archive/`
+- Subfolders containing subplans/assets have been cleaned up (files removed)
 - `plans/` directory only contains active/planned work (if any)
 - No plans were accidentally deleted
 
@@ -141,13 +160,15 @@ mv plans/filename.md plans/archive/
 Use this checklist when archiving plans:
 
 - [ ] Read all plan files in `plans/` (excluding archive/ and milestones/)
+- [ ] Read subfolder contents (subplans, development states, assets) for additional context
 - [ ] Read all existing `memory/features/` files
 - [ ] For each plan, identify which feature file it relates to
-- [ ] Extract product-level information from each plan
+- [ ] Extract product-level information from each plan (including insights from subplans/assets)
 - [ ] Update relevant `memory/features/` files with new information
 - [ ] Create new feature files if needed (e.g., for entirely new features)
 - [ ] Update `memory/MEMORY.md` index if files were added or significantly changed
-- [ ] Move all processed plans to `plans/archive/` using file moving tools or `mv` command
+- [ ] Move all processed top-level plans to `plans/archive/` using file moving tools or `mv` command
+- [ ] Remove subfolder contents (subplans, states, assets) after analysis — do not archive them
 - [ ] Verify `plans/` directory only contains active work
 
 ## Common Issues

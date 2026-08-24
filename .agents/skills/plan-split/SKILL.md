@@ -1,6 +1,7 @@
 ---
 name: plan-split
 description: Splits large implementation plans into manageable, phase-specific plans with detailed implementation guidance. Use when a milestone plan needs to be broken down into per-phase sub-plans.
+disable-model-invocation: true
 ---
 
 # Plan Splitting and Enrichment Skill

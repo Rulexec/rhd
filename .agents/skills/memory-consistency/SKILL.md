@@ -1,6 +1,7 @@
 ---
 name: memory-consistency
 description: Reviews and maintains consistency in the project's memory/knowledge base system. Use for periodic memory maintenance, after significant feature additions, when onboarding new knowledge areas, or when memory files need reorganization.
+disable-model-invocation: true
 ---
 
 # Memory Consistency Check

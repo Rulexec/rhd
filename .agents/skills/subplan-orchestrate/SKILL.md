@@ -1,6 +1,7 @@
 ---
 name: subplan-orchestrate
 description: Orchestrates implementation of multiple phase sub-plans from a milestone plan by spawning separate Code mode sessions for each subplan, then validates the complete implementation. Use when given a grand-plan and a list of subplan files to implement sequentially.
+disable-model-invocation: true
 ---
 
 # Subplan Orchestration Skill

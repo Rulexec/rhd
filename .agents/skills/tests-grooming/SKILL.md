@@ -1,6 +1,7 @@
 ---
 name: tests-grooming
 description: Investigates test cases and actual test code, then updates them to match the established pattern with step-by-step comments and coverage references. Use to keep tests/cases/ and frontend/src/tests/ consistent and traceable.
+disable-model-invocation: true
 ---
 
 # Tests Grooming Skill

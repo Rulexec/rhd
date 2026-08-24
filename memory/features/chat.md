@@ -3,6 +3,68 @@
 ## Purpose
 Persistent conversational interface for direct AI interaction. Users create chats, send messages, receive streaming responses, and can edit/resend previous messages. All conversations persist across daemon restarts.
 
+## Frontend UI
+
+### Chat List
+- Sidebar displays all chats sorted by `updatedAt` DESC
+- Real-time updates: new chats appear immediately, deleted chats disappear
+- Each chat shows title, relative timestamp ("5m ago", "2h ago"), and up to 2 tags
+- "+ New Chat" button creates chat with auto-generated title (format: `YYYY-MM-DD HH:mm`)
+- "Delete All Chats" button at bottom (hidden when no chats exist)
+- Confirmation modal before deleting all chats (closes on outside click or Escape)
+- Loading state while fetching initial chat list
+- Empty state when no chats exist
+
+### Tab Navigation
+- Two tabs: "Chats" and "Plugins"
+- Active tab highlighted with bottom border
+- Tab state preserved when switching between tabs
+
+### Chat View
+- Displays messages for selected chat in chronological order
+- Chat header shows title and tags
+- Loading state while fetching chat data
+- Empty state when no messages or no chat selected
+- Error state with dismissible error message
+
+### Message Display
+- Messages show role badge (user/assistant/system), timestamp, and tags
+- Markdown rendering enabled by default
+- Toggle button switches between Markdown and plain text view
+- Reasoning content displayed in collapsible section (collapsed by default)
+- Collapsed preview shows last 3 lines with scroll-to-bottom
+- Expand/collapse button toggles full content view
+- Queue messages displayed with `opacity: 0.8` to distinguish from regular messages
+
+### Message Input
+- Multi-line textarea with auto-resize (grows with content, max 200px)
+- Enter key sends message, Shift+Enter adds new line
+- Send button disabled when input is empty, no chat selected, or WebSocket disconnected
+- Input clears after sending
+- Inline error message shown if send fails
+- Hint text shows "Select a chat to send messages" or "Not connected to server"
+
+### Plugins Tab
+- Displays list of all registered plugins sorted alphabetically by pluginId
+- Each plugin shows pluginId and active/inactive status
+- Status indicator: green dot for active, gray dot for inactive
+- Header shows active/total count (e.g., "2 / 3 active")
+- Empty state: "No plugins registered" with helpful description
+- Real-time updates when plugins register/remove/update
+
+### Connection Status
+- Fixed banner at top of page when not connected
+- Shows connection state: "Connected" (green), "Disconnected" (red), "Connecting" (yellow)
+- "Reconnect" button when disconnected
+- Error message displayed when connection fails
+- Banner auto-hides when connected
+
+### Responsive Design
+- Mobile layout (< 768px): chat list moves to top, chat view to bottom
+- Font sizes reduced for mobile (< 480px)
+- Custom scrollbar styling
+- Focus states for keyboard navigation
+
 ## Todo List
 - AI can create and manage a task tracking list during multi-step operations
 - Button appears near the role selector showing completed/total count (e.g., "3/5")
