@@ -16,6 +16,8 @@ pub mod plugin_updated;
 pub mod queue_message_added;
 pub mod queue_message_deleted;
 pub mod queue_message_updated;
+pub mod stream_chunk;
+pub mod stream_finished;
 pub mod tools_updated;
 
 pub use chat_created::*;
@@ -32,4 +34,6 @@ pub use plugin_updated::*;
 pub use queue_message_added::*;
 pub use queue_message_deleted::*;
 pub use queue_message_updated::*;
+pub use stream_chunk::*;
+pub use stream_finished::*;
 pub use tools_updated::*;

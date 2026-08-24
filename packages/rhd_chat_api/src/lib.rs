@@ -36,7 +36,7 @@ pub use events::{
     ChatCreatedData, ChatDeletedData, ChatUpdatedData, CustomEventAcknowledgedData, CustomEventData,
     MessageAddedData, MessageDeletedData, MessageUpdatedData, PluginRegisteredData,
     PluginRemovedData, PluginUpdatedData, QueueMessageAddedData, QueueMessageDeletedData,
-    QueueMessageUpdatedData, ToolsUpdatedData,
+    QueueMessageUpdatedData, StreamChunkData, StreamFinishedData, ToolsUpdatedData,
 };
 pub use methods::{
     AckCustomEventParams, AckCustomEventResult, AddMessageParams, AddMessageResult,
@@ -47,12 +47,14 @@ pub use methods::{
     GetQueueMessagesParams, GetQueueMessagesResult, GetToolsParams, GetToolsResult,
     ListChatsParams, ListChatsResult, RegisterPluginParams, RegisterPluginResult,
     RemovePluginParams, RemovePluginResult, RemoveToolsParams, RemoveToolsResult,
-    SendCustomEventParams, SendCustomEventResult, SubscribeChatParams, SubscribeChatResult,
-    SubscribeChatsListParams, SubscribeChatsListResult, SubscribePluginsListParams,
-    SubscribePluginsListResult, UnsubscribeChatParams, UnsubscribeChatResult,
-    UnsubscribeChatsListParams, UnsubscribeChatsListResult, UnsubscribePluginsListParams,
-    UnsubscribePluginsListResult, UpdateChatParams, UpdateChatResult, UpdateMessageParams,
-    UpdateMessageResult, UpdateQueueMessageParams, UpdateQueueMessageResult,
+    SendCustomEventParams, SendCustomEventResult, StreamFinishParams, StreamFinishResult,
+    StreamPushParams, StreamPushResult, StreamSubscribeParams, StreamSubscribeResult,
+    StreamToolCallDelta, SubscribeChatParams, SubscribeChatResult, SubscribeChatsListParams,
+    SubscribeChatsListResult, SubscribePluginsListParams, SubscribePluginsListResult,
+    UnsubscribeChatParams, UnsubscribeChatResult, UnsubscribeChatsListParams,
+    UnsubscribeChatsListResult, UnsubscribePluginsListParams, UnsubscribePluginsListResult,
+    UpdateChatParams, UpdateChatResult, UpdateMessageParams, UpdateMessageResult,
+    UpdateQueueMessageParams, UpdateQueueMessageResult,
 };
 pub use protocol::{Event, Request, Response};
 pub use tools::{FunctionCall, FunctionDefinition, ToolCall, ToolDefinition, ToolInfo};

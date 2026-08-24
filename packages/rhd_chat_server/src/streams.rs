@@ -9,8 +9,8 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, RwLock};
 
-// Re-export StreamToolCall from API for convenience
-pub use rhd_chat_api::common::StreamToolCall;
+// Re-export StreamToolCallDelta from API for convenience
+pub use rhd_chat_api::methods::stream_push::StreamToolCallDelta;
 
 /// A chunk of streaming content sent to subscribers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,7 +22,7 @@ pub enum StreamChunk {
     /// New main content delta.
     ContentDelta { content: String },
     /// Tool call delta (accumulated during streaming).
-    ToolCallDelta { tool_calls: Vec<StreamToolCall> },
+    ToolCallDelta { tool_calls: Vec<StreamToolCallDelta> },
     /// Stream has finished. No more chunks will be sent.
     Finished,
 }
@@ -34,7 +34,7 @@ pub struct StreamSnapshot {
     pub chat_id: i64,
     pub reasoning_content: String,
     pub content: String,
-    pub tool_calls: Vec<StreamToolCall>,
+    pub tool_calls: Vec<StreamToolCallDelta>,
     pub is_finished: bool,
 }
 
@@ -42,7 +42,7 @@ pub struct StreamSnapshot {
 struct StreamState {
     reasoning_content: String,
     content: String,
-    tool_calls: Vec<StreamToolCall>,
+    tool_calls: Vec<StreamToolCallDelta>,
     subscribers: Vec<mpsc::UnboundedSender<StreamChunk>>,
     is_finished: bool,
 }
@@ -74,7 +74,7 @@ impl StreamManager {
         chat_id: i64,
         reasoning_delta: Option<String>,
         content_delta: Option<String>,
-        tool_calls_delta: Option<Vec<StreamToolCall>>,
+        tool_calls_delta: Option<Vec<StreamToolCallDelta>>,
     ) {
         let mut streams = self.streams.write().await;
         let state = streams.entry(chat_id).or_insert_with(|| StreamState {
@@ -367,7 +367,7 @@ mod tests {
         let chat_id = 1;
 
         // Push initial tool call
-        let tool_call1 = StreamToolCall {
+        let tool_call1 = StreamToolCallDelta {
             id: "tool1".to_string(),
             name: "search".to_string(),
             arguments: "{\"query\":".to_string(),
@@ -377,7 +377,7 @@ mod tests {
             .await;
 
         // Push more arguments to same tool call
-        let tool_call2 = StreamToolCall {
+        let tool_call2 = StreamToolCallDelta {
             id: "tool1".to_string(),
             name: "search".to_string(),
             arguments: "\"test\"}".to_string(),

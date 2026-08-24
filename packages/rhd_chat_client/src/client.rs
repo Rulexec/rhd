@@ -22,12 +22,13 @@ use rhd_chat_api::{
     GetQueueMessagesParams, GetQueueMessagesResult, GetToolsParams, GetToolsResult,
     ListChatsParams, ListChatsResult, RegisterPluginParams, RegisterPluginResult,
     RemovePluginParams, RemovePluginResult, RemoveToolsParams, RemoveToolsResult,
-    SendCustomEventParams, SendCustomEventResult, SubscribeChatParams, SubscribeChatResult,
-    SubscribeChatsListParams, SubscribeChatsListResult, SubscribePluginsListParams,
-    SubscribePluginsListResult, UnsubscribeChatParams, UnsubscribeChatResult,
-    UnsubscribeChatsListParams, UnsubscribeChatsListResult, UnsubscribePluginsListParams,
-    UnsubscribePluginsListResult, UpdateChatParams, UpdateChatResult, UpdateMessageParams,
-    UpdateMessageResult, UpdateQueueMessageParams, UpdateQueueMessageResult,
+    SendCustomEventParams, SendCustomEventResult, StreamFinishParams, StreamFinishResult,
+    StreamPushParams, StreamPushResult, StreamSubscribeParams, StreamSubscribeResult,
+    SubscribeChatParams, SubscribeChatResult, SubscribeChatsListParams, SubscribeChatsListResult,
+    SubscribePluginsListParams, SubscribePluginsListResult, UnsubscribeChatParams,
+    UnsubscribeChatResult, UnsubscribeChatsListParams, UnsubscribeChatsListResult,
+    UnsubscribePluginsListParams, UnsubscribePluginsListResult, UpdateChatParams, UpdateChatResult,
+    UpdateMessageParams, UpdateMessageResult, UpdateQueueMessageParams, UpdateQueueMessageResult,
 };
 
 use crate::error::ClientError;
@@ -595,6 +596,25 @@ impl ChatClient {
     /// Get pending acknowledgments for this plugin.
     pub async fn get_pending_acks(&self, params: GetPendingAcksParams) -> Result<GetPendingAcksResult, ClientError> {
         self.send_request("getPendingAcks", params).await
+    }
+
+    // ========================================================================
+    // Stream Methods
+    // ========================================================================
+
+    /// Push streaming content deltas to a stream.
+    pub async fn stream_push(&self, params: StreamPushParams) -> Result<StreamPushResult, ClientError> {
+        self.send_request("streamPush", params).await
+    }
+
+    /// Subscribe to a stream and get current accumulated content.
+    pub async fn stream_subscribe(&self, params: StreamSubscribeParams) -> Result<StreamSubscribeResult, ClientError> {
+        self.send_request("streamSubscribe", params).await
+    }
+
+    /// Finish a stream.
+    pub async fn stream_finish(&self, params: StreamFinishParams) -> Result<StreamFinishResult, ClientError> {
+        self.send_request("streamFinish", params).await
     }
 
     // ========================================================================
