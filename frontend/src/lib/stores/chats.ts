@@ -1,6 +1,7 @@
 import { writable, derived, type Writable, type Readable } from 'svelte/store';
 import { subscribeChatsList, listChats, createChat, deleteChat, generateChatTitle, onChatListEvents } from '../api/chatApi.js';
 import type { Chat } from '../api/schemas.js';
+import { selectChat } from './chat.js';
 
 /**
  * Internal store for raw chat list.
@@ -93,14 +94,16 @@ export async function loadChats(): Promise<void> {
  * Create a new chat with auto-generated title.
  * @returns The created chat, or null on error
  */
-export async function createNewChat(): Promise<Chat | null> {
+export async function createNewChat(): Promise<number | null> {
   chatsError.set(null);
 
   try {
     const title = generateChatTitle();
     const result = await createChat(title);
     // Chat will be added via chatCreated event
-    return result.chat;
+    // Automatically open the new chat
+    await selectChat(result.chatId);
+    return result.chatId;
   } catch (error) {
     chatsError.set(error instanceof Error ? error.message : String(error));
     return null;

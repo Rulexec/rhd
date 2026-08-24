@@ -1,4 +1,5 @@
 import { writable, type Writable } from 'svelte/store';
+import { z } from 'zod';
 import {
   WebSocketMessageSchema,
   type WebSocketMessage,
@@ -192,6 +193,9 @@ class WebSocketClient {
       message = WebSocketMessageSchema.parse(parsed);
     } catch (error) {
       console.error('WebSocket message validation failed:', error);
+      if (error instanceof z.ZodError) {
+        console.error('Validation errors:', error.errors);
+      }
       console.error('Raw message:', parsed);
       return;
     }

@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { websocket } from './websocket.js';
 import {
   ListChatsResultSchema,
@@ -65,7 +66,15 @@ export async function listChats(): Promise<ListChatsResult> {
  */
 export async function createChat(title: string): Promise<CreateChatResult> {
   const data = await websocket.request('createChat', { title });
-  return CreateChatResultSchema.parse(data);
+  try {
+    return CreateChatResultSchema.parse(data);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      console.error('CreateChat validation errors:', error.errors);
+      console.error('Raw data:', data);
+    }
+    throw error;
+  }
 }
 
 /**

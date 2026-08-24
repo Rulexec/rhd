@@ -200,7 +200,7 @@ export const ListChatsResultSchema = z.object({
  * Create chat result.
  */
 export const CreateChatResultSchema = z.object({
-  chat: ChatSchema
+  chatId: z.number()
 });
 
 /**
