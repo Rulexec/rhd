@@ -27,6 +27,9 @@
   - `editMessage`: Edit a user message, truncate subsequent messages, and re-stream AI response
   - `abortChat`: Abort an active streaming response in a chat
   - `getAvailableModels`: Get list of available models (real models only, excludes aliases)
+  - `streamPush`: Push streaming content deltas to an active stream. Params: `chatId`, `reasoningContent?`, `content?`, `toolCalls?`. Result: `{ success: true }`.
+  - `streamSubscribe`: Subscribe to a stream and get current accumulated content. Params: `chatId`. Result: `{ reasoningContent, content, toolCalls, isFinished }`. Also subscribes the caller to `streamChunk` events.
+  - `streamFinish`: Finish an active stream. Params: `chatId`, `reasoningContent?`, `content?`, `toolCalls?`. Result: `{ success: true }`.
 - **Server → Client responses**: Request responses with success/error status
 - **Server → Client events**: Real-time execution events (scenarioStarted, stepStarted, scenarioFinished, scenarioPaused, scenarioResumed)
   - All event names use **camelCase** (e.g., `scenarioStarted`, not `scenariostarted`)
@@ -48,6 +51,8 @@
   - `roleChanged`: Contains `chatId`, `projectName`, `roleName` (active role changed)
   - `rolesUpdated`: Contains `chatId` (roles list updated when project attached/detached)
   - `activeRoleCleared`: Contains `chatId` (active role cleared)
+  - `streamChunk`: Contains `chatId`, `type` (reasoningDelta/contentDelta/toolCallDelta), and delta content. Sent to chat subscribers when new content is pushed to a stream.
+  - `streamFinished`: Contains `chatId`. Sent when a stream completes.
 - Multiple subscribers supported via broadcast channels (separate for execution events and chat events)
 
 ## CWD Propagation

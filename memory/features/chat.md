@@ -132,6 +132,29 @@ Persistent conversational interface for direct AI interaction. Users create chat
 - Stream finish removes animated dots, shows final message
 - Empty chunks filtered on backend (not sent to WebSocket client)
 
+### Server-Side Streaming (Plugin-Driven)
+
+AI responses are streamed through the chat server via a plugin-driven streaming architecture:
+
+1. **Stream Creation**: When `rhd_plugin_ai_completions` starts an AI request, it creates a message with `isStreaming: true, isFinished: false` before the request begins.
+2. **Stream Push**: As the AI provider returns tokens, the plugin pushes deltas (reasoning content, content, tool calls) to the server-side stream via `streamPush`.
+3. **Stream Subscription**: The frontend detects messages with `isStreaming: true` and calls `streamSubscribe` to receive the current accumulated content and future chunks.
+4. **Stream Finish**: When the AI response is complete, the plugin calls `streamFinish` and updates the message with `isStreaming: false, isFinished: true` and the final content.
+
+**Stream Events**:
+- `streamChunk`: Broadcast to chat subscribers when new content is pushed. Contains `type` (reasoningDelta/contentDelta/toolCallDelta) and the delta content.
+- `streamFinished`: Broadcast when a stream completes.
+
+**Stream Methods**:
+- `streamPush`: Called by plugins to push deltas to a stream.
+- `streamSubscribe`: Called by frontend to get current state and subscribe to future chunks.
+- `streamFinish`: Called by plugins to finalize a stream.
+
+**Message Flags**:
+- `isStreaming: true` — Message is currently being streamed.
+- `isFinished: false` — Message content is not yet final.
+- Default values: `isStreaming: false, isFinished: true` (backward compatible with non-streaming messages).
+
 ### Smart Auto-Scrolling
 - Message list auto-scrolls to bottom when new content arrives **only if user is at bottom**
 - Tracks "at bottom" state with 30px threshold from bottom

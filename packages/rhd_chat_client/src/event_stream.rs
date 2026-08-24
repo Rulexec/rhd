@@ -10,7 +10,7 @@ use rhd_chat_api::{
     ChatCreatedData, ChatDeletedData, ChatUpdatedData, CustomEventAcknowledgedData, CustomEventData,
     MessageAddedData, MessageDeletedData, MessageUpdatedData, PluginRegisteredData,
     PluginRemovedData, PluginUpdatedData, QueueMessageAddedData, QueueMessageDeletedData,
-    QueueMessageUpdatedData, ToolsUpdatedData,
+    QueueMessageUpdatedData, StreamChunkData, StreamFinishedData, ToolsUpdatedData,
 };
 
 /// Events that can occur on a subscribed chat.
@@ -30,6 +30,10 @@ pub enum ChatEvent {
     QueueMessageDeleted(QueueMessageDeletedData),
     /// Tools were updated in the chat.
     ToolsUpdated(ToolsUpdatedData),
+    /// A streaming chunk was received.
+    StreamChunk(StreamChunkData),
+    /// A stream finished.
+    StreamFinished(StreamFinishedData),
 }
 
 /// Events that can occur on the chats list.

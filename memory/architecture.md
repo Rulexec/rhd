@@ -34,6 +34,10 @@
 - WebSocket server for chat storage and management
 - Handles chat persistence, message streaming, and plugin management
 - Uses `rhd_db` for data persistence
+- **StreamManager**: In-memory manager for active streams. Keyed by chat ID (1:1 relationship). Supports:
+  - `push(chat_id, reasoning_delta, content_delta, tool_calls_delta)` — Accumulate deltas and notify subscribers.
+  - `subscribe_and_get(chat_id)` — Atomically return current state and subscribe to future chunks.
+  - `finish(chat_id)` — Finalize stream, notify subscribers, and clean up.
 
 **rhd_chat_client**:
 - WebSocket client for connecting to `rhd_chat_server`

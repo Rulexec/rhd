@@ -288,6 +288,34 @@ impl ChatClient {
                     }
                 }
             }
+            "streamChunk" => {
+                if let Ok(data) = serde_json::from_value::<rhd_chat_api::StreamChunkData>(event.data.clone()) {
+                    let chat_id = data.chat_id;
+                    for sub in &subs.chat_subscriptions {
+                        if sub.chat_id == chat_id {
+                            let callback = sub.callback.clone();
+                            let data_clone = data.clone();
+                            tokio::spawn(async move {
+                                (callback)(ChatEvent::StreamChunk(data_clone)).await;
+                            });
+                        }
+                    }
+                }
+            }
+            "streamFinished" => {
+                if let Ok(data) = serde_json::from_value::<rhd_chat_api::StreamFinishedData>(event.data.clone()) {
+                    let chat_id = data.chat_id;
+                    for sub in &subs.chat_subscriptions {
+                        if sub.chat_id == chat_id {
+                            let callback = sub.callback.clone();
+                            let data_clone = data.clone();
+                            tokio::spawn(async move {
+                                (callback)(ChatEvent::StreamFinished(data_clone)).await;
+                            });
+                        }
+                    }
+                }
+            }
             "chatCreated" => {
                 if let Ok(data) = serde_json::from_value::<rhd_chat_api::ChatCreatedData>(event.data.clone()) {
                     tracing::debug!(

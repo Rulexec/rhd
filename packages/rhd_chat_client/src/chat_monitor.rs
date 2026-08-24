@@ -107,6 +107,9 @@ impl ChatMonitor {
                                         ChatEvent::QueueMessageUpdated(data) => data.chat_version,
                                         ChatEvent::QueueMessageDeleted(data) => data.chat_version,
                                         ChatEvent::ToolsUpdated(data) => data.chat_version,
+                                        // Streaming events don't have chat_version, use 0 to skip version check
+                                        ChatEvent::StreamChunk(_) => 0,
+                                        ChatEvent::StreamFinished(_) => 0,
                                     };
 
                                     // Check local state version
@@ -167,7 +170,9 @@ impl ChatMonitor {
                                         | ChatEvent::MessageDeleted(_)
                                         | ChatEvent::QueueMessageAdded(_)
                                         | ChatEvent::QueueMessageUpdated(_)
-                                        | ChatEvent::QueueMessageDeleted(_) => {
+                                        | ChatEvent::QueueMessageDeleted(_)
+                                        | ChatEvent::StreamChunk(_)
+                                        | ChatEvent::StreamFinished(_) => {
                                             tracing::debug!(chat_id = chat_id, "updating chat state after event");
                                             if let Ok(chat_result) =
                                                 client.get_chat(GetChatParams { chat_id, if_version_higher_than: None }).await
@@ -273,6 +278,9 @@ impl ChatMonitor {
                     ChatEvent::QueueMessageUpdated(data) => data.chat_version,
                     ChatEvent::QueueMessageDeleted(data) => data.chat_version,
                     ChatEvent::ToolsUpdated(data) => data.chat_version,
+                    // Streaming events don't have chat_version, use 0 to skip version check
+                    ChatEvent::StreamChunk(_) => 0,
+                    ChatEvent::StreamFinished(_) => 0,
                 };
 
                 // Check local state version
@@ -333,7 +341,9 @@ impl ChatMonitor {
                     | ChatEvent::MessageDeleted(_)
                     | ChatEvent::QueueMessageAdded(_)
                     | ChatEvent::QueueMessageUpdated(_)
-                    | ChatEvent::QueueMessageDeleted(_) => {
+                    | ChatEvent::QueueMessageDeleted(_)
+                    | ChatEvent::StreamChunk(_)
+                    | ChatEvent::StreamFinished(_) => {
                         if let Ok(chat_result) =
                             client.get_chat(GetChatParams { chat_id, if_version_higher_than: None }).await
                         {

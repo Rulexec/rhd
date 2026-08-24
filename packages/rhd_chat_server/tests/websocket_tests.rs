@@ -381,3 +381,241 @@ async fn test_custom_event_flow() {
     let result = tokio::time::timeout(Duration::from_secs(5), ack_received.notified()).await;
     assert!(result.is_ok(), "Did not receive customEventAcknowledged");
 }
+
+/// Test: streamPush creates stream and broadcasts to subscribers.
+#[tokio::test]
+async fn test_stream_push_broadcasts() {
+    let (port, _handle) = start_test_server().await;
+
+    // Connect two clients
+    let client1 = connect_client(port).await;
+    let client2 = connect_client(port).await;
+
+    // Create a chat
+    let create_result = client1
+        .create_chat(CreateChatParams {
+            title: "Stream Test".to_string(),
+            tags: vec![],
+        })
+        .await
+        .unwrap();
+    let chat_id = create_result.chat_id;
+
+    // Both clients subscribe to chat
+    client1
+        .subscribe_chat(SubscribeChatParams { chat_id })
+        .await
+        .unwrap();
+    client2
+        .subscribe_chat(SubscribeChatParams { chat_id })
+        .await
+        .unwrap();
+
+    // Set up event notification for client2 to receive streamChunk
+    let chunk_received = Arc::new(Notify::new());
+    let chunk_received_clone = chunk_received.clone();
+
+    let _cancel_token = client2.on_chat_event(chat_id, move |event| {
+        let chunk_received = chunk_received_clone.clone();
+        async move {
+            if let ChatEvent::StreamChunk(data) = event {
+                assert_eq!(data.chat_id, chat_id);
+                chunk_received.notify_one();
+            }
+        }
+    });
+
+    // Client1 pushes to stream
+    client1
+        .stream_push(rhd_chat_api::StreamPushParams {
+            chat_id,
+            reasoning_content: None,
+            content: Some("Hello".to_string()),
+            tool_calls: None,
+        })
+        .await
+        .unwrap();
+
+    // Client2 should receive streamChunk event
+    let result = tokio::time::timeout(Duration::from_secs(5), chunk_received.notified()).await;
+    assert!(result.is_ok(), "Did not receive streamChunk event");
+}
+
+/// Test: streamSubscribe returns current state and subscribes to future chunks.
+#[tokio::test]
+async fn test_stream_subscribe_returns_state() {
+    let (port, _handle) = start_test_server().await;
+    let client = connect_client(port).await;
+    let create_result = client
+        .create_chat(CreateChatParams {
+            title: "Test".to_string(),
+            tags: vec![],
+        })
+        .await
+        .unwrap();
+    let chat_id = create_result.chat_id;
+
+    // Push some content first
+    client
+        .stream_push(rhd_chat_api::StreamPushParams {
+            chat_id,
+            reasoning_content: Some("Thinking...".to_string()),
+            content: Some("Hello".to_string()),
+            tool_calls: None,
+        })
+        .await
+        .unwrap();
+
+    // Subscribe to stream
+    let result = client
+        .stream_subscribe(rhd_chat_api::StreamSubscribeParams { chat_id })
+        .await
+        .unwrap();
+
+    assert_eq!(result.reasoning_content, "Thinking...");
+    assert_eq!(result.content, "Hello");
+    assert!(!result.is_finished);
+}
+
+/// Test: streamFinish broadcasts streamFinished event.
+#[tokio::test]
+async fn test_stream_finish_broadcasts() {
+    let (port, _handle) = start_test_server().await;
+    let client1 = connect_client(port).await;
+    let client2 = connect_client(port).await;
+    let create_result = client1
+        .create_chat(CreateChatParams {
+            title: "Test".to_string(),
+            tags: vec![],
+        })
+        .await
+        .unwrap();
+    let chat_id = create_result.chat_id;
+
+    client2
+        .subscribe_chat(SubscribeChatParams { chat_id })
+        .await
+        .unwrap();
+
+    // Set up event notification for client2 to receive streamFinished
+    let finished_received = Arc::new(Notify::new());
+    let finished_received_clone = finished_received.clone();
+
+    let _cancel_token = client2.on_chat_event(chat_id, move |event| {
+        let finished_received = finished_received_clone.clone();
+        async move {
+            if let ChatEvent::StreamFinished(data) = event {
+                assert_eq!(data.chat_id, chat_id);
+                finished_received.notify_one();
+            }
+        }
+    });
+
+    // Push some content
+    client1
+        .stream_push(rhd_chat_api::StreamPushParams {
+            chat_id,
+            reasoning_content: None,
+            content: Some("Hello".to_string()),
+            tool_calls: None,
+        })
+        .await
+        .unwrap();
+
+    // Finish stream
+    client1
+        .stream_finish(rhd_chat_api::StreamFinishParams {
+            chat_id,
+            reasoning_content: None,
+            content: None,
+            tool_calls: None,
+        })
+        .await
+        .unwrap();
+
+    // Client2 should receive streamFinished event
+    let result = tokio::time::timeout(Duration::from_secs(5), finished_received.notified()).await;
+    assert!(result.is_ok(), "Did not receive streamFinished event");
+}
+
+/// Test: Message with isStreaming flag is correctly persisted and retrieved.
+#[tokio::test]
+async fn test_message_streaming_flags_persisted() {
+    let (port, _handle) = start_test_server().await;
+    let client = connect_client(port).await;
+    let create_result = client
+        .create_chat(CreateChatParams {
+            title: "Test".to_string(),
+            tags: vec![],
+        })
+        .await
+        .unwrap();
+    let chat_id = create_result.chat_id;
+
+    // Add message with streaming flags
+    let add_result = client
+        .add_message(AddMessageParams {
+            chat_id,
+            role: "assistant".to_string(),
+            content: "".to_string(),
+            reasoning_content: None,
+            tags: vec![],
+            is_finished: false,
+            is_streaming: true,
+        })
+        .await
+        .unwrap();
+
+    let message_id = add_result.message_id;
+
+    // Get chat and verify message flags
+    let chat_result = client
+        .get_chat(GetChatParams {
+            chat_id,
+            if_version_higher_than: None,
+        })
+        .await
+        .unwrap();
+
+    let msg = chat_result
+        .messages
+        .iter()
+        .find(|m| m.id == message_id)
+        .unwrap();
+    assert!(!msg.is_finished);
+    assert!(msg.is_streaming);
+
+    // Update message to finished
+    client
+        .update_message(rhd_chat_api::UpdateMessageParams {
+            message_id,
+            content: Some("Final content".to_string()),
+            reasoning_content: None,
+            role: None,
+            add_tags: vec![],
+            remove_tags: vec![],
+            is_finished: Some(true),
+            is_streaming: Some(false),
+            tool_calls: None,
+        })
+        .await
+        .unwrap();
+
+    // Verify updated flags
+    let chat_result2 = client
+        .get_chat(GetChatParams {
+            chat_id,
+            if_version_higher_than: None,
+        })
+        .await
+        .unwrap();
+
+    let msg2 = chat_result2
+        .messages
+        .iter()
+        .find(|m| m.id == message_id)
+        .unwrap();
+    assert!(msg2.is_finished);
+    assert!(!msg2.is_streaming);
+    assert_eq!(msg2.content, "Final content");
+}
