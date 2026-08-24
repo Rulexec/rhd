@@ -62,6 +62,11 @@
     const content = inputValue.trim();
     if (!content) return;
 
+    if (!isConnected) {
+      errorMessage = 'Not connected to server';
+      return;
+    }
+
     isSending = true;
     errorMessage = null;
 
@@ -76,7 +81,15 @@
 
       onMessageSent?.();
     } catch (error) {
-      errorMessage = error instanceof Error ? error.message : String(error);
+      // Provide more specific error messages
+      const errorText = error instanceof Error ? error.message : String(error);
+      if (errorText.includes('WebSocket not connected')) {
+        errorMessage = 'Lost connection to server. Please reconnect.';
+      } else if (errorText.includes('timeout')) {
+        errorMessage = 'Request timed out. Please try again.';
+      } else {
+        errorMessage = errorText || 'Failed to send message';
+      }
     } finally {
       isSending = false;
     }

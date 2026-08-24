@@ -3,6 +3,10 @@
   import Message from './Message.svelte';
   import MessageInput from './MessageInput.svelte';
 
+  function dismissError() {
+    chatError.set(null);
+  }
+
   let messagesContainer: HTMLDivElement | null = $state(null);
   let isAtBottom: boolean = $state(true);
 
@@ -67,7 +71,10 @@
     </div>
   {:else if $chatError}
     <div class="chat-error">
-      <span class="text-error">{$chatError}</span>
+      <div class="error-content">
+        <span class="text-error">{$chatError}</span>
+        <button class="btn-icon" onclick={dismissError} title="Dismiss">×</button>
+      </div>
     </div>
   {:else if !$currentChat}
     <div class="chat-empty">
@@ -116,12 +123,49 @@
   }
 
   .chat-loading,
-  .chat-error,
   .chat-empty {
     display: flex;
     align-items: center;
     justify-content: center;
     height: 100%;
+  }
+
+  .chat-error {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    padding: var(--spacing-lg);
+  }
+
+  .error-content {
+    padding: var(--spacing-md);
+    background: var(--color-error-bg);
+    border: 1px solid var(--color-error);
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+  }
+
+  .btn-icon {
+    background: none;
+    border: none;
+    color: var(--color-error);
+    font-size: var(--font-size-lg);
+    cursor: pointer;
+    padding: 0;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    transition: background var(--transition-fast);
+  }
+
+  .btn-icon:hover {
+    background: rgba(0, 0, 0, 0.1);
   }
 
   .chat-header {

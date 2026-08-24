@@ -9,6 +9,7 @@
   import ChatList from './lib/components/ChatList.svelte';
   import ChatView from './lib/components/ChatView.svelte';
   import PluginList from './lib/components/PluginList.svelte';
+  import ConnectionStatus from './lib/components/ConnectionStatus.svelte';
 
   type TabType = 'chats' | 'plugins';
 
@@ -39,6 +40,8 @@
 </script>
 
 <div class="app">
+  <ConnectionStatus />
+
   <header class="app-header">
     <h1>RHD Chat</h1>
   </header>

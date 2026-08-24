@@ -55,18 +55,27 @@ class WebSocketClient {
         connectionStore.set({ status: 'connected', error: null });
       };
 
-      this.ws.onclose = () => {
-        console.log('WebSocket disconnected');
+      this.ws.onclose = (event) => {
+        console.log('WebSocket disconnected:', event.code, event.reason);
         this.isConnected = false;
         this.ws = null;
         this.rejectAllPending('WebSocket connection closed');
-        connectionStore.set({ status: 'disconnected', error: 'Connection closed' });
+
+        // Provide more specific error message based on close code
+        let errorMessage = 'Connection closed';
+        if (event.code === 1006) {
+          errorMessage = 'Connection lost unexpectedly';
+        } else if (event.reason) {
+          errorMessage = event.reason;
+        }
+
+        connectionStore.set({ status: 'disconnected', error: errorMessage });
       };
 
       this.ws.onerror = (event) => {
         console.error('WebSocket error:', event);
         this.errorMessage = 'Connection error';
-        connectionStore.set({ status: 'disconnected', error: 'Connection error' });
+        connectionStore.set({ status: 'disconnected', error: 'Connection error occurred' });
       };
 
       this.ws.onmessage = (event) => {
@@ -90,6 +99,13 @@ class WebSocketClient {
     this.isConnected = false;
     this.rejectAllPending('WebSocket disconnected by user');
     connectionStore.set({ status: 'disconnected', error: null });
+  }
+
+  /**
+   * Check if WebSocket is connected and ready.
+   */
+  isReady(): boolean {
+    return this.isConnected && this.ws !== null && this.ws.readyState === WebSocket.OPEN;
   }
 
   /**

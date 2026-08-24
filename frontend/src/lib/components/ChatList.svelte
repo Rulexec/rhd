@@ -1,5 +1,6 @@
 <script lang="ts">
   import { chats, hasChats, chatsLoading, chatsError, createNewChat, deleteAllChats } from '../stores/chats.js';
+  import { connectionStore } from '../stores/connection.js';
   import ConfirmModal from './ConfirmModal.svelte';
   import commonStyles from '../styles/common.module.css';
 
@@ -19,13 +20,21 @@
   let isCreating: boolean = $state(false);
   let isDeleting: boolean = $state(false);
 
+  let isConnected: boolean = $derived($connectionStore.status === 'connected');
+
   async function handleCreateChat() {
+    if (!isConnected) {
+      return;
+    }
+
     isCreating = true;
     try {
       const chat = await createNewChat();
       if (chat) {
         dispatch('chatSelect', { chatId: chat.id });
       }
+    } catch (error) {
+      console.error('Failed to create chat:', error);
     } finally {
       isCreating = false;
     }
@@ -39,7 +48,12 @@
     showDeleteAllModal = false;
     isDeleting = true;
     try {
-      await deleteAllChats();
+      const success = await deleteAllChats();
+      if (!success) {
+        console.error('Failed to delete all chats');
+      }
+    } catch (error) {
+      console.error('Failed to delete all chats:', error);
     } finally {
       isDeleting = false;
     }
@@ -73,7 +87,7 @@
   <div class="chat-list-header">
     <button
       class="{commonStyles['btn']} {commonStyles['btn-primary']} {commonStyles['btn-sm']}"
-      disabled={isCreating}
+      disabled={isCreating || !isConnected}
       onclick={handleCreateChat}
     >
       {isCreating ? 'Creating...' : '+ New Chat'}
@@ -87,6 +101,7 @@
   {:else if $chatsError}
     <div class="chat-list-error">
       <span class="text-error">{$chatsError}</span>
+      <button class="btn-icon" onclick={() => chatsError.set(null)} title="Dismiss">×</button>
     </div>
   {:else if !$hasChats}
     <div class="chat-list-empty">
@@ -163,10 +178,39 @@
   }
 
   .chat-list-loading,
-  .chat-list-error,
   .chat-list-empty {
     padding: var(--spacing-lg);
     text-align: center;
+  }
+
+  .chat-list-error {
+    padding: var(--spacing-sm) var(--spacing-md);
+    background: var(--color-error-bg);
+    border-bottom: 1px solid var(--color-error);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: var(--font-size-sm);
+  }
+
+  .btn-icon {
+    background: none;
+    border: none;
+    color: var(--color-error);
+    font-size: var(--font-size-lg);
+    cursor: pointer;
+    padding: 0;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    transition: background var(--transition-fast);
+  }
+
+  .btn-icon:hover {
+    background: rgba(0, 0, 0, 0.1);
   }
 
   .chat-list-items {
