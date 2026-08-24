@@ -3,10 +3,12 @@
   import { connectionStore } from './lib/stores/connection.js';
   import { websocket } from './lib/api/websocket.js';
   import { initChats } from './lib/stores/chats.js';
+  import { initPlugins } from './lib/stores/plugins.js';
   import { selectChat } from './lib/stores/chat.js';
   import TabView from './lib/components/TabView.svelte';
   import ChatList from './lib/components/ChatList.svelte';
   import ChatView from './lib/components/ChatView.svelte';
+  import PluginList from './lib/components/PluginList.svelte';
 
   type TabType = 'chats' | 'plugins';
 
@@ -16,10 +18,11 @@
   onMount(() => {
     websocket.connect();
 
-    // Wait for connection, then initialize chats
+    // Wait for connection, then initialize stores
     const unsubscribe = connectionStore.subscribe(({ status }) => {
       if (status === 'connected') {
         initChats();
+        initPlugins();
         unsubscribe();
       }
     });
@@ -53,9 +56,7 @@
         </section>
       </div>
     {:else if activeTab === 'plugins'}
-      <div class="plugins-content">
-        <p>Plugins tab will be rendered here (Phase 5)</p>
-      </div>
+      <PluginList />
     {/if}
   </main>
 </div>
@@ -100,7 +101,4 @@
     overflow: hidden;
   }
 
-  .plugins-content {
-    padding: var(--spacing-lg);
-  }
 </style>

@@ -4,6 +4,7 @@ import {
   CreateChatResultSchema,
   GetChatResultSchema,
   GetQueueMessagesResultSchema,
+  GetPluginsResultSchema,
   ChatCreatedDataSchema,
   ChatUpdatedDataSchema,
   ChatDeletedDataSchema,
@@ -13,10 +14,14 @@ import {
   QueueMessageAddedDataSchema,
   QueueMessageUpdatedDataSchema,
   QueueMessageDeletedDataSchema,
+  PluginRegisteredDataSchema,
+  PluginUpdatedDataSchema,
+  PluginRemovedDataSchema,
   type ListChatsResult,
   type CreateChatResult,
   type GetChatResult,
   type GetQueueMessagesResult,
+  type GetPluginsResult,
   type ChatCreatedData,
   type ChatUpdatedData,
   type ChatDeletedData,
@@ -25,7 +30,10 @@ import {
   type MessageDeletedData,
   type QueueMessageAddedData,
   type QueueMessageUpdatedData,
-  type QueueMessageDeletedData
+  type QueueMessageDeletedData,
+  type PluginRegisteredData,
+  type PluginUpdatedData,
+  type PluginRemovedData
 } from './schemas.js';
 
 /**
@@ -267,6 +275,70 @@ export function onQueueMessageEvents(
       if (parsed.chatId === chatId) {
         handlers.onQueueMessageDeleted!(parsed);
       }
+    }));
+  }
+
+  return () => {
+    unsubs.forEach(unsub => unsub());
+  };
+}
+
+/**
+ * Subscribe to plugin list events (pluginRegistered, pluginUpdated, pluginRemoved).
+ * Must be called before getPlugins to receive real-time updates.
+ */
+export async function subscribePluginsList(): Promise<void> {
+  await websocket.request('subscribePluginsList', {});
+}
+
+/**
+ * Unsubscribe from plugin list events.
+ */
+export async function unsubscribePluginsList(): Promise<void> {
+  await websocket.request('unsubscribePluginsList', {});
+}
+
+/**
+ * Get list of all registered plugins.
+ */
+export async function getPlugins(): Promise<GetPluginsResult> {
+  const data = await websocket.request('getPlugins', {});
+  return GetPluginsResultSchema.parse(data);
+}
+
+export interface PluginListEventHandlers {
+  onPluginRegistered?: (data: PluginRegisteredData) => void;
+  onPluginUpdated?: (data: PluginUpdatedData) => void;
+  onPluginRemoved?: (data: PluginRemovedData) => void;
+}
+
+/**
+ * Register event listeners for plugin list events.
+ * Returns cleanup function.
+ * @param handlers - Event handlers
+ * @returns Cleanup function that removes all listeners
+ */
+export function onPluginListEvents(handlers: PluginListEventHandlers): () => void {
+  const unsubs: Array<() => void> = [];
+
+  if (handlers.onPluginRegistered) {
+    unsubs.push(websocket.on('pluginRegistered', (data) => {
+      const parsed = PluginRegisteredDataSchema.parse(data);
+      handlers.onPluginRegistered!(parsed);
+    }));
+  }
+
+  if (handlers.onPluginUpdated) {
+    unsubs.push(websocket.on('pluginUpdated', (data) => {
+      const parsed = PluginUpdatedDataSchema.parse(data);
+      handlers.onPluginUpdated!(parsed);
+    }));
+  }
+
+  if (handlers.onPluginRemoved) {
+    unsubs.push(websocket.on('pluginRemoved', (data) => {
+      const parsed = PluginRemovedDataSchema.parse(data);
+      handlers.onPluginRemoved!(parsed);
     }));
   }
 
