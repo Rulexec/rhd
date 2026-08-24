@@ -190,6 +190,8 @@ pub async fn handle_ai_request(
                         content,
                         reasoning_content: None,
                         tags: vec![],
+                        is_finished: true,
+                        is_streaming: false,
                     })
                     .await
                     .map_err(|e| AiRequestError::MessageAdd(e.to_string()))?;
@@ -238,6 +240,8 @@ pub async fn handle_ai_request(
                     content: error_content.clone(),
                     reasoning_content: None,
                     tags: vec!["ai_completions:error".to_string()],
+                    is_finished: true,
+                    is_streaming: false,
                 })
                 .await;
             
@@ -311,6 +315,8 @@ async fn process_queued_messages(
                 content: queue_msg.content,
                 reasoning_content: queue_msg.reasoning_content,
                 tags: queue_msg.tags,
+                is_finished: true,
+                is_streaming: false,
             })
             .await
             .map_err(|e| AiRequestError::MessageAdd(e.to_string()))?;
@@ -399,6 +405,8 @@ mod tests {
             created_at: Utc::now(),
             reasoning_content: None,
             tags: vec![],
+            is_finished: true,
+            is_streaming: false,
         }
     }
 

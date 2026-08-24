@@ -50,7 +50,9 @@ pub struct Chat {
 ///   "content": "Hello",
 ///   "createdAt": "2026-08-20T18:00:00Z",
 ///   "reasoningContent": null,
-///   "tags": ["important"]
+///   "tags": ["important"],
+///   "isFinished": true,
+///   "isStreaming": false
 /// }
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -72,6 +74,16 @@ pub struct Message {
     /// Tags associated with the message.
     #[serde(default)]
     pub tags: Vec<String>,
+    /// Whether the message content is final (no more updates expected).
+    #[serde(default = "default_true")]
+    pub is_finished: bool,
+    /// Whether the message is currently being streamed.
+    #[serde(default)]
+    pub is_streaming: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 /// Lightweight chat information for list views.
@@ -200,6 +212,8 @@ mod tests {
             created_at: "2026-08-20T18:00:00Z".parse().unwrap(),
             reasoning_content: None,
             tags: vec!["important".to_string()],
+            is_finished: true,
+            is_streaming: false,
         };
 
         let json = serde_json::to_string(&message).unwrap();
@@ -224,6 +238,8 @@ mod tests {
             created_at: "2026-08-20T18:00:00Z".parse().unwrap(),
             reasoning_content: Some("Thinking...".to_string()),
             tags: vec![],
+            is_finished: true,
+            is_streaming: false,
         };
 
         let json = serde_json::to_string(&message).unwrap();

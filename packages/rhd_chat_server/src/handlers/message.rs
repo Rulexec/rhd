@@ -33,6 +33,8 @@ fn convert_message_to_api(
         created_at,
         reasoning_content: msg.thinking_content,
         tags,
+        is_finished: msg.is_finished,
+        is_streaming: msg.is_streaming,
     })
 }
 
@@ -65,6 +67,8 @@ pub async fn add_message(
         &params.content,
         None, // model
         params.reasoning_content.as_deref(),
+        params.is_finished,
+        params.is_streaming,
     )?;
 
     // Set tags if provided
@@ -110,15 +114,23 @@ pub async fn update_message(
         }
     };
 
-    // Update content if provided
+    // Update message fields if provided
     let mut current_version = db.get_chat(message.chat_id)?.map(|c| c.version).unwrap_or(1);
-    if let Some(content) = params.content {
-        current_version = db.update_message(params.message_id, &content)?;
+    if params.content.is_some()
+        || params.reasoning_content.is_some()
+        || params.tool_calls.is_some()
+        || params.is_finished.is_some()
+        || params.is_streaming.is_some()
+    {
+        current_version = db.update_message(
+            params.message_id,
+            params.content.as_deref(),
+            params.reasoning_content.as_deref(),
+            params.tool_calls.as_deref(),
+            params.is_finished,
+            params.is_streaming,
+        )?;
     }
-
-    // Note: rhd_db doesn't have methods to update reasoning_content or role separately
-    // For now, we'll need to use update_message_full or add new methods to rhd_db
-    // This is a limitation that should be addressed in a future phase
 
     // Add tags if provided
     if !params.add_tags.is_empty() {

@@ -208,6 +208,8 @@ async fn test_add_message() {
             content: "Hello".to_string(),
             reasoning_content: None,
             tags: vec!["greeting".to_string()],
+            is_finished: true,
+            is_streaming: false,
         })
         .await
         .unwrap();
@@ -262,6 +264,8 @@ async fn test_subscription_chat_events() {
             content: "Test message".to_string(),
             reasoning_content: None,
             tags: vec![],
+            is_finished: true,
+            is_streaming: false,
         })
         .await
         .unwrap();

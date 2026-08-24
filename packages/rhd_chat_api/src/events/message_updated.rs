@@ -50,6 +50,8 @@ mod tests {
                 created_at: Utc::now(),
                 reasoning_content: Some("Updated reasoning".to_string()),
                 tags: vec!["tag1".to_string()],
+                is_finished: true,
+                is_streaming: false,
             },
             chat_version: 3,
         };

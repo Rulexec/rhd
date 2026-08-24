@@ -205,5 +205,25 @@ fn migrate(conn: &Connection) -> DbResult<()> {
         conn.execute_batch("ALTER TABLE chats ADD COLUMN version INTEGER NOT NULL DEFAULT 1")?;
     }
 
+    // Check if is_finished column exists in messages table
+    let has_is_finished: bool = conn
+        .prepare("SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name='is_finished'")?
+        .query_row([], |row| row.get::<_, i64>(0))?
+        > 0;
+
+    if !has_is_finished {
+        conn.execute_batch("ALTER TABLE messages ADD COLUMN is_finished INTEGER NOT NULL DEFAULT 1")?;
+    }
+
+    // Check if is_streaming column exists in messages table
+    let has_is_streaming: bool = conn
+        .prepare("SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name='is_streaming'")?
+        .query_row([], |row| row.get::<_, i64>(0))?
+        > 0;
+
+    if !has_is_streaming {
+        conn.execute_batch("ALTER TABLE messages ADD COLUMN is_streaming INTEGER NOT NULL DEFAULT 0")?;
+    }
+
     Ok(())
 }

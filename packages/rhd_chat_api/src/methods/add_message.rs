@@ -16,6 +16,10 @@ use serde::{Deserialize, Serialize};
 ///   "tags": ["tag1"]
 /// }
 /// ```
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct AddMessageParams {
@@ -31,6 +35,12 @@ pub struct AddMessageParams {
     /// Optional tags to associate with the message.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
+    /// Whether the message is finished (default: true).
+    #[serde(default = "default_true")]
+    pub is_finished: bool,
+    /// Whether the message is being streamed (default: false).
+    #[serde(default)]
+    pub is_streaming: bool,
 }
 
 /// Result of the `addMessage` method.
@@ -60,6 +70,8 @@ mod tests {
             content: "Hello".to_string(),
             reasoning_content: Some("Thinking...".to_string()),
             tags: vec!["tag1".to_string()],
+            is_finished: true,
+            is_streaming: false,
         };
 
         let json = serde_json::to_string(&params).unwrap();
@@ -82,6 +94,8 @@ mod tests {
         assert_eq!(params.content, "Hello");
         assert!(params.reasoning_content.is_none());
         assert!(params.tags.is_empty());
+        assert!(params.is_finished);
+        assert!(!params.is_streaming);
     }
 
     #[test]

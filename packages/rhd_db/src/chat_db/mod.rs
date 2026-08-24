@@ -41,6 +41,8 @@ pub struct Message {
     pub model: Option<String>,
     pub thinking_content: Option<String>,
     pub tool_calls: Option<Vec<ToolCall>>,
+    pub is_finished: bool,
+    pub is_streaming: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -117,8 +119,10 @@ impl ChatDb {
         content: &str,
         model: Option<&str>,
         thinking_content: Option<&str>,
+        is_finished: bool,
+        is_streaming: bool,
     ) -> DbResult<(i64, i64)> {
-        messages::add_message(&self.conn, chat_id, role, content, model, thinking_content)
+        messages::add_message(&self.conn, chat_id, role, content, model, thinking_content, is_finished, is_streaming)
     }
 
     pub fn get_messages(&self, chat_id: i64) -> DbResult<Vec<Message>> {
@@ -129,8 +133,16 @@ impl ChatDb {
         messages::get_message(&self.conn, message_id)
     }
 
-    pub fn update_message(&self, message_id: i64, content: &str) -> DbResult<i64> {
-        messages::update_message(&self.conn, message_id, content)
+    pub fn update_message(
+        &self,
+        message_id: i64,
+        content: Option<&str>,
+        thinking_content: Option<&str>,
+        tool_calls: Option<&str>,
+        is_finished: Option<bool>,
+        is_streaming: Option<bool>,
+    ) -> DbResult<i64> {
+        messages::update_message(&self.conn, message_id, content, thinking_content, tool_calls, is_finished, is_streaming)
     }
 
     pub fn delete_message(&self, message_id: i64) -> DbResult<i64> {

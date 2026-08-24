@@ -16,6 +16,8 @@ pub(crate) fn add_message(
     content: &str,
     model: Option<&str>,
     thinking_content: Option<&str>,
+    is_finished: bool,
+    is_streaming: bool,
 ) -> DbResult<(i64, i64)> {
     let conn = conn
         .lock()
@@ -23,8 +25,8 @@ pub(crate) fn add_message(
     let tx = conn.unchecked_transaction()?;
     let now = now_iso();
     tx.execute(
-        "INSERT INTO messages (chat_id, role, content, created_at, model, thinking_content) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        params![chat_id, role, content, now, model, thinking_content],
+        "INSERT INTO messages (chat_id, role, content, created_at, model, thinking_content, is_finished, is_streaming) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        params![chat_id, role, content, now, model, thinking_content, is_finished, is_streaming],
     )?;
     let message_id = tx.last_insert_rowid();
     tx.execute(
@@ -45,7 +47,7 @@ pub(crate) fn get_messages(conn: &Mutex<Connection>, chat_id: i64) -> DbResult<V
         .lock()
         .map_err(|e| DbError::InitializationError(e.to_string()))?;
     let mut stmt = conn.prepare(
-        "SELECT id, chat_id, role, content, created_at, model, thinking_content, tool_calls FROM messages WHERE chat_id = ?1 ORDER BY id ASC",
+        "SELECT id, chat_id, role, content, created_at, model, thinking_content, tool_calls, is_finished, is_streaming FROM messages WHERE chat_id = ?1 ORDER BY id ASC",
     )?;
     let rows = stmt.query_map(params![chat_id], |row| {
         let tool_calls_json: Option<String> = row.get(7)?;
@@ -60,6 +62,8 @@ pub(crate) fn get_messages(conn: &Mutex<Connection>, chat_id: i64) -> DbResult<V
             model: row.get(5)?,
             thinking_content: row.get(6)?,
             tool_calls,
+            is_finished: row.get::<_, bool>(8)?,
+            is_streaming: row.get::<_, bool>(9)?,
         })
     })?;
     let mut messages = Vec::new();
@@ -74,7 +78,7 @@ pub(crate) fn get_message(conn: &Mutex<Connection>, message_id: i64) -> DbResult
         .lock()
         .map_err(|e| DbError::InitializationError(e.to_string()))?;
     let mut stmt = conn.prepare(
-        "SELECT id, chat_id, role, content, created_at, model, thinking_content, tool_calls FROM messages WHERE id = ?1",
+        "SELECT id, chat_id, role, content, created_at, model, thinking_content, tool_calls, is_finished, is_streaming FROM messages WHERE id = ?1",
     )?;
     let mut rows = stmt.query_map(params![message_id], |row| {
         let tool_calls_json: Option<String> = row.get(7)?;
@@ -89,6 +93,8 @@ pub(crate) fn get_message(conn: &Mutex<Connection>, message_id: i64) -> DbResult
             model: row.get(5)?,
             thinking_content: row.get(6)?,
             tool_calls,
+            is_finished: row.get::<_, bool>(8)?,
+            is_streaming: row.get::<_, bool>(9)?,
         })
     })?;
     match rows.next() {
@@ -100,7 +106,11 @@ pub(crate) fn get_message(conn: &Mutex<Connection>, message_id: i64) -> DbResult
 pub(crate) fn update_message(
     conn: &Mutex<Connection>,
     message_id: i64,
-    content: &str,
+    content: Option<&str>,
+    thinking_content: Option<&str>,
+    tool_calls: Option<&str>,
+    is_finished: Option<bool>,
+    is_streaming: Option<bool>,
 ) -> DbResult<i64> {
     let conn = conn
         .lock()
@@ -111,10 +121,23 @@ pub(crate) fn update_message(
         params![message_id],
         |row| row.get(0),
     )?;
-    tx.execute(
-        "UPDATE messages SET content = ?1 WHERE id = ?2",
-        params![content, message_id],
-    )?;
+
+    if let Some(content) = content {
+        tx.execute("UPDATE messages SET content = ?1 WHERE id = ?2", params![content, message_id])?;
+    }
+    if let Some(thinking_content) = thinking_content {
+        tx.execute("UPDATE messages SET thinking_content = ?1 WHERE id = ?2", params![thinking_content, message_id])?;
+    }
+    if let Some(tool_calls) = tool_calls {
+        tx.execute("UPDATE messages SET tool_calls = ?1 WHERE id = ?2", params![tool_calls, message_id])?;
+    }
+    if let Some(is_finished) = is_finished {
+        tx.execute("UPDATE messages SET is_finished = ?1 WHERE id = ?2", params![is_finished, message_id])?;
+    }
+    if let Some(is_streaming) = is_streaming {
+        tx.execute("UPDATE messages SET is_streaming = ?1 WHERE id = ?2", params![is_streaming, message_id])?;
+    }
+
     let now = now_iso();
     tx.execute(
         "UPDATE chats SET updated_at = ?1, version = version + 1 WHERE id = ?2",

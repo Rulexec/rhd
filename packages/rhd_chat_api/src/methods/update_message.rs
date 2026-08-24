@@ -38,6 +38,15 @@ pub struct UpdateMessageParams {
     /// Tags to remove from the message (optional).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub remove_tags: Vec<String>,
+    /// Set whether the message is finished.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_finished: Option<bool>,
+    /// Set whether the message is being streamed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_streaming: Option<bool>,
+    /// Set tool calls (JSON string).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<String>,
 }
 
 /// Result of the `updateMessage` method.
@@ -63,6 +72,9 @@ mod tests {
             role: Some("assistant".to_string()),
             add_tags: vec!["new-tag".to_string()],
             remove_tags: vec!["old-tag".to_string()],
+            is_finished: Some(true),
+            is_streaming: Some(false),
+            tool_calls: None,
         };
 
         let json = serde_json::to_string(&params).unwrap();
@@ -87,6 +99,9 @@ mod tests {
         assert!(params.role.is_none());
         assert!(params.add_tags.is_empty());
         assert!(params.remove_tags.is_empty());
+        assert!(params.is_finished.is_none());
+        assert!(params.is_streaming.is_none());
+        assert!(params.tool_calls.is_none());
     }
 
     #[test]

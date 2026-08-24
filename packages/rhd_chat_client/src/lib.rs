@@ -30,6 +30,8 @@
 //!         content: "Hello!".to_string(),
 //!         reasoning_content: None,
 //!         tags: vec![],
+//!         is_finished: true,
+//!         is_streaming: false,
 //!     }).await?;
 //!
 //!     Ok(())

@@ -71,6 +71,8 @@ mod tests {
                 created_at: Utc::now(),
                 reasoning_content: None,
                 tags: vec![],
+                is_finished: true,
+                is_streaming: false,
             }],
         };
 

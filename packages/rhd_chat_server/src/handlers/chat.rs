@@ -82,6 +82,8 @@ fn convert_message_to_api(
         created_at,
         reasoning_content: msg.thinking_content,
         tags,
+        is_finished: msg.is_finished,
+        is_streaming: msg.is_streaming,
     })
 }
 

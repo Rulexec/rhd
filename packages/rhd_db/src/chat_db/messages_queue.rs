@@ -60,6 +60,8 @@ pub(crate) fn get_queue_messages(conn: &Mutex<Connection>, chat_id: i64) -> DbRe
             model: row.get(5)?,
             thinking_content: row.get(6)?,
             tool_calls,
+            is_finished: true,
+            is_streaming: false,
         })
     })?;
     let mut messages = Vec::new();
@@ -89,6 +91,8 @@ pub(crate) fn get_queue_message(conn: &Mutex<Connection>, message_id: i64) -> Db
             model: row.get(5)?,
             thinking_content: row.get(6)?,
             tool_calls,
+            is_finished: true,
+            is_streaming: false,
         })
     })?;
     match rows.next() {
