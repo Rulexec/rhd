@@ -163,6 +163,27 @@ pub struct PendingEvent {
     pub created_at: DateTime<Utc>,
 }
 
+/// A tool call accumulated during streaming.
+///
+/// # Example JSON
+/// ```json
+/// {
+///   "id": "tool_call_1",
+///   "name": "search",
+///   "arguments": "{\"query\": \"test\"}"
+/// }
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct StreamToolCall {
+    /// Unique identifier for the tool call.
+    pub id: String,
+    /// Name of the tool being called.
+    pub name: String,
+    /// Accumulated arguments (JSON string).
+    pub arguments: String,
+}
+
 impl From<Chat> for ChatSummary {
     fn from(chat: Chat) -> Self {
         ChatSummary {

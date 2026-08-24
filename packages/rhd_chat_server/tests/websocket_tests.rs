@@ -15,6 +15,7 @@ use rhd_chat_client::{ChatClient, ChatEvent};
 use rhd_chat_server::config::Config;
 use rhd_chat_server::connection::handle_connection;
 use rhd_chat_server::plugins::new_shared_plugin_registry;
+use rhd_chat_server::streams::StreamManager;
 use rhd_chat_server::subscriptions::new_shared_subscription_manager;
 
 async fn start_test_server() -> (u16, tokio::task::JoinHandle<()>) {
@@ -39,6 +40,9 @@ async fn start_test_server() -> (u16, tokio::task::JoinHandle<()>) {
     // Create plugin registry
     let plugin_registry = new_shared_plugin_registry();
 
+    // Create stream manager
+    let stream_manager = Arc::new(StreamManager::new());
+
     // Bind TCP listener
     let listener = tokio::net::TcpListener::bind(&config.socket_addr()).await.unwrap();
 
@@ -53,12 +57,13 @@ async fn start_test_server() -> (u16, tokio::task::JoinHandle<()>) {
             let db = Arc::clone(&db);
             let subscription_manager = subscription_manager.clone();
             let plugin_registry = plugin_registry.clone();
+            let stream_manager = stream_manager.clone();
 
             tokio::spawn(async move {
                 match tokio_tungstenite::accept_async(stream).await {
                     Ok(ws_stream) => {
                         let (write, read) = ws_stream.split();
-                        let _ = handle_connection(read, write, db, subscription_manager, plugin_registry).await;
+                        let _ = handle_connection(read, write, db, subscription_manager, plugin_registry, stream_manager).await;
                     }
                     Err(_) => {}
                 }

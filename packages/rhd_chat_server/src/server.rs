@@ -13,6 +13,7 @@ use crate::config::Config;
 use crate::connection::handle_connection;
 use crate::error::ServerError;
 use crate::plugins::new_shared_plugin_registry;
+use crate::streams::StreamManager;
 use crate::subscriptions::new_shared_subscription_manager;
 
 /// Start the WebSocket server and return the bound port.
@@ -30,6 +31,10 @@ pub async fn start(config: Config) -> Result<(u16, tokio::task::JoinHandle<()>),
     let plugin_registry = new_shared_plugin_registry();
     info!("Plugin registry initialized");
 
+    // Create stream manager
+    let stream_manager = Arc::new(StreamManager::new());
+    info!("Stream manager initialized");
+
     // Bind TCP listener
     let listener = TcpListener::bind(&config.socket_addr()).await?;
     let actual_port = listener.local_addr()?.port();
@@ -45,11 +50,12 @@ pub async fn start(config: Config) -> Result<(u16, tokio::task::JoinHandle<()>),
                     let db = Arc::clone(&db);
                     let subscription_manager = subscription_manager.clone();
                     let plugin_registry = plugin_registry.clone();
+                    let stream_manager = stream_manager.clone();
                     tokio::spawn(async move {
                         match accept_async(stream).await {
                             Ok(ws_stream) => {
                                 let (write, read) = ws_stream.split();
-                                if let Err(e) = handle_connection(read, write, db, subscription_manager, plugin_registry).await {
+                                if let Err(e) = handle_connection(read, write, db, subscription_manager, plugin_registry, stream_manager).await {
                                     error!("Connection error from {}: {}", addr, e);
                                 }
                                 info!("Connection closed: {}", addr);

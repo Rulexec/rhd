@@ -4,6 +4,7 @@ pub mod chat;
 pub mod message;
 pub mod plugin;
 pub mod queue_message;
+pub mod stream;
 pub mod subscription;
 pub mod tools;
 
@@ -15,6 +16,7 @@ use rhd_db::ChatDb;
 
 use crate::error::ServerError;
 use crate::plugins::SharedPluginRegistry;
+use crate::streams::SharedStreamManager;
 use crate::subscriptions::SharedSubscriptionManager;
 
 /// Route a request to the appropriate handler.
@@ -24,6 +26,7 @@ pub async fn handle_request(
     connection_id: &str,
     subscription_manager: SharedSubscriptionManager,
     plugin_registry: SharedPluginRegistry,
+    stream_manager: SharedStreamManager,
 ) -> Result<Value, ServerError> {
     let request_id = request.id.clone();
     
@@ -80,6 +83,21 @@ pub async fn handle_request(
             tools::remove_tools(request.params, db, &request_id, plugin_id.as_deref(), &subscription_manager).await
         }
         "getTools" => tools::get_tools(request.params, db, &request_id).await,
+        
+        // Stream methods
+        "streamPush" => {
+            let chat_id = request.params.get("chatId")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+            stream::stream_push(request.params, &request_id, &stream_manager, &subscription_manager, chat_id).await
+        }
+        "streamSubscribe" => stream::stream_subscribe(request.params, &request_id, connection_id, &stream_manager, &subscription_manager).await,
+        "streamFinish" => {
+            let chat_id = request.params.get("chatId")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+            stream::stream_finish(request.params, &request_id, &stream_manager, &subscription_manager, chat_id).await
+        }
         
         // Unknown method
         _ => Ok(serde_json::to_value(ErrorResponse::invalid_request(

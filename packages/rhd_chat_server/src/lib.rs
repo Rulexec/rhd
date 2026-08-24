@@ -10,4 +10,5 @@ pub mod events;
 pub mod handlers;
 pub mod plugins;
 pub mod server;
+pub mod streams;
 pub mod subscriptions;
