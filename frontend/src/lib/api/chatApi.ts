@@ -3,21 +3,29 @@ import {
   ListChatsResultSchema,
   CreateChatResultSchema,
   GetChatResultSchema,
+  GetQueueMessagesResultSchema,
   ChatCreatedDataSchema,
   ChatUpdatedDataSchema,
   ChatDeletedDataSchema,
   MessageAddedDataSchema,
   MessageUpdatedDataSchema,
   MessageDeletedDataSchema,
+  QueueMessageAddedDataSchema,
+  QueueMessageUpdatedDataSchema,
+  QueueMessageDeletedDataSchema,
   type ListChatsResult,
   type CreateChatResult,
   type GetChatResult,
+  type GetQueueMessagesResult,
   type ChatCreatedData,
   type ChatUpdatedData,
   type ChatDeletedData,
   type MessageAddedData,
   type MessageUpdatedData,
-  type MessageDeletedData
+  type MessageDeletedData,
+  type QueueMessageAddedData,
+  type QueueMessageUpdatedData,
+  type QueueMessageDeletedData
 } from './schemas.js';
 
 /**
@@ -178,6 +186,86 @@ export function onChatEvents(chatId: number, handlers: ChatEventHandlers): () =>
       const parsed = MessageDeletedDataSchema.parse(data);
       if (parsed.chatId === chatId) {
         handlers.onMessageDeleted!(parsed);
+      }
+    }));
+  }
+
+  return () => {
+    unsubs.forEach(unsub => unsub());
+  };
+}
+
+/**
+ * Get queue messages for a chat.
+ * @param chatId - Chat ID
+ */
+export async function getQueueMessages(chatId: number): Promise<GetQueueMessagesResult> {
+  const data = await websocket.request('getQueueMessages', { chatId });
+  return GetQueueMessagesResultSchema.parse(data);
+}
+
+/**
+ * Add a message to the queue.
+ * @param chatId - Chat ID
+ * @param role - Message role (e.g., "user")
+ * @param content - Message content
+ * @param tags - Optional tags
+ */
+export async function addQueueMessage(
+  chatId: number,
+  role: string,
+  content: string,
+  tags: string[] = []
+): Promise<void> {
+  await websocket.request('addQueueMessage', {
+    chatId,
+    role,
+    content,
+    tags
+  });
+}
+
+export interface QueueMessageEventHandlers {
+  onQueueMessageAdded?: (data: QueueMessageAddedData) => void;
+  onQueueMessageUpdated?: (data: QueueMessageUpdatedData) => void;
+  onQueueMessageDeleted?: (data: QueueMessageDeletedData) => void;
+}
+
+/**
+ * Register event listeners for queue message events.
+ * @param chatId - Chat ID to listen for
+ * @param handlers - Event handlers
+ * @returns Cleanup function that removes all listeners
+ */
+export function onQueueMessageEvents(
+  chatId: number,
+  handlers: QueueMessageEventHandlers
+): () => void {
+  const unsubs: Array<() => void> = [];
+
+  if (handlers.onQueueMessageAdded) {
+    unsubs.push(websocket.on('queueMessageAdded', (data) => {
+      const parsed = QueueMessageAddedDataSchema.parse(data);
+      if (parsed.chatId === chatId) {
+        handlers.onQueueMessageAdded!(parsed);
+      }
+    }));
+  }
+
+  if (handlers.onQueueMessageUpdated) {
+    unsubs.push(websocket.on('queueMessageUpdated', (data) => {
+      const parsed = QueueMessageUpdatedDataSchema.parse(data);
+      if (parsed.chatId === chatId) {
+        handlers.onQueueMessageUpdated!(parsed);
+      }
+    }));
+  }
+
+  if (handlers.onQueueMessageDeleted) {
+    unsubs.push(websocket.on('queueMessageDeleted', (data) => {
+      const parsed = QueueMessageDeletedDataSchema.parse(data);
+      if (parsed.chatId === chatId) {
+        handlers.onQueueMessageDeleted!(parsed);
       }
     }));
   }

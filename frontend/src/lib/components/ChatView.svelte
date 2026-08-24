@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { currentChat, sortedMessages, chatLoading, chatError } from '../stores/chat.js';
+  import { currentChat, allMessages, chatLoading, chatError } from '../stores/chat.js';
   import Message from './Message.svelte';
+  import MessageInput from './MessageInput.svelte';
 
   let messagesContainer: HTMLDivElement | null = $state(null);
   let isAtBottom: boolean = $state(true);
@@ -31,9 +32,17 @@
     isAtBottom = checkIfAtBottom();
   }
 
+  /**
+   * Handle message sent event.
+   */
+  function handleMessageSent(): void {
+    // Scroll to bottom after sending
+    setTimeout(() => scrollToBottom(), 0);
+  }
+
   // Auto-scroll when messages change (only if at bottom)
   $effect(() => {
-    if ($sortedMessages && isAtBottom) {
+    if ($allMessages && isAtBottom) {
       // Use setTimeout to ensure DOM is updated
       setTimeout(() => {
         if (isAtBottom) {
@@ -45,7 +54,7 @@
 
   // Scroll to bottom when chat loads
   $effect(() => {
-    if ($sortedMessages && !$chatLoading) {
+    if ($allMessages && !$chatLoading) {
       setTimeout(() => scrollToBottom(), 0);
     }
   });
@@ -81,22 +90,20 @@
       bind:this={messagesContainer}
       onscroll={handleScroll}
     >
-      {#if $sortedMessages.length === 0}
+      {#if $allMessages.length === 0}
         <div class="messages-empty">
           <span class="text-muted">No messages yet</span>
         </div>
       {:else}
         <div class="messages-list">
-          {#each $sortedMessages as message (message.id)}
-            <Message {message} />
+          {#each $allMessages as message (message.id)}
+            <Message {message} isQueue={message.isQueue} />
           {/each}
         </div>
       {/if}
     </div>
 
-    <div class="chat-input-placeholder">
-      <p class="text-muted">Message input will be added in Phase 4</p>
-    </div>
+    <MessageInput onMessageSent={handleMessageSent} />
   {/if}
 </div>
 
@@ -148,12 +155,6 @@
   .messages-list {
     display: flex;
     flex-direction: column;
-  }
-
-  .chat-input-placeholder {
-    padding: var(--spacing-md);
-    border-top: 1px solid var(--color-border);
-    background: var(--color-bg-secondary);
   }
 
   .text-muted {

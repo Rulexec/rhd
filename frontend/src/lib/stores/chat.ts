@@ -1,5 +1,5 @@
 import { writable, derived, type Writable, type Readable } from 'svelte/store';
-import { getChat, subscribeChat, unsubscribeChat, onChatEvents } from '../api/chatApi.js';
+import { getChat, subscribeChat, unsubscribeChat, onChatEvents, getQueueMessages, onQueueMessageEvents } from '../api/chatApi.js';
 import type { Chat, Message } from '../api/schemas.js';
 
 /**
@@ -18,6 +18,11 @@ export const currentChat: Writable<Chat | null> = writable(null);
 export const messages: Writable<Message[]> = writable([]);
 
 /**
+ * Queue messages for the current chat.
+ */
+export const queueMessages: Writable<Message[]> = writable([]);
+
+/**
  * Loading state.
  */
 export const chatLoading: Writable<boolean> = writable(false);
@@ -31,6 +36,11 @@ export const chatError: Writable<string | null> = writable(null);
  * Cleanup function for event listeners.
  */
 let cleanupEvents: (() => void) | null = null;
+
+/**
+ * Cleanup function for queue event listeners.
+ */
+let cleanupQueueEvents: (() => void) | null = null;
 
 /**
  * Select a chat and load its messages.
@@ -48,7 +58,7 @@ export async function selectChat(chatId: number): Promise<void> {
     // Subscribe to chat events
     await subscribeChat(chatId);
 
-    // Register event listeners
+    // Register event listeners for regular messages
     cleanupEvents = onChatEvents(chatId, {
       onMessageAdded: ({ message }) => {
         messages.update(msgs => {
@@ -58,6 +68,9 @@ export async function selectChat(chatId: number): Promise<void> {
           }
           return [...msgs, message];
         });
+
+        // If this message was in the queue, remove it from queue
+        queueMessages.update(qMsgs => qMsgs.filter(m => m.id !== message.id));
       },
       onMessageUpdated: ({ message }) => {
         messages.update(msgs =>
@@ -71,10 +84,37 @@ export async function selectChat(chatId: number): Promise<void> {
       }
     });
 
+    // Register event listeners for queue messages
+    cleanupQueueEvents = onQueueMessageEvents(chatId, {
+      onQueueMessageAdded: ({ message }) => {
+        queueMessages.update(qMsgs => {
+          // Don't add if already exists
+          if (qMsgs.some(m => m.id === message.id)) {
+            return qMsgs.map(m => m.id === message.id ? message : m);
+          }
+          return [...qMsgs, message];
+        });
+      },
+      onQueueMessageUpdated: ({ message }) => {
+        queueMessages.update(qMsgs =>
+          qMsgs.map(m => m.id === message.id ? message : m)
+        );
+      },
+      onQueueMessageDeleted: ({ messageId }) => {
+        queueMessages.update(qMsgs =>
+          qMsgs.filter(m => m.id !== messageId)
+        );
+      }
+    });
+
     // Load chat data
     const result = await getChat(chatId);
     currentChat.set(result.chat);
     messages.set(result.messages);
+
+    // Load queue messages
+    const queueResult = await getQueueMessages(chatId);
+    queueMessages.set(queueResult.messages);
   } catch (error) {
     chatError.set(error instanceof Error ? error.message : String(error));
   } finally {
@@ -90,6 +130,12 @@ export async function clearChat(): Promise<void> {
   if (cleanupEvents) {
     cleanupEvents();
     cleanupEvents = null;
+  }
+
+  // Cleanup queue event listeners
+  if (cleanupQueueEvents) {
+    cleanupQueueEvents();
+    cleanupQueueEvents = null;
   }
 
   // Unsubscribe from previous chat
@@ -108,15 +154,30 @@ export async function clearChat(): Promise<void> {
   currentChatId.set(null);
   currentChat.set(null);
   messages.set([]);
+  queueMessages.set([]);
   chatLoading.set(false);
   chatError.set(null);
 }
 
 /**
- * Derived store: messages sorted by createdAt ASC.
+ * Message with queue flag for display.
  */
-export const sortedMessages: Readable<Message[]> = derived(messages, ($messages) => {
-  return [...$messages].sort((a, b) => {
-    return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-  });
-});
+export interface DisplayMessage extends Message {
+  isQueue: boolean;
+}
+
+/**
+ * Derived store: all messages (regular + queue) sorted by createdAt ASC.
+ * Queue messages are marked with isQueue flag.
+ */
+export const allMessages: Readable<DisplayMessage[]> = derived(
+  [messages, queueMessages],
+  ([$messages, $queueMessages]) => {
+    const regular: DisplayMessage[] = $messages.map(m => ({ ...m, isQueue: false }));
+    const queue: DisplayMessage[] = $queueMessages.map(m => ({ ...m, isQueue: true }));
+
+    return [...regular, ...queue].sort((a, b) => {
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    });
+  }
+);
