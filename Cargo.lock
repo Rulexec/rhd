@@ -407,6 +407,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "exponential-backoff"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "020662aa57307d8884be79fca464cce073745cfe6ac70805770972113ca6ee95"
+dependencies = [
+ "fastrand",
+]
+
+[[package]]
 name = "fallible-iterator"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1318,6 +1327,7 @@ dependencies = [
 name = "rhd_chat_client"
 version = "0.1.0"
 dependencies = [
+ "exponential-backoff",
  "futures-util",
  "rhd_chat_api",
  "serde",

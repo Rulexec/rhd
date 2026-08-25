@@ -14,3 +14,4 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 
 rhd_chat_api = { path = "../rhd_chat_api" }
+exponential-backoff = { workspace = true }

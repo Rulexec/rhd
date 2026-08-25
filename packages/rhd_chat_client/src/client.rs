@@ -3,6 +3,9 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::Arc;
+use std::time::Duration;
+
+use exponential_backoff::Backoff;
 
 use futures_util::{SinkExt, StreamExt};
 use serde::de::DeserializeOwned;
@@ -138,6 +141,64 @@ impl ChatClient {
             subscriptions,
             _connection_task: Arc::new(connection_task),
         })
+    }
+
+    /// Connect to a chat server with exponential backoff retry.
+    ///
+    /// Retries connection attempts with increasing delays:
+    /// - Initial delay: 1 second
+    /// - Maximum delay: 10 seconds
+    /// - Attempts: effectively infinite (u32::MAX)
+    ///
+    /// # Arguments
+    /// * `url` - WebSocket URL (e.g., "ws://127.0.0.1:8080/")
+    ///
+    /// Returns the connected client or an error if all retries are exhausted.
+    pub async fn connect_with_retry(url: &str) -> Result<Self, ClientError> {
+        let attempts = u32::MAX;
+        let min_delay = Duration::from_secs(1);
+        let max_delay = Duration::from_secs(10);
+
+        let mut attempt = 0;
+        for duration in Backoff::new(attempts, min_delay, max_delay) {
+            match Self::connect(url).await {
+                Ok(client) => {
+                    if attempt > 0 {
+                        tracing::info!(
+                            attempt = attempt,
+                            "Successfully connected after {} retries",
+                            attempt
+                        );
+                    }
+                    return Ok(client);
+                }
+                Err(e) => {
+                    attempt += 1;
+                    match duration {
+                        Some(delay) => {
+                            tracing::warn!(
+                                attempt = attempt,
+                                delay_ms = delay.as_millis(),
+                                error = %e,
+                                "Connection failed, retrying"
+                            );
+                            tokio::time::sleep(delay).await;
+                        }
+                        None => {
+                            tracing::error!(
+                                attempt = attempt,
+                                error = %e,
+                                "Connection failed and retry limit exhausted"
+                            );
+                            return Err(e);
+                        }
+                    }
+                }
+            }
+        }
+
+        // This should never be reached with u32::MAX attempts
+        Err(ClientError::ConnectionClosed)
     }
 
     /// Handle an incoming message from the server.

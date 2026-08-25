@@ -34,7 +34,7 @@ pub async fn run_plugin(
 ) -> Result<(), PluginError> {
     // Connect to chat server
     let client = Arc::new(
-        ChatClient::connect(server_url)
+        ChatClient::connect_with_retry(server_url)
             .await
             .map_err(|e| PluginError::Connection(e.to_string()))?,
     );
