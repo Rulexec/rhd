@@ -5,3 +5,4 @@ pub mod messages;
 pub mod queue;
 pub mod create_chat;
 pub mod plugins;
+pub mod start;

@@ -40,6 +40,11 @@ pub enum Command {
         #[command(subcommand)]
         subcommand: PluginsSubcommand,
     },
+    /// Start services from YAML config
+    Start {
+        /// Path to YAML config file
+        config_path: String,
+    },
 }
 
 #[derive(Subcommand)]

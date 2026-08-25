@@ -1300,6 +1300,7 @@ dependencies = [
  "rhd_chat_client",
  "serde",
  "serde_json",
+ "serde_yaml",
  "thiserror",
  "tokio",
 ]

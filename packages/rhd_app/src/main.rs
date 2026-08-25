@@ -26,6 +26,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         cli::Command::Plugins { subcommand } => {
             commands::plugins::execute(subcommand).await?;
         }
+        cli::Command::Start { config_path } => {
+            commands::start::execute(config_path).await?;
+        }
     }
     
     Ok(())

@@ -19,9 +19,24 @@ use crate::subscriptions::new_shared_subscription_manager;
 /// Start the WebSocket server and return the bound port.
 /// This is a non-blocking version for testing.
 pub async fn start(config: Config) -> Result<(u16, tokio::task::JoinHandle<()>), ServerError> {
+    // Construct full database path: <db_path>/chats.db
+    // Special case: ":memory:" is used for in-memory databases in tests
+    let db_path = if config.db_path == ":memory:" {
+        config.db_path.clone()
+    } else {
+        let db_dir = std::path::Path::new(&config.db_path);
+        
+        // Ensure the directory exists
+        if !db_dir.exists() {
+            std::fs::create_dir_all(db_dir)?;
+        }
+        
+        db_dir.join("chats.db").to_str().unwrap().to_string()
+    };
+    
     // Initialize database
-    let db = Arc::new(ChatDb::new(&config.db_path)?);
-    info!("Database initialized at {}", config.db_path);
+    let db = Arc::new(ChatDb::new(&db_path)?);
+    info!("Database initialized at {}", db_path);
 
     // Create subscription manager
     let subscription_manager = new_shared_subscription_manager();

@@ -16,8 +16,8 @@ pub struct Config {
     #[arg(long, default_value = "8080")]
     pub port: u16,
 
-    /// Path to SQLite database
-    #[arg(long, default_value = "./rhd_db/chats.db")]
+    /// Path to folder for SQLite database (chats.db will be created inside)
+    #[arg(long, default_value = "./rhd_db")]
     pub db_path: String,
 }
 
