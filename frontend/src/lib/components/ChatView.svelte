@@ -21,6 +21,7 @@
     isFinished: boolean;
   }
 
+  // Key subscriptions by messageId instead of chatId to avoid conflicts
   let streamSubscriptions: Map<number, StreamSubscription> = $state(new Map());
 
   // Subscribe to stream events
@@ -32,7 +33,11 @@
       unsubscribeStreamEvents = onStreamEvents($currentChat.id, {
         onStreamChunk: (data: StreamChunkData) => {
           const chatId = data.chatId;
-          const subscription = streamSubscriptions.get(chatId);
+          // Find the streaming message for this chat to get its messageId
+          const streamingMessage = $allMessages.find(m => m.chatId === chatId && m.isStreaming);
+          if (!streamingMessage) return;
+          
+          const subscription = streamSubscriptions.get(streamingMessage.id);
           
           if (subscription) {
             if (data.type === 'reasoningDelta' && data.content) {
@@ -57,7 +62,11 @@
         },
         onStreamFinished: (data: StreamFinishedData) => {
           const chatId = data.chatId;
-          const subscription = streamSubscriptions.get(chatId);
+          // Find the streaming message for this chat to get its messageId
+          const streamingMessage = $allMessages.find(m => m.chatId === chatId && m.isStreaming);
+          if (!streamingMessage) return;
+          
+          const subscription = streamSubscriptions.get(streamingMessage.id);
           
           if (subscription) {
             subscription.isFinished = true;
@@ -66,7 +75,7 @@
             
             // Clean up subscription after a delay (allow final render)
             setTimeout(() => {
-              streamSubscriptions.delete(chatId);
+              streamSubscriptions.delete(streamingMessage.id);
               streamSubscriptions = new Map(streamSubscriptions);
             }, 1000);
           }
@@ -83,10 +92,10 @@
    * Check if a message is streaming and subscribe to its stream if needed.
    */
   async function ensureStreamSubscription(message: MessageType) {
-    if (message.isStreaming && !streamSubscriptions.has(message.chatId)) {
+    if (message.isStreaming && !streamSubscriptions.has(message.id)) {
       try {
         const result = await streamSubscribe(message.chatId);
-        streamSubscriptions.set(message.chatId, {
+        streamSubscriptions.set(message.id, {
           reasoningContent: result.reasoningContent,
           content: result.content,
           toolCalls: result.toolCalls || [],
@@ -104,7 +113,7 @@
    * Get the streaming content for a message, if any.
    */
   function getStreamContent(message: MessageType): StreamSubscription | null {
-    return streamSubscriptions.get(message.chatId) || null;
+    return streamSubscriptions.get(message.id) || null;
   }
 
   /**

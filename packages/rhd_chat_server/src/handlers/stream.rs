@@ -41,44 +41,11 @@ pub async fn stream_push(
 
     // Push to stream
     stream_manager
-        .push(chat_id, reasoning_content.clone(), content.clone(), tool_calls_delta)
+        .push(chat_id, reasoning_content, content, tool_calls_delta)
         .await;
 
-    // Broadcast streamChunk event to chat subscribers
-    let manager = subscription_manager.read().await;
-    if let Some(reasoning) = &reasoning_content {
-        let event = Event::new(
-            "streamChunk",
-            serde_json::json!({
-                "chatId": chat_id,
-                "type": "reasoningDelta",
-                "content": reasoning,
-            }),
-        );
-        manager.broadcast_to_chat(chat_id, event);
-    }
-    if let Some(content) = &content {
-        let event = Event::new(
-            "streamChunk",
-            serde_json::json!({
-                "chatId": chat_id,
-                "type": "contentDelta",
-                "content": content,
-            }),
-        );
-        manager.broadcast_to_chat(chat_id, event);
-    }
-    if let Some(tool_calls) = &tool_calls {
-        let event = Event::new(
-            "streamChunk",
-            serde_json::json!({
-                "chatId": chat_id,
-                "type": "toolCallDelta",
-                "toolCalls": tool_calls,
-            }),
-        );
-        manager.broadcast_to_chat(chat_id, event);
-    }
+    // Note: streamChunk events are delivered via the spawned task in stream_subscribe,
+    // not via broadcast_to_chat, to avoid duplicate delivery to subscribers.
 
     let result = StreamPushResult { success: true };
     Ok(serde_json::to_value(Response::success(request_id, serde_json::to_value(result)?))?)
@@ -179,13 +146,8 @@ pub async fn stream_finish(
 
     let _snapshot = stream_manager.finish(chat_id).await;
 
-    // Broadcast streamFinished event to chat subscribers
-    let manager = subscription_manager.read().await;
-    let event = Event::new(
-        "streamFinished",
-        serde_json::json!({ "chatId": chat_id }),
-    );
-    manager.broadcast_to_chat(chat_id, event);
+    // Note: streamFinished event is delivered via the spawned task in stream_subscribe,
+    // not via broadcast_to_chat, to avoid duplicate delivery to subscribers.
 
     let result = StreamFinishResult { success: true };
     Ok(serde_json::to_value(Response::success(request_id, serde_json::to_value(result)?))?)

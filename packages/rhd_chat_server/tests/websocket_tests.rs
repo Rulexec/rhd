@@ -382,7 +382,7 @@ async fn test_custom_event_flow() {
     assert!(result.is_ok(), "Did not receive customEventAcknowledged");
 }
 
-/// Test: streamPush creates stream and broadcasts to subscribers.
+/// Test: streamPush creates stream and delivers to stream subscribers.
 #[tokio::test]
 async fn test_stream_push_broadcasts() {
     let (port, _handle) = start_test_server().await;
@@ -401,13 +401,13 @@ async fn test_stream_push_broadcasts() {
         .unwrap();
     let chat_id = create_result.chat_id;
 
-    // Both clients subscribe to chat
+    // Client1 subscribes to chat, client2 subscribes to stream
     client1
         .subscribe_chat(SubscribeChatParams { chat_id })
         .await
         .unwrap();
     client2
-        .subscribe_chat(SubscribeChatParams { chat_id })
+        .stream_subscribe(rhd_chat_api::StreamSubscribeParams { chat_id })
         .await
         .unwrap();
 
@@ -436,7 +436,7 @@ async fn test_stream_push_broadcasts() {
         .await
         .unwrap();
 
-    // Client2 should receive streamChunk event
+    // Client2 should receive streamChunk event via stream subscription
     let result = tokio::time::timeout(Duration::from_secs(5), chunk_received.notified()).await;
     assert!(result.is_ok(), "Did not receive streamChunk event");
 }
@@ -477,9 +477,9 @@ async fn test_stream_subscribe_returns_state() {
     assert!(!result.is_finished);
 }
 
-/// Test: streamFinish broadcasts streamFinished event.
+/// Test: streamFinish delivers streamFinished event to stream subscribers.
 #[tokio::test]
-async fn test_stream_finish_broadcasts() {
+async fn test_stream_finish_delivers_to_subscribers() {
     let (port, _handle) = start_test_server().await;
     let client1 = connect_client(port).await;
     let client2 = connect_client(port).await;
@@ -492,10 +492,12 @@ async fn test_stream_finish_broadcasts() {
         .unwrap();
     let chat_id = create_result.chat_id;
 
-    client2
-        .subscribe_chat(SubscribeChatParams { chat_id })
+    // Client2 subscribes to stream (not just chat)
+    let subscribe_result = client2
+        .stream_subscribe(rhd_chat_api::StreamSubscribeParams { chat_id })
         .await
         .unwrap();
+    assert!(!subscribe_result.is_finished);
 
     // Set up event notification for client2 to receive streamFinished
     let finished_received = Arc::new(Notify::new());
@@ -533,7 +535,7 @@ async fn test_stream_finish_broadcasts() {
         .await
         .unwrap();
 
-    // Client2 should receive streamFinished event
+    // Client2 should receive streamFinished event via stream subscription
     let result = tokio::time::timeout(Duration::from_secs(5), finished_received.notified()).await;
     assert!(result.is_ok(), "Did not receive streamFinished event");
 }
