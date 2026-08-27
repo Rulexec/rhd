@@ -4,8 +4,6 @@
   import { mobxObservable } from '../../util/mobxObservable.svelte.js';
   import Message from './Message.svelte';
   import MessageInput from './MessageInput.svelte';
-  import { streamSubscribe, onStreamEvents } from '../api/chatApiImpl.js';
-  import type { Message as MessageType, StreamChunkData, StreamFinishedData, StreamToolCallDelta } from '../api/schemas.js';
 
   const appStore = getAppStore();
   const chatStore = appStore.chat;
@@ -16,11 +14,15 @@
   const allMessagesGetter = mobxObservable(() => chatStore.allMessages);
   const chatLoadingGetter = mobxObservable(() => chatStore.loading);
   const chatErrorGetter = mobxObservable(() => chatStore.error);
+  const streamContentGetter = mobxObservable(() => chatStore.streamContent);
 
   let currentChat = $derived(currentChatGetter());
   let allMessages = $derived(allMessagesGetter());
   let chatLoading = $derived(chatLoadingGetter());
   let chatError = $derived(chatErrorGetter());
+  let streamContent = $derived(streamContentGetter());
+
+  let disposeChatStore: (() => void) | null = null;
 
   function dismissError() {
     chatStore.error = null;
@@ -29,108 +31,16 @@
   let messagesContainer: HTMLDivElement | null = $state(null);
   let isAtBottom: boolean = $state(true);
 
-  // Track active stream subscriptions
-  interface StreamSubscription {
-    reasoningContent: string;
-    content: string;
-    toolCalls: StreamToolCallDelta[];
-    isFinished: boolean;
-  }
-
-  // Key subscriptions by messageId instead of chatId to avoid conflicts
-  let streamSubscriptions: Map<number, StreamSubscription> = $state(new Map());
-
-  // Subscribe to stream events
-  let unsubscribeStreamEvents: (() => void) | null = $state(null);
-
   onMount(() => {
-    // Subscribe to stream events for the current chat
-    if (currentChat) {
-      unsubscribeStreamEvents = onStreamEvents(currentChat.id, {
-        onStreamChunk: (data: StreamChunkData) => {
-          const chatId = data.chatId;
-          // Find the streaming message for this chat to get its messageId
-          const streamingMessage = allMessages.find(m => m.chatId === chatId && m.isStreaming);
-          if (!streamingMessage) return;
-          
-          const subscription = streamSubscriptions.get(streamingMessage.id);
-          
-          if (subscription) {
-            if (data.type === 'reasoningDelta' && data.content) {
-              subscription.reasoningContent += data.content;
-            } else if (data.type === 'contentDelta' && data.content) {
-              subscription.content += data.content;
-            } else if (data.type === 'toolCallDelta' && data.toolCalls) {
-              // Merge tool calls by ID
-              for (const tc of data.toolCalls) {
-                const existing = subscription.toolCalls.find(t => t.id === tc.id);
-                if (existing) {
-                  existing.arguments += tc.arguments;
-                } else {
-                  subscription.toolCalls.push({ ...tc });
-                }
-              }
-            }
-            
-            // Trigger reactivity
-            streamSubscriptions = new Map(streamSubscriptions);
-          }
-        },
-        onStreamFinished: (data: StreamFinishedData) => {
-          const chatId = data.chatId;
-          // Find the streaming message for this chat to get its messageId
-          const streamingMessage = allMessages.find(m => m.chatId === chatId && m.isStreaming);
-          if (!streamingMessage) return;
-          
-          const subscription = streamSubscriptions.get(streamingMessage.id);
-          
-          if (subscription) {
-            subscription.isFinished = true;
-            // Trigger reactivity
-            streamSubscriptions = new Map(streamSubscriptions);
-            
-            // Clean up subscription after a delay (allow final render)
-            setTimeout(() => {
-              streamSubscriptions.delete(streamingMessage.id);
-              streamSubscriptions = new Map(streamSubscriptions);
-            }, 1000);
-          }
-        }
-      });
-    }
+    disposeChatStore = chatStore.init();
   });
 
   onDestroy(() => {
-    unsubscribeStreamEvents?.();
-  });
-
-  /**
-   * Check if a message is streaming and subscribe to its stream if needed.
-   */
-  async function ensureStreamSubscription(message: MessageType) {
-    if (message.isStreaming && !streamSubscriptions.has(message.id)) {
-      try {
-        const result = await streamSubscribe(message.chatId);
-        streamSubscriptions.set(message.id, {
-          reasoningContent: result.reasoningContent,
-          content: result.content,
-          toolCalls: result.toolCalls || [],
-          isFinished: result.isFinished,
-        });
-        // Trigger reactivity
-        streamSubscriptions = new Map(streamSubscriptions);
-      } catch (error) {
-        console.error('Failed to subscribe to stream:', error);
-      }
+    if (disposeChatStore) {
+      disposeChatStore();
+      disposeChatStore = null;
     }
-  }
-
-  /**
-   * Get the streaming content for a message, if any.
-   */
-  function getStreamContent(message: MessageType): StreamSubscription | null {
-    return streamSubscriptions.get(message.id) || null;
-  }
+  });
 
   /**
    * Check if user is at the bottom of the message list.
@@ -187,7 +97,7 @@
 
   // Auto-scroll when streaming content updates
   $effect(() => {
-    if (streamSubscriptions.size > 0 && isAtBottom) {
+    if (streamContent && !streamContent.isFinished && isAtBottom) {
       setTimeout(() => {
         if (isAtBottom) {
           scrollToBottom();
@@ -237,14 +147,7 @@
       {:else}
         <div class="messages-list">
           {#each allMessages as message (message.id)}
-            {#if message.isStreaming}
-              {#await ensureStreamSubscription(message)}
-                <!-- Loading state -->
-              {:then}
-                <!-- Subscription established -->
-              {/await}
-            {/if}
-            <Message {message} isQueue={message.isQueue} streamContent={getStreamContent(message)} />
+            <Message {message} isQueue={message.isQueue} streamContent={message.isStreaming ? streamContent : null} />
           {/each}
         </div>
       {/if}

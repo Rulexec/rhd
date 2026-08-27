@@ -1,7 +1,8 @@
-import { makeAutoObservable, flowResult } from 'mobx';
+import { makeAutoObservable, flowResult, reaction } from 'mobx';
 import { yieldPromise } from '../util/async.js';
 import type { ChatApi } from '../lib/api/ChatApi.js';
-import type { Chat, Message } from '../lib/api/schemas.js';
+import type { Chat, Message, StreamChunkData, StreamToolCallDelta } from '../lib/api/schemas.js';
+import { streamSubscribe, onStreamEvents } from '../lib/api/chatApiImpl.js';
 
 /**
  * Message with queue flag for display.
@@ -30,6 +31,7 @@ export class ChatStore {
   #chatApi: ChatApi;
   #cleanupEvents: (() => void) | null = null;
   #cleanupQueueEvents: (() => void) | null = null;
+  #cleanupStreamEvents: (() => void) | null = null;
 
   currentChatId: number | null = null;
   currentChat: Chat | null = null;
@@ -37,6 +39,12 @@ export class ChatStore {
   queueMessages: Message[] = [];
   loading: boolean = false;
   error: string | null = null;
+
+  // Streaming state
+  streamingContent: string = '';
+  streamingReasoningContent: string = '';
+  streamingToolCalls: StreamToolCallDelta[] = [];
+  streamingIsFinished: boolean = true;
 
   constructor(options: { chatApi: ChatApi }) {
     this.#chatApi = options.chatApi;
@@ -54,6 +62,144 @@ export class ChatStore {
     return [...regular, ...queue].sort((a, b) => {
       return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
     });
+  }
+
+  /**
+   * Get the first message that is currently streaming.
+   */
+  get streamingMessage(): Message | null {
+    return this.messages.find(m => m.isStreaming) ?? null;
+  }
+
+  /**
+   * Get the current streaming content for display.
+   * Returns null when streaming is finished and no content exists.
+   */
+  get streamContent(): { reasoningContent: string; content: string; toolCalls: StreamToolCallDelta[]; isFinished: boolean } | null {
+    if (this.streamingIsFinished && !this.streamingContent && !this.streamingReasoningContent) {
+      return null;
+    }
+    return {
+      reasoningContent: this.streamingReasoningContent,
+      content: this.streamingContent,
+      toolCalls: this.streamingToolCalls,
+      isFinished: this.streamingIsFinished
+    };
+  }
+
+  /**
+   * Initialize streaming subscription system.
+   * Sets up a MobX reaction to watch for streaming messages and automatically
+   * subscribe/unsubscribe from streaming events.
+   * @returns Disposer function to clean up the reaction and stop streaming
+   */
+  init(): () => void {
+    const disposer = reaction(
+      () => this.streamingMessage,
+      (message) => {
+        if (message) {
+          this.#startStreaming(message.chatId);
+        } else {
+          this.#stopStreaming();
+        }
+      },
+      { fireImmediately: true }
+    );
+
+    return () => {
+      disposer();
+      this.#stopStreaming();
+    };
+  }
+
+  /**
+   * Start streaming subscription for a chat.
+   */
+  async #startStreaming(chatId: number): Promise<void> {
+    // Stop any existing streaming first
+    this.#stopStreaming();
+
+    // Reset streaming state
+    this.streamingContent = '';
+    this.streamingReasoningContent = '';
+    this.streamingToolCalls = [];
+    this.streamingIsFinished = false;
+
+    try {
+      // Subscribe to stream and get initial content
+      const result = await streamSubscribe(chatId);
+      this.streamingContent = result.content;
+      this.streamingReasoningContent = result.reasoningContent;
+      this.streamingToolCalls = result.toolCalls;
+      this.streamingIsFinished = result.isFinished;
+
+      // Register event listeners for stream updates
+      this.#cleanupStreamEvents = onStreamEvents(chatId, {
+        onStreamChunk: (data) => {
+          this.#handleStreamChunk(data);
+        },
+        onStreamFinished: () => {
+          this.#handleStreamFinished();
+        }
+      });
+    } catch (error) {
+      console.error('Failed to subscribe to stream:', error);
+      this.error = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  /**
+   * Stop streaming subscription and cleanup.
+   */
+  #stopStreaming(): void {
+    if (this.#cleanupStreamEvents) {
+      this.#cleanupStreamEvents();
+      this.#cleanupStreamEvents = null;
+    }
+
+    // Reset streaming state
+    this.streamingContent = '';
+    this.streamingReasoningContent = '';
+    this.streamingToolCalls = [];
+    this.streamingIsFinished = true;
+  }
+
+  /**
+   * Handle incoming stream chunk data.
+   */
+  #handleStreamChunk(data: StreamChunkData): void {
+    switch (data.type) {
+      case 'contentDelta':
+        if (data.content) {
+          this.streamingContent += data.content;
+        }
+        break;
+      case 'reasoningDelta':
+        if (data.content) {
+          this.streamingReasoningContent += data.content;
+        }
+        break;
+      case 'toolCallDelta':
+        if (data.toolCalls) {
+          // Merge tool calls by ID
+          for (const newCall of data.toolCalls) {
+            const existing = this.streamingToolCalls.find(tc => tc.id === newCall.id);
+            if (existing) {
+              existing.arguments += newCall.arguments;
+            } else {
+              this.streamingToolCalls.push({ ...newCall });
+            }
+          }
+        }
+        break;
+    }
+  }
+
+  /**
+   * Handle stream finished event.
+   */
+  #handleStreamFinished(): void {
+    this.streamingIsFinished = true;
   }
 
   /**

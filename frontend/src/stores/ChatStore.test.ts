@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ChatStore } from './ChatStore.js';
 import type { ChatApi } from '../lib/api/ChatApi.js';
-import type { Chat, Message } from '../lib/api/schemas.js';
-import type { ChatEventHandlers, QueueMessageEventHandlers } from '../lib/api/chatApiImpl.js';
+import type { Chat, Message, StreamChunkData, StreamFinishedData } from '../lib/api/schemas.js';
+import type { ChatEventHandlers, QueueMessageEventHandlers, StreamEventHandlers } from '../lib/api/chatApiImpl.js';
+import * as chatApiImpl from '../lib/api/chatApiImpl.js';
 
 /**
  * Unit tests for ChatStore.
@@ -270,5 +271,442 @@ describe('ChatStore', () => {
 
     expect(cleanupEvents).toHaveBeenCalled();
     expect(cleanupQueueEvents).toHaveBeenCalled();
+  });
+  
+  describe('ChatStore streaming', () => {
+    let store: ChatStore;
+    let mockChatApi: ChatApi;
+  
+    const mockChat: Chat = {
+      id: 1,
+      title: 'Test Chat',
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-01T00:00:00Z',
+      tags: [],
+      version: 1
+    };
+  
+    const mockMessage: Message = {
+      id: 1,
+      chatId: 1,
+      role: 'assistant',
+      content: '',
+      createdAt: '2024-01-01T00:00:00Z',
+      tags: [],
+      isFinished: false,
+      isStreaming: false
+    };
+  
+    const streamingMessage: Message = {
+      ...mockMessage,
+      id: 2,
+      isStreaming: true
+    };
+  
+    beforeEach(() => {
+      vi.clearAllMocks();
+  
+      mockChatApi = {
+        subscribeChat: vi.fn().mockResolvedValue(undefined),
+        unsubscribeChat: vi.fn().mockResolvedValue(undefined),
+        getChat: vi.fn().mockResolvedValue({ chat: mockChat, messages: [mockMessage] }),
+        getQueueMessages: vi.fn().mockResolvedValue({ messages: [] }),
+        onChatEvents: vi.fn().mockReturnValue(() => {}),
+        onQueueMessageEvents: vi.fn().mockReturnValue(() => {}),
+        subscribeChatsList: vi.fn(),
+        unsubscribeChatsList: vi.fn(),
+        listChats: vi.fn(),
+        createChat: vi.fn(),
+        deleteChat: vi.fn(),
+        generateChatTitle: vi.fn(),
+        onChatListEvents: vi.fn(),
+        addQueueMessage: vi.fn(),
+        subscribePluginsList: vi.fn(),
+        getPlugins: vi.fn(),
+        onPluginListEvents: vi.fn()
+      } as unknown as ChatApi;
+  
+      store = new ChatStore({ chatApi: mockChatApi });
+    });
+  
+    describe('streamingMessage getter', () => {
+      it('should return null when no messages are streaming', async () => {
+        await store.selectChat(1);
+        expect(store.streamingMessage).toBe(null);
+      });
+  
+      it('should return first streaming message when one exists', async () => {
+        vi.mocked(mockChatApi.getChat).mockResolvedValueOnce({
+          chat: mockChat,
+          messages: [mockMessage, streamingMessage]
+        });
+  
+        await store.selectChat(1);
+        expect(store.streamingMessage).toEqual(streamingMessage);
+      });
+  
+      it('should return first streaming message when multiple exist', async () => {
+        const anotherStreaming: Message = { ...streamingMessage, id: 3 };
+        vi.mocked(mockChatApi.getChat).mockResolvedValueOnce({
+          chat: mockChat,
+          messages: [mockMessage, streamingMessage, anotherStreaming]
+        });
+  
+        await store.selectChat(1);
+        expect(store.streamingMessage).toEqual(streamingMessage);
+      });
+    });
+  
+    describe('streamContent getter', () => {
+      it('should return null when streaming is finished and no content', () => {
+        expect(store.streamContent).toBe(null);
+      });
+  
+      it('should return streaming content object when streaming is active', async () => {
+        vi.mocked(mockChatApi.getChat).mockResolvedValueOnce({
+          chat: mockChat,
+          messages: [streamingMessage]
+        });
+  
+        vi.spyOn(chatApiImpl, 'streamSubscribe').mockResolvedValueOnce({
+          content: 'Hello',
+          reasoningContent: 'Thinking...',
+          toolCalls: [],
+          isFinished: false
+        });
+  
+        vi.spyOn(chatApiImpl, 'onStreamEvents').mockReturnValue(() => {});
+  
+        const dispose = store.init();
+        await store.selectChat(1);
+  
+        // Wait for reaction to fire
+        await new Promise(resolve => setTimeout(resolve, 0));
+  
+        expect(store.streamContent).toEqual({
+          content: 'Hello',
+          reasoningContent: 'Thinking...',
+          toolCalls: [],
+          isFinished: false
+        });
+  
+        dispose();
+      });
+    });
+  
+    describe('init() method', () => {
+      it('should return a disposer function', () => {
+        const dispose = store.init();
+        expect(typeof dispose).toBe('function');
+        dispose();
+      });
+  
+      it('should call streamSubscribe when streaming message appears', async () => {
+        vi.mocked(mockChatApi.getChat).mockResolvedValueOnce({
+          chat: mockChat,
+          messages: [streamingMessage]
+        });
+  
+        const streamSubscribeSpy = vi.spyOn(chatApiImpl, 'streamSubscribe').mockResolvedValueOnce({
+          content: '',
+          reasoningContent: '',
+          toolCalls: [],
+          isFinished: false
+        });
+  
+        vi.spyOn(chatApiImpl, 'onStreamEvents').mockReturnValue(() => {});
+  
+        const dispose = store.init();
+        await store.selectChat(1);
+  
+        // Wait for reaction to fire
+        await new Promise(resolve => setTimeout(resolve, 0));
+  
+        expect(streamSubscribeSpy).toHaveBeenCalledWith(1);
+  
+        dispose();
+      });
+  
+      it('should call onStreamEvents to register event listeners', async () => {
+        vi.mocked(mockChatApi.getChat).mockResolvedValueOnce({
+          chat: mockChat,
+          messages: [streamingMessage]
+        });
+  
+        vi.spyOn(chatApiImpl, 'streamSubscribe').mockResolvedValueOnce({
+          content: '',
+          reasoningContent: '',
+          toolCalls: [],
+          isFinished: false
+        });
+  
+        const onStreamEventsSpy = vi.spyOn(chatApiImpl, 'onStreamEvents').mockReturnValue(() => {});
+  
+        const dispose = store.init();
+        await store.selectChat(1);
+  
+        // Wait for reaction to fire
+        await new Promise(resolve => setTimeout(resolve, 0));
+  
+        expect(onStreamEventsSpy).toHaveBeenCalledWith(1, expect.any(Object));
+  
+        dispose();
+      });
+  
+      it('should cleanup streaming when disposer is called', async () => {
+        vi.mocked(mockChatApi.getChat).mockResolvedValueOnce({
+          chat: mockChat,
+          messages: [streamingMessage]
+        });
+  
+        vi.spyOn(chatApiImpl, 'streamSubscribe').mockResolvedValueOnce({
+          content: 'Test',
+          reasoningContent: '',
+          toolCalls: [],
+          isFinished: false
+        });
+  
+        const cleanupFn = vi.fn();
+        vi.spyOn(chatApiImpl, 'onStreamEvents').mockReturnValue(cleanupFn);
+  
+        const dispose = store.init();
+        await store.selectChat(1);
+  
+        // Wait for reaction to fire
+        await new Promise(resolve => setTimeout(resolve, 0));
+  
+        expect(store.streamingContent).toBe('Test');
+  
+        dispose();
+  
+        expect(cleanupFn).toHaveBeenCalled();
+        expect(store.streamingContent).toBe('');
+        expect(store.streamingReasoningContent).toBe('');
+        expect(store.streamingToolCalls).toEqual([]);
+        expect(store.streamingIsFinished).toBe(true);
+      });
+    });
+  
+    describe('stream event handling', () => {
+      it('should handle contentDelta stream chunks', async () => {
+        vi.mocked(mockChatApi.getChat).mockResolvedValueOnce({
+          chat: mockChat,
+          messages: [streamingMessage]
+        });
+  
+        vi.spyOn(chatApiImpl, 'streamSubscribe').mockResolvedValueOnce({
+          content: '',
+          reasoningContent: '',
+          toolCalls: [],
+          isFinished: false
+        });
+  
+        let streamHandlers: StreamEventHandlers = {};
+        vi.spyOn(chatApiImpl, 'onStreamEvents').mockImplementation((_chatId, handlers) => {
+          streamHandlers = handlers;
+          return () => {};
+        });
+  
+        const dispose = store.init();
+        await store.selectChat(1);
+  
+        // Wait for reaction to fire
+        await new Promise(resolve => setTimeout(resolve, 0));
+  
+        // Simulate stream chunk
+        const chunk: StreamChunkData = {
+          chatId: 1,
+          type: 'contentDelta',
+          content: 'Hello'
+        };
+        streamHandlers.onStreamChunk!(chunk);
+  
+        expect(store.streamingContent).toBe('Hello');
+  
+        // Simulate another chunk
+        const chunk2: StreamChunkData = {
+          chatId: 1,
+          type: 'contentDelta',
+          content: ' World'
+        };
+        streamHandlers.onStreamChunk!(chunk2);
+  
+        expect(store.streamingContent).toBe('Hello World');
+  
+        dispose();
+      });
+  
+      it('should handle reasoningDelta stream chunks', async () => {
+        vi.mocked(mockChatApi.getChat).mockResolvedValueOnce({
+          chat: mockChat,
+          messages: [streamingMessage]
+        });
+  
+        vi.spyOn(chatApiImpl, 'streamSubscribe').mockResolvedValueOnce({
+          content: '',
+          reasoningContent: '',
+          toolCalls: [],
+          isFinished: false
+        });
+  
+        let streamHandlers: StreamEventHandlers = {};
+        vi.spyOn(chatApiImpl, 'onStreamEvents').mockImplementation((_chatId, handlers) => {
+          streamHandlers = handlers;
+          return () => {};
+        });
+  
+        const dispose = store.init();
+        await store.selectChat(1);
+  
+        // Wait for reaction to fire
+        await new Promise(resolve => setTimeout(resolve, 0));
+  
+        // Simulate reasoning chunk
+        const chunk: StreamChunkData = {
+          chatId: 1,
+          type: 'reasoningDelta',
+          content: 'Thinking...'
+        };
+        streamHandlers.onStreamChunk!(chunk);
+  
+        expect(store.streamingReasoningContent).toBe('Thinking...');
+  
+        dispose();
+      });
+  
+      it('should handle toolCallDelta stream chunks', async () => {
+        vi.mocked(mockChatApi.getChat).mockResolvedValueOnce({
+          chat: mockChat,
+          messages: [streamingMessage]
+        });
+  
+        vi.spyOn(chatApiImpl, 'streamSubscribe').mockResolvedValueOnce({
+          content: '',
+          reasoningContent: '',
+          toolCalls: [],
+          isFinished: false
+        });
+  
+        let streamHandlers: StreamEventHandlers = {};
+        vi.spyOn(chatApiImpl, 'onStreamEvents').mockImplementation((_chatId, handlers) => {
+          streamHandlers = handlers;
+          return () => {};
+        });
+  
+        const dispose = store.init();
+        await store.selectChat(1);
+  
+        // Wait for reaction to fire
+        await new Promise(resolve => setTimeout(resolve, 0));
+  
+        // Simulate tool call chunk
+        const chunk: StreamChunkData = {
+          chatId: 1,
+          type: 'toolCallDelta',
+          toolCalls: [{ id: '1', name: 'testTool', arguments: '{"arg":' }]
+        };
+        streamHandlers.onStreamChunk!(chunk);
+  
+        expect(store.streamingToolCalls).toHaveLength(1);
+        expect(store.streamingToolCalls[0]).toEqual({ id: '1', name: 'testTool', arguments: '{"arg":' });
+  
+        // Simulate continuation of same tool call
+        const chunk2: StreamChunkData = {
+          chatId: 1,
+          type: 'toolCallDelta',
+          toolCalls: [{ id: '1', name: 'testTool', arguments: '"value"}' }]
+        };
+        streamHandlers.onStreamChunk!(chunk2);
+  
+        expect(store.streamingToolCalls).toHaveLength(1);
+        expect(store.streamingToolCalls[0]!.arguments).toBe('{"arg":"value"}');
+  
+        dispose();
+      });
+  
+      it('should handle stream finished event', async () => {
+        vi.mocked(mockChatApi.getChat).mockResolvedValueOnce({
+          chat: mockChat,
+          messages: [streamingMessage]
+        });
+  
+        vi.spyOn(chatApiImpl, 'streamSubscribe').mockResolvedValueOnce({
+          content: 'Test',
+          reasoningContent: '',
+          toolCalls: [],
+          isFinished: false
+        });
+  
+        let streamHandlers: StreamEventHandlers = {};
+        vi.spyOn(chatApiImpl, 'onStreamEvents').mockImplementation((_chatId, handlers) => {
+          streamHandlers = handlers;
+          return () => {};
+        });
+  
+        const dispose = store.init();
+        await store.selectChat(1);
+  
+        // Wait for reaction to fire
+        await new Promise(resolve => setTimeout(resolve, 0));
+  
+        expect(store.streamingIsFinished).toBe(false);
+  
+        // Simulate stream finished
+        const finished: StreamFinishedData = { chatId: 1 };
+        streamHandlers.onStreamFinished!(finished);
+  
+        expect(store.streamingIsFinished).toBe(true);
+  
+        dispose();
+      });
+    });
+  
+    describe('streaming lifecycle', () => {
+      it('should stop streaming when streaming message is removed', async () => {
+        vi.mocked(mockChatApi.getChat).mockResolvedValueOnce({
+          chat: mockChat,
+          messages: [streamingMessage]
+        });
+  
+        vi.spyOn(chatApiImpl, 'streamSubscribe').mockResolvedValueOnce({
+          content: 'Test',
+          reasoningContent: '',
+          toolCalls: [],
+          isFinished: false
+        });
+  
+        const cleanupFn = vi.fn();
+        vi.spyOn(chatApiImpl, 'onStreamEvents').mockReturnValue(cleanupFn);
+  
+        const dispose = store.init();
+        await store.selectChat(1);
+  
+        // Wait for reaction to fire
+        await new Promise(resolve => setTimeout(resolve, 0));
+  
+        expect(store.streamingContent).toBe('Test');
+  
+        // Simulate message update that removes streaming flag
+        let onMessageUpdatedHandler: ChatEventHandlers['onMessageUpdated'];
+        vi.mocked(mockChatApi.onChatEvents).mockImplementation((_chatId, handlers) => {
+          onMessageUpdatedHandler = handlers.onMessageUpdated;
+          return () => {};
+        });
+  
+        await store.selectChat(1);
+  
+        const finishedMessage: Message = { ...streamingMessage, isStreaming: false, isFinished: true };
+        onMessageUpdatedHandler!({ chatId: 1, message: finishedMessage, chatVersion: 2 });
+  
+        // Wait for reaction to fire
+        await new Promise(resolve => setTimeout(resolve, 0));
+  
+        expect(cleanupFn).toHaveBeenCalled();
+        expect(store.streamingContent).toBe('');
+        expect(store.streamingIsFinished).toBe(true);
+  
+        dispose();
+      });
+    });
   });
 });

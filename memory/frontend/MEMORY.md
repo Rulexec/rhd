@@ -126,9 +126,42 @@ Tests live alongside the code they cover:
 - **Component tests**: `frontend/src/lib/components/*.test.ts` — mock AppStore/substores via context render option, verify render/calls
 
 ### Store Testing
-- Test stores in isolation with mocked `ChatApi`
-- Verify state transitions and async flows
-- Test event handling
+
+When modifying MobX stores, always write or update unit tests to cover:
+
+- **New observable fields**: Test initial states and state changes
+- **Computed getters**: Test reactive behavior and derived state
+- **Action methods**: Test both sync and async flows (generator methods)
+- **Lifecycle methods**: Test init/dispose patterns and cleanup
+- **Event handlers**: Test side effects and state mutations
+- **State transitions**: Verify intermediate states, not just final states
+- **Mocked dependencies**: Use mocked `ChatApi` and other dependencies to isolate store behavior
+
+Tests should verify:
+- Initial state is correct
+- State changes in response to actions/events
+- Cleanup happens correctly (disposers, unsubscribe functions)
+- Error handling sets appropriate error state
+- Reactive getters return correct derived values
+
+Example test structure:
+```typescript
+describe('StoreName', () => {
+  beforeEach(() => {
+    // Setup mocks and store instance
+  });
+
+  describe('getter/feature', () => {
+    it('should return initial state', () => {});
+    it('should update when dependency changes', () => {});
+  });
+
+  describe('init() lifecycle', () => {
+    it('should setup subscriptions', () => {});
+    it('should cleanup on dispose', () => {});
+  });
+});
+```
 
 ### Component Testing
 - Mock AppStore and substores

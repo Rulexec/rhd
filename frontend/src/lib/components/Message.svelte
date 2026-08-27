@@ -153,7 +153,7 @@
   {/if}
 
   <div class="message-content">
-    {#if isStreaming && !displayContent}
+    {#if isStreaming && !displayContent && !displayReasoning}
       <span class="streaming-placeholder">Generating response...</span>
     {:else if showMarkdown}
       {@html renderContent(displayContent)}
