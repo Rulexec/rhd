@@ -8,7 +8,7 @@ Templates are markdown and JSON files used for rendering dynamic content in the 
 
 ### Compile-Time Template Registry
 
-Templates are loaded at compile time via the `TemplateRegistry` in [`packages/rhd_app/src/templates.rs`](../../packages/rhd_app/src/templates.rs). This approach provides:
+Templates are loaded at compile time via the `TemplateRegistry` in [`packages/rhd_app/src/templates.rs`](../../../packages/rhd_app/src/templates.rs). This approach provides:
 
 - **No runtime dependencies**: Templates are embedded in the binary
 - **Faster startup**: No file I/O at initialization
@@ -18,7 +18,7 @@ Templates are loaded at compile time via the `TemplateRegistry` in [`packages/rh
 
 ### TemplateLoader
 
-The [`TemplateLoader`](../../packages/rhd_app/src/template_loader.rs) provides a simple interface for accessing and rendering templates:
+The [`TemplateLoader`](../../../packages/rhd_app/src/template_loader.rs) provides a simple interface for accessing and rendering templates:
 
 ```rust
 pub struct TemplateLoader;
@@ -89,7 +89,7 @@ To add a new template:
    - Environment templates: `templates/environment/`
    - Role templates: `templates/roles/`
 
-2. Add the template to the `TemplateRegistry::get()` match statement in [`packages/rhd_app/src/templates.rs`](../../packages/rhd_app/src/templates.rs)
+2. Add the template to the `TemplateRegistry::get()` match statement in [`packages/rhd_app/src/templates.rs`](../../../packages/rhd_app/src/templates.rs)
 
 3. Rebuild the project to embed the new template
 

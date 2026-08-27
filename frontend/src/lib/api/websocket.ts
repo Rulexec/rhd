@@ -1,5 +1,5 @@
-import { writable, type Writable } from 'svelte/store';
 import { z } from 'zod';
+import type { ConnectionStore } from '../../stores/ConnectionStore.js';
 import {
   WebSocketMessageSchema,
   type WebSocketMessage,
@@ -33,6 +33,14 @@ class WebSocketClient {
   private eventListeners: Map<string, Set<EventCallback>> = new Map();
   public isConnected: boolean = false;
   public errorMessage: string | null = null;
+  private connectionStore: ConnectionStore | null = null;
+
+  /**
+   * Set the connection store for state updates.
+   */
+  setConnectionStore(store: ConnectionStore): void {
+    this.connectionStore = store;
+  }
 
   /**
    * Connect to the WebSocket server.
@@ -44,7 +52,7 @@ class WebSocketClient {
     }
 
     this.errorMessage = null;
-    connectionStore.set({ status: 'connecting', error: null });
+    this.connectionStore?.setConnecting();
 
     try {
       this.ws = new WebSocket(WS_URL);
@@ -53,7 +61,7 @@ class WebSocketClient {
         console.log('WebSocket connected');
         this.isConnected = true;
         this.errorMessage = null;
-        connectionStore.set({ status: 'connected', error: null });
+        this.connectionStore?.setConnected();
       };
 
       this.ws.onclose = (event) => {
@@ -70,13 +78,13 @@ class WebSocketClient {
           errorMessage = event.reason;
         }
 
-        connectionStore.set({ status: 'disconnected', error: errorMessage });
+        this.connectionStore?.setDisconnected(errorMessage);
       };
 
       this.ws.onerror = (event) => {
         console.error('WebSocket error:', event);
         this.errorMessage = 'Connection error';
-        connectionStore.set({ status: 'disconnected', error: 'Connection error occurred' });
+        this.connectionStore?.setDisconnected('Connection error occurred');
       };
 
       this.ws.onmessage = (event) => {
@@ -85,7 +93,7 @@ class WebSocketClient {
     } catch (error) {
       console.error('Failed to create WebSocket:', error);
       this.errorMessage = 'Failed to create WebSocket connection';
-      connectionStore.set({ status: 'disconnected', error: this.errorMessage });
+      this.connectionStore?.setDisconnected(this.errorMessage);
     }
   }
 
@@ -99,7 +107,7 @@ class WebSocketClient {
     }
     this.isConnected = false;
     this.rejectAllPending('WebSocket disconnected by user');
-    connectionStore.set({ status: 'disconnected', error: null });
+    this.connectionStore?.setDisconnected(null);
   }
 
   /**
@@ -262,18 +270,6 @@ class WebSocketClient {
     this.pendingRequests.clear();
   }
 }
-
-// ============================================================================
-// Connection Store
-// ============================================================================
-
-/**
- * Connection status store.
- */
-export const connectionStore: Writable<ConnectionState> = writable({
-  status: 'disconnected',
-  error: null
-});
 
 // ============================================================================
 // Singleton Instance

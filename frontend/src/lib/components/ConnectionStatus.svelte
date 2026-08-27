@@ -1,11 +1,20 @@
 <script lang="ts">
-  import { connectionStore } from '../stores/connection.js';
+  import { getAppStore } from '../../context.js';
+  import { mobxObservable } from '../../util/mobxObservable.svelte.js';
   import { websocket } from '../api/websocket.js';
+
+  const appStore = getAppStore();
+  const connectionStore = appStore.connection;
 
   let isReconnecting: boolean = $state(false);
 
-  let status = $derived($connectionStore.status);
-  let error = $derived($connectionStore.error);
+  // Bridge MobX observables to Svelte reactivity.
+  // mobxObservable returns a getter and must be invoked at component top level.
+  const statusGetter = mobxObservable(() => connectionStore.status);
+  const errorGetter = mobxObservable(() => connectionStore.error);
+
+  let status = $derived(statusGetter());
+  let error = $derived(errorGetter());
   let isConnected = $derived(status === 'connected');
   let isDisconnected = $derived(status === 'disconnected');
   let isConnecting = $derived(status === 'connecting');

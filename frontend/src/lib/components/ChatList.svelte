@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { chats, hasChats, chatsLoading, chatsError, createNewChat, deleteAllChats } from '../stores/chats.js';
-  import { connectionStore } from '../stores/connection.js';
+  import { flowResult } from 'mobx';
+  import { getAppStore } from '../../context.js';
+  import { mobxObservable } from '../../util/mobxObservable.svelte.js';
   import ConfirmModal from './ConfirmModal.svelte';
   import commonStyles from '../styles/common.module.css';
 
@@ -16,11 +17,26 @@
     chatSelect: { chatId: number };
   }>();
 
+  const appStore = getAppStore();
+  const chatsListStore = appStore.chatsList;
+
+  // Bridge MobX observables to Svelte reactivity.
+  // mobxObservable returns a getter and must be invoked at component top level.
+  const chatsGetter = mobxObservable(() => chatsListStore.chats);
+  const hasChatsGetter = mobxObservable(() => chatsListStore.hasChats);
+  const chatsLoadingGetter = mobxObservable(() => chatsListStore.loading);
+  const chatsErrorGetter = mobxObservable(() => chatsListStore.error);
+  const isConnectedGetter = mobxObservable(() => appStore.connection.isConnected);
+
+  let chats = $derived(chatsGetter());
+  let hasChats = $derived(hasChatsGetter());
+  let chatsLoading = $derived(chatsLoadingGetter());
+  let chatsError = $derived(chatsErrorGetter());
+  let isConnected = $derived(isConnectedGetter());
+
   let showDeleteAllModal: boolean = $state(false);
   let isCreating: boolean = $state(false);
   let isDeleting: boolean = $state(false);
-
-  let isConnected: boolean = $derived($connectionStore.status === 'connected');
 
   async function handleCreateChat() {
     if (!isConnected) {
@@ -29,9 +45,9 @@
 
     isCreating = true;
     try {
-      const chat = await createNewChat();
-      if (chat) {
-        dispatch('chatSelect', { chatId: chat.id });
+      const chatId = await flowResult(chatsListStore.createNewChat());
+      if (chatId !== null) {
+        dispatch('chatSelect', { chatId });
       }
     } catch (error) {
       console.error('Failed to create chat:', error);
@@ -48,7 +64,7 @@
     showDeleteAllModal = false;
     isDeleting = true;
     try {
-      const success = await deleteAllChats();
+      const success = await chatsListStore.deleteAllChats();
       if (!success) {
         console.error('Failed to delete all chats');
       }
@@ -94,22 +110,22 @@
     </button>
   </div>
 
-  {#if $chatsLoading}
+  {#if chatsLoading}
     <div class="chat-list-loading">
       <span class="text-muted">Loading chats...</span>
     </div>
-  {:else if $chatsError}
+  {:else if chatsError}
     <div class="chat-list-error">
-      <span class="text-error">{$chatsError}</span>
-      <button class="btn-icon" onclick={() => chatsError.set(null)} title="Dismiss">×</button>
+      <span class="text-error">{chatsError}</span>
+      <button class="btn-icon" onclick={() => chatsListStore.error = null} title="Dismiss">×</button>
     </div>
-  {:else if !$hasChats}
+  {:else if !hasChats}
     <div class="chat-list-empty">
       <span class="text-muted">No chats yet</span>
     </div>
   {:else}
     <ul class="{commonStyles['list']} chat-list-items">
-      {#each $chats as chat (chat.id)}
+      {#each chats as chat (chat.id)}
         <li
           class="{commonStyles['list-item']} {selectedChatId === chat.id ? commonStyles['active'] : ''}"
           onclick={() => handleChatClick(chat.id)}
@@ -139,7 +155,7 @@
     </ul>
   {/if}
 
-  {#if $hasChats}
+  {#if hasChats}
     <div class="chat-list-footer">
       <button
         class="{commonStyles['btn']} {commonStyles['btn-danger']} {commonStyles['btn-sm']}"

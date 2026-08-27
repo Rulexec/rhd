@@ -1,10 +1,10 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { connectionStore } from './lib/stores/connection.js';
   import { websocket } from './lib/api/websocket.js';
-  import { initChats } from './lib/stores/chats.js';
-  import { initPlugins } from './lib/stores/plugins.js';
-  import { selectChat } from './lib/stores/chat.js';
+  import { defaultChatApi } from './lib/api/ChatApi.js';
+  import { AppStore } from './stores/AppStore.js';
+  import { setAppStore } from './context.js';
+  import { mobxObservable } from './util/mobxObservable.svelte.js';
   import TabView from './lib/components/TabView.svelte';
   import ChatList from './lib/components/ChatList.svelte';
   import ChatView from './lib/components/ChatView.svelte';
@@ -13,20 +13,31 @@
 
   type TabType = 'chats' | 'plugins';
 
+  // Initialize the AppStore and provide it to all children via context
+  const appStore = new AppStore({ chatApi: defaultChatApi });
+  setAppStore(appStore);
+
+  // Wire WebSocket lifecycle updates into the ConnectionStore
+  websocket.setConnectionStore(appStore.connection);
+
   let activeTab: TabType = $state('chats');
   let selectedChatId: number | null = $state(null);
 
+  // Bridge MobX connection status to Svelte reactivity.
+  // mobxObservable must be invoked at component top level (it registers onDestroy).
+  const connectionStatusGetter = mobxObservable(() => appStore.connection.status);
+  let connectionStatus = $derived(connectionStatusGetter());
+
   onMount(() => {
     websocket.connect();
+  });
 
-    // Wait for connection, then initialize stores
-    const unsubscribe = connectionStore.subscribe(({ status }) => {
-      if (status === 'connected') {
-        initChats();
-        initPlugins();
-        unsubscribe();
-      }
-    });
+  // Initialize chat list and plugins once connected
+  $effect(() => {
+    if (connectionStatus === 'connected') {
+      appStore.chatsList.init();
+      appStore.plugins.init();
+    }
   });
 
   function handleTabChange(event: CustomEvent<{ tab: TabType }>) {
@@ -35,7 +46,7 @@
 
   async function handleChatSelect(event: CustomEvent<{ chatId: number }>) {
     selectedChatId = event.detail.chatId;
-    await selectChat(selectedChatId);
+    await appStore.chat.selectChat(selectedChatId);
   }
 </script>
 

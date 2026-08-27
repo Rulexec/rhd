@@ -58,3 +58,35 @@
 **rhd_mock_ai_provider**:
 - Mock AI provider for testing
 - Simulates AI API responses for integration testing
+
+## Frontend State Management
+
+### MobX Integration
+
+The frontend uses MobX for state management with the following patterns:
+
+#### Store Structure
+- Root `AppStore` provides access to substores via lazy getters
+- Substores: `ConnectionStore`, `ChatsListStore`, `ChatStore`, `PluginsStore`
+- Stores receive API via constructor for dependency injection
+
+#### MobX-to-Svelte Bridge
+```typescript
+// In component
+const appStore = getAppStore();
+const messagesGetter = mobxObservable(() => appStore.chat.messages); // top level (registers onDestroy)
+let messages = $derived(messagesGetter());
+// Use messages in template
+```
+
+#### Async Operations
+```typescript
+*loadData() {
+  const result = yield* yieldPromise(this.#api.getData());
+  this.data = result;
+}
+```
+
+#### Testing
+- Mock `ChatApi` interface for store tests
+- Mock AppStore for component tests

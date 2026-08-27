@@ -1,27 +1,45 @@
 <script lang="ts">
-  import { plugins, hasPlugins, pluginsLoading, pluginsError, activePluginsCount } from '../stores/plugins.js';
+  import { getAppStore } from '../../context.js';
+  import { mobxObservable } from '../../util/mobxObservable.svelte.js';
   import commonStyles from '../styles/common.module.css';
+
+  const appStore = getAppStore();
+  const pluginsStore = appStore.plugins;
+
+  // Bridge MobX observables to Svelte reactivity.
+  // mobxObservable returns a getter and must be invoked at component top level.
+  const pluginsGetter = mobxObservable(() => pluginsStore.plugins);
+  const hasPluginsGetter = mobxObservable(() => pluginsStore.hasPlugins);
+  const pluginsLoadingGetter = mobxObservable(() => pluginsStore.loading);
+  const pluginsErrorGetter = mobxObservable(() => pluginsStore.error);
+  const activePluginsCountGetter = mobxObservable(() => pluginsStore.activePluginsCount);
+
+  let plugins = $derived(pluginsGetter());
+  let hasPlugins = $derived(hasPluginsGetter());
+  let pluginsLoading = $derived(pluginsLoadingGetter());
+  let pluginsError = $derived(pluginsErrorGetter());
+  let activePluginsCount = $derived(activePluginsCountGetter());
 </script>
 
 <div class="plugin-list">
   <div class="plugin-list-header">
     <h2>Plugins</h2>
-    {#if $hasPlugins}
+    {#if hasPlugins}
       <span class="plugin-count {commonStyles['text-muted']}">
-        {$activePluginsCount} / {$plugins.length} active
+        {activePluginsCount} / {plugins.length} active
       </span>
     {/if}
   </div>
 
-  {#if $pluginsLoading}
+  {#if pluginsLoading}
     <div class="plugin-list-loading">
       <span class="{commonStyles['text-muted']}">Loading plugins...</span>
     </div>
-  {:else if $pluginsError}
+  {:else if pluginsError}
     <div class="plugin-list-error">
-      <span class="{commonStyles['text-error']}">{$pluginsError}</span>
+      <span class="{commonStyles['text-error']}">{pluginsError}</span>
     </div>
-  {:else if !$hasPlugins}
+  {:else if !hasPlugins}
     <div class="plugin-list-empty">
       <div class="empty-icon">🔌</div>
       <p class="{commonStyles['text-muted']}">No plugins registered</p>
@@ -32,7 +50,7 @@
     </div>
   {:else}
     <ul class="{commonStyles['list']} plugin-list-items">
-      {#each $plugins as plugin (plugin.pluginId)}
+      {#each plugins as plugin (plugin.pluginId)}
         <li class="{commonStyles['list-item']} plugin-item">
           <div class="plugin-item-content">
             <div class="plugin-info">

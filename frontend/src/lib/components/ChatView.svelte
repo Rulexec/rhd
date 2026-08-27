@@ -1,13 +1,29 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { currentChat, allMessages, chatLoading, chatError } from '../stores/chat.js';
+  import { getAppStore } from '../../context.js';
+  import { mobxObservable } from '../../util/mobxObservable.svelte.js';
   import Message from './Message.svelte';
   import MessageInput from './MessageInput.svelte';
-  import { streamSubscribe, onStreamEvents } from '../api/chatApi.js';
+  import { streamSubscribe, onStreamEvents } from '../api/chatApiImpl.js';
   import type { Message as MessageType, StreamChunkData, StreamFinishedData, StreamToolCallDelta } from '../api/schemas.js';
 
+  const appStore = getAppStore();
+  const chatStore = appStore.chat;
+
+  // Bridge MobX observables to Svelte reactivity.
+  // mobxObservable returns a getter and must be invoked at component top level.
+  const currentChatGetter = mobxObservable(() => chatStore.currentChat);
+  const allMessagesGetter = mobxObservable(() => chatStore.allMessages);
+  const chatLoadingGetter = mobxObservable(() => chatStore.loading);
+  const chatErrorGetter = mobxObservable(() => chatStore.error);
+
+  let currentChat = $derived(currentChatGetter());
+  let allMessages = $derived(allMessagesGetter());
+  let chatLoading = $derived(chatLoadingGetter());
+  let chatError = $derived(chatErrorGetter());
+
   function dismissError() {
-    chatError.set(null);
+    chatStore.error = null;
   }
 
   let messagesContainer: HTMLDivElement | null = $state(null);
@@ -29,12 +45,12 @@
 
   onMount(() => {
     // Subscribe to stream events for the current chat
-    if ($currentChat) {
-      unsubscribeStreamEvents = onStreamEvents($currentChat.id, {
+    if (currentChat) {
+      unsubscribeStreamEvents = onStreamEvents(currentChat.id, {
         onStreamChunk: (data: StreamChunkData) => {
           const chatId = data.chatId;
           // Find the streaming message for this chat to get its messageId
-          const streamingMessage = $allMessages.find(m => m.chatId === chatId && m.isStreaming);
+          const streamingMessage = allMessages.find(m => m.chatId === chatId && m.isStreaming);
           if (!streamingMessage) return;
           
           const subscription = streamSubscriptions.get(streamingMessage.id);
@@ -63,7 +79,7 @@
         onStreamFinished: (data: StreamFinishedData) => {
           const chatId = data.chatId;
           // Find the streaming message for this chat to get its messageId
-          const streamingMessage = $allMessages.find(m => m.chatId === chatId && m.isStreaming);
+          const streamingMessage = allMessages.find(m => m.chatId === chatId && m.isStreaming);
           if (!streamingMessage) return;
           
           const subscription = streamSubscriptions.get(streamingMessage.id);
@@ -152,7 +168,7 @@
 
   // Auto-scroll when messages change (only if at bottom)
   $effect(() => {
-    if ($allMessages && isAtBottom) {
+    if (allMessages && isAtBottom) {
       // Use setTimeout to ensure DOM is updated
       setTimeout(() => {
         if (isAtBottom) {
@@ -164,7 +180,7 @@
 
   // Scroll to bottom when chat loads
   $effect(() => {
-    if ($allMessages && !$chatLoading) {
+    if (allMessages && !chatLoading) {
       setTimeout(() => scrollToBottom(), 0);
     }
   });
@@ -182,27 +198,27 @@
 </script>
 
 <div class="chat-view">
-  {#if $chatLoading}
+  {#if chatLoading}
     <div class="chat-loading">
       <span class="text-muted">Loading chat...</span>
     </div>
-  {:else if $chatError}
+  {:else if chatError}
     <div class="chat-error">
       <div class="error-content">
-        <span class="text-error">{$chatError}</span>
+        <span class="text-error">{chatError}</span>
         <button class="btn-icon" onclick={dismissError} title="Dismiss">×</button>
       </div>
     </div>
-  {:else if !$currentChat}
+  {:else if !currentChat}
     <div class="chat-empty">
       <span class="text-muted">No chat selected</span>
     </div>
   {:else}
     <div class="chat-header">
-      <h2>{$currentChat.title}</h2>
-      {#if $currentChat.tags && $currentChat.tags.length > 0}
+      <h2>{currentChat.title}</h2>
+      {#if currentChat.tags && currentChat.tags.length > 0}
         <div class="chat-tags">
-          {#each $currentChat.tags as tag}
+          {#each currentChat.tags as tag}
             <span class="tag">{tag}</span>
           {/each}
         </div>
@@ -214,13 +230,13 @@
       bind:this={messagesContainer}
       onscroll={handleScroll}
     >
-      {#if $allMessages.length === 0}
+      {#if allMessages.length === 0}
         <div class="messages-empty">
           <span class="text-muted">No messages yet</span>
         </div>
       {:else}
         <div class="messages-list">
-          {#each $allMessages as message (message.id)}
+          {#each allMessages as message (message.id)}
             {#if message.isStreaming}
               {#await ensureStreamSubscription(message)}
                 <!-- Loading state -->

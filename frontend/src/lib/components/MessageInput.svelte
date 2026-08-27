@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { currentChatId } from '../stores/chat.js';
-  import { connectionStore } from '../stores/connection.js';
-  import { addQueueMessage } from '../api/chatApi.js';
+  import { flowResult } from 'mobx';
+  import { getAppStore } from '../../context.js';
+  import { mobxObservable } from '../../util/mobxObservable.svelte.js';
 
   interface Props {
     onMessageSent?: () => void;
@@ -9,14 +9,24 @@
 
   let { onMessageSent }: Props = $props();
 
+  const appStore = getAppStore();
+  const chatStore = appStore.chat;
+
+  // Bridge MobX observables to Svelte reactivity.
+  // mobxObservable returns a getter and must be invoked at component top level.
+  const currentChatIdGetter = mobxObservable(() => chatStore.currentChatId);
+  const isConnectedGetter = mobxObservable(() => appStore.connection.isConnected);
+
+  let currentChatId = $derived(currentChatIdGetter());
+  let isConnected = $derived(isConnectedGetter());
+
   let inputValue: string = $state('');
   let textareaEl: HTMLTextAreaElement | null = $state(null);
   let isSending: boolean = $state(false);
   let errorMessage: string | null = $state(null);
 
-  let isConnected: boolean = $derived($connectionStore.status === 'connected');
   let canSend: boolean = $derived(
-    inputValue.trim().length > 0 && $currentChatId != null && isConnected && !isSending
+    inputValue.trim().length > 0 && currentChatId != null && isConnected && !isSending
   );
 
   /**
@@ -57,7 +67,7 @@
    * Send message to queue.
    */
   async function handleSend(): Promise<void> {
-    if (!canSend || $currentChatId == null) return;
+    if (!canSend || currentChatId == null) return;
 
     const content = inputValue.trim();
     if (!content) return;
@@ -71,7 +81,7 @@
     errorMessage = null;
 
     try {
-      await addQueueMessage($currentChatId, 'user', content);
+      await flowResult(chatStore.addQueueMessage(currentChatId, 'user', content));
       inputValue = '';
 
       // Reset textarea height
@@ -110,7 +120,7 @@
       oninput={handleInput}
       onkeydown={handleKeydown}
       placeholder="Type a message... (Enter to send, Shift+Enter for new line)"
-      disabled={!isConnected || $currentChatId == null}
+      disabled={!isConnected || currentChatId == null}
       rows="1"
       class="input-textarea"
     ></textarea>
@@ -126,7 +136,7 @@
     </button>
   </div>
 
-  {#if $currentChatId == null}
+  {#if currentChatId == null}
     <div class="input-hint">
       <span class="text-muted">Select a chat to send messages</span>
     </div>
