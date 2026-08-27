@@ -13,8 +13,8 @@ rhd/
 │   ├── archive/      # Completed/historical plans
 │   └── milestones/   # Feature milestone plans
 ├── memory/           # This knowledge base (split by topic)
+│   ├── features/     # Product-scoped feature documentation
 │   ├── frontend/     # Frontend-specific documentation
-│   │   └── features/ # Frontend product-scoped feature documentation
 ├── packages/
 │   ├── rhd_ai_client/      # AI client wrapper
 │   ├── rhd_mock_ai_provider/ # Mock AI provider for testing
@@ -38,7 +38,7 @@ The knowledge base is organized into two layers:
 - **When to read**: When implementing or modifying code in specific areas
 - **Contains**: Function signatures, struct definitions, database schemas, protocol messages, key file paths
 
-**Features files** (`frontend/features/chat.md`, `frontend/features/configuration.md`, etc.):
+**Features files** (`features/chat.md`, `features/configuration.md`, etc.):
 - **Product-view only**: what the feature does, user interactions, behavior, configuration
 - **When to read**: When understanding what a feature does from a user perspective
 - **Contains**: User workflows, UI behavior, configuration options, error handling from user perspective
@@ -125,14 +125,10 @@ Product-scoped feature documentation (what the feature does, not how it's implem
 
 | File | When to read |
 |------|-------------|
-| [frontend/features/scenario-execution.md](frontend/features/scenario-execution.md) | Understanding how scenarios run, action types, placeholders, abort, pause/resume |
-| [frontend/features/chat.md](frontend/features/chat.md) | Understanding chat feature, streaming, model selection, message editing, delete all chats, auto-scroll, queue messages, tools management |
-| [frontend/features/mcp-tools.md](frontend/features/mcp-tools.md) | Understanding MCP tool integration, built-in tools, flags, skip conditions, tool call error UI |
-| [frontend/features/configuration.md](frontend/features/configuration.md) | Understanding config files, credentials, model aliases, CLI arguments |
-| [frontend/features/testing.md](frontend/features/testing.md) | Understanding E2E test infrastructure, mock server, test utilities |
-| [frontend/features/cli.md](frontend/features/cli.md) | Understanding CLI usage details, commands, and arguments |
-| [frontend/features/templates.md](frontend/features/templates.md) | Understanding template registry, template loading, and rendering |
-| [frontend/features/logging-monitoring.md](frontend/features/logging-monitoring.md) | Understanding log files, meta.json, WebSocket events, notifications |
-| [frontend/features/projects.md](frontend/features/projects.md) | Understanding projects feature, project structure, attaching projects to chats, MCP server lifecycle, system prompt injection |
-| [frontend/features/roles.md](frontend/features/roles.md) | Understanding roles feature, role selection, AI-driven role switching, role conflict detection, role injection |
-| [frontend/features/plugins.md](frontend/features/plugins.md) | Understanding plugin system, plugin lifecycle, custom event coordination, plugin monitoring, AI completions plugin |
+| [features/chat.md](features/chat.md) | Understanding chat feature, streaming, model selection, message editing, delete all chats, auto-scroll, queue messages, tools management |
+| [features/mcp-tools.md](features/mcp-tools.md) | Understanding MCP tool integration, built-in tools, flags, skip conditions, tool call error UI |
+| [features/configuration.md](features/configuration.md) | Understanding config files, credentials, model aliases, CLI arguments |
+| [features/testing.md](features/testing.md) | Understanding E2E test infrastructure, mock server, test utilities |
+| [features/cli.md](features/cli.md) | Understanding CLI usage details, commands, and arguments |
+| [features/templates.md](features/templates.md) | Understanding template registry, template loading, and rendering |
+| [features/plugins.md](features/plugins.md) | Understanding plugin system, plugin lifecycle, custom event coordination, plugin monitoring, AI completions plugin |

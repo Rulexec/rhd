@@ -137,6 +137,6 @@ Tests live alongside the code they cover:
 
 ## Related Documentation
 
-- [Chat Feature](features/chat.md)
-- [Plugins Feature](features/plugins.md)
-- [Testing](features/testing.md)
+- [Chat Feature](../features/chat.md)
+- [Plugins Feature](../features/plugins.md)
+- [Testing](../features/testing.md)

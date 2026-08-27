@@ -23,16 +23,39 @@ The plans archive process extracts product-level knowledge from implementation p
 
 ### Step 1: Read All Active Plans
 
-Read all plan files in `plans/` directory (excluding `archive/` and `milestones/` subdirectories).
+Read all plan files in `plans/` directory. This includes:
 
-**Note on subfolders**: Subfolders within `plans/` (other than `archive/`) may contain:
-- **Subplans**: Phase-specific implementation plans derived from a grand plan
+1. **Top-level plan files** (e.g., `plans/mobx-migration-grand-plan.md`)
+2. **Subfolder contents** — any subdirectories within `plans/` (except `archive/`)
+
+**Understanding subfolder structure**:
+
+Subfolders within `plans/` typically contain:
+- **Sub-plans**: Phase-specific implementation plans derived from a parent grand plan
 - **Development states**: Intermediate snapshots or progress tracking files
 - **Assets**: Supporting documents, diagrams, or reference materials
 
-These files should be read and analyzed alongside their parent plans to extract complete product-level knowledge. However, after analysis, they should be **removed** (not moved to `plans/archive/`), as they are transient working artifacts rather than standalone completed plans.
+Example structure:
+```
+plans/
+├── mobx-migration-grand-plan.md          # Top-level grand plan
+├── mobx/                                  # Subfolder with sub-plans
+│   ├── phase-1-infrastructure-setup.md
+│   ├── phase-2-connection-store-migration.md
+│   └── ...
+├── streaming-fixes.md                     # Top-level plan
+└── streaming/                             # Subfolder with sub-plans
+    ├── phase-1-api-types-db-schema.md
+    └── ...
+```
 
-For each plan file, extract:
+**Critical distinction**:
+- **Top-level plans** → Move to `plans/archive/` after processing
+- **Subfolder contents** (sub-plans, phases, assets) → Read for context, then **DELETE** (do not archive)
+
+Sub-plans are transient working artifacts tied to their parent plan's development process. They provide additional context but are not standalone completed plans.
+
+For each plan file (top-level and sub-plans), extract:
 - What feature/capability it implements
 - User-facing behavior and workflows
 - Configuration options
@@ -159,7 +182,7 @@ rmdir plans/feature-name/
 
 Use this checklist when archiving plans:
 
-- [ ] Read all plan files in `plans/` (excluding archive/ and milestones/)
+- [ ] Read all plan files in `plans/` (excluding archive/)
 - [ ] Read subfolder contents (subplans, development states, assets) for additional context
 - [ ] Read all existing `memory/features/` files
 - [ ] For each plan, identify which feature file it relates to
