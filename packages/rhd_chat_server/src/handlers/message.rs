@@ -5,11 +5,11 @@ use serde_json::Value;
 
 use rhd_chat_api::methods::{
     AddMessageParams, AddMessageResult, DeleteMessageParams, DeleteMessageResult,
-    UpdateMessageParams, UpdateMessageResult,
+    UpdateMessageParams, UpdateMessageResult, UpdateToolCallTagsParams, UpdateToolCallTagsResult,
 };
 use rhd_chat_api::protocol::Response;
 use rhd_chat_api::ErrorResponse;
-use rhd_db::ChatDb;
+use rhd_db::{ChatDb, DbError};
 
 use crate::error::ServerError;
 use crate::events::{message_added_event, message_deleted_event, message_updated_event};
@@ -35,6 +35,12 @@ fn convert_message_to_api(
         tags,
         is_finished: msg.is_finished,
         is_streaming: msg.is_streaming,
+        tool_calls: msg
+            .tool_calls
+            .unwrap_or_default()
+            .into_iter()
+            .map(super::convert_tool_call_to_api)
+            .collect(),
     })
 }
 
@@ -189,5 +195,67 @@ pub async fn delete_message(
     manager.broadcast_to_chat(message.chat_id, event);
 
     let result = DeleteMessageResult {};
+    Ok(serde_json::to_value(Response::success(request_id, serde_json::to_value(result)?))?)
+}
+
+/// Handle `updateToolCallTags` request.
+///
+/// Reads the message's stored tool calls, parses them, adds/removes tags on
+/// the tool call with the given id, saves the result, and broadcasts a
+/// `messageUpdated` event so subscribers can sync their state.
+pub async fn update_tool_call_tags(
+    params: Value,
+    db: &ChatDb,
+    request_id: &str,
+    subscription_manager: &SharedSubscriptionManager,
+) -> Result<Value, ServerError> {
+    let params: UpdateToolCallTagsParams = match serde_json::from_value(params) {
+        Ok(p) => p,
+        Err(e) => {
+            return Ok(serde_json::to_value(ErrorResponse::invalid_request(
+                request_id,
+                format!("Invalid params: {}", e),
+            ))?);
+        }
+    };
+
+    // Check if message exists
+    if db.get_message(params.message_id)?.is_none() {
+        return Ok(serde_json::to_value(ErrorResponse::message_not_found(
+            request_id,
+            params.message_id,
+        ))?);
+    }
+
+    // Apply tag changes; an unknown tool call id is a client error
+    let chat_version = match db.update_message_tool_call_tags(
+        params.message_id,
+        &params.tool_call_id,
+        &params.add_tags,
+        &params.remove_tags,
+    ) {
+        Ok(version) => version,
+        Err(DbError::NotFound(_)) => {
+            return Ok(serde_json::to_value(ErrorResponse::invalid_request(
+                request_id,
+                format!(
+                    "Tool call {} not found in message {}",
+                    params.tool_call_id, params.message_id
+                ),
+            ))?);
+        }
+        Err(e) => return Err(e.into()),
+    };
+
+    // Broadcast messageUpdated event with the updated tool call tags
+    let msg_tags = db.get_message_tags(params.message_id)?;
+    let db_message = db.get_message(params.message_id)?.unwrap();
+    let api_message = convert_message_to_api(db_message, msg_tags)?;
+    let chat_id = api_message.chat_id;
+    let event = message_updated_event(chat_id, api_message, chat_version);
+    let manager = subscription_manager.read().await;
+    manager.broadcast_to_chat(chat_id, event);
+
+    let result = UpdateToolCallTagsResult {};
     Ok(serde_json::to_value(Response::success(request_id, serde_json::to_value(result)?))?)
 }

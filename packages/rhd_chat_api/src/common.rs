@@ -10,6 +10,8 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::tools::ToolCall;
+
 /// A chat with full metadata.
 ///
 /// # Example JSON
@@ -80,6 +82,9 @@ pub struct Message {
     /// Whether the message is currently being streamed.
     #[serde(default)]
     pub is_streaming: bool,
+    /// Tool calls made by the assistant (empty when the message has none).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tool_calls: Vec<ToolCall>,
 }
 
 fn default_true() -> bool {
@@ -235,6 +240,7 @@ mod tests {
             tags: vec!["important".to_string()],
             is_finished: true,
             is_streaming: false,
+            tool_calls: vec![],
         };
 
         let json = serde_json::to_string(&message).unwrap();
@@ -244,6 +250,8 @@ mod tests {
         assert!(json.contains("\"content\":\"Hello\""));
         // reasoning_content is None, should be skipped
         assert!(!json.contains("reasoningContent"));
+        // empty tool_calls should be skipped
+        assert!(!json.contains("toolCalls"));
 
         let deserialized: Message = serde_json::from_str(&json).unwrap();
         assert_eq!(message, deserialized);
@@ -261,6 +269,7 @@ mod tests {
             tags: vec![],
             is_finished: true,
             is_streaming: false,
+            tool_calls: vec![],
         };
 
         let json = serde_json::to_string(&message).unwrap();

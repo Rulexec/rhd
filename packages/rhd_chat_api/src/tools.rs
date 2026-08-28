@@ -68,6 +68,9 @@ pub struct ToolCall {
     pub call_type: String,
     /// Function call details.
     pub function: FunctionCall,
+    /// Tags attached to this tool call.
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 /// Function call details within a tool call.
@@ -144,6 +147,7 @@ mod tests {
                 name: "get_weather".to_string(),
                 arguments: "{\"location\": \"San Francisco\"}".to_string(),
             },
+            tags: vec!["reviewed".to_string()],
         };
 
         let json = serde_json::to_string(&tool_call).unwrap();

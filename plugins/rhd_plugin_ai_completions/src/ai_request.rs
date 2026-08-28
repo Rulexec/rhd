@@ -350,6 +350,7 @@ pub async fn handle_ai_request(
                             name: tc.name.clone(),
                             arguments: tc.arguments.clone(),
                         },
+                        tags: vec![],
                     })
                     .collect();
                 Some(serde_json::to_string(&tool_calls).unwrap_or_default())
@@ -570,6 +571,7 @@ mod tests {
             tags: vec![],
             is_finished: true,
             is_streaming: false,
+            tool_calls: vec![],
         }
     }
 

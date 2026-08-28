@@ -1,6 +1,15 @@
 //! Integration tests for WebSocket protocol using rhd_chat_client.
 
 use std::sync::Arc;
+use std::sync::Once;
+
+static INIT_TRACING: Once = Once::new();
+
+fn init_tracing() {
+    INIT_TRACING.call_once(|| {
+        tracing_subscriber::fmt::init();
+    });
+}
 use std::time::Duration;
 
 use futures_util::StreamExt;
@@ -10,8 +19,9 @@ use rhd_db::ChatDb;
 use rhd_chat_api::{
     AckCustomEventParams, AddMessageParams, CreateChatParams, GetChatParams, GetPluginsParams,
     ListChatsParams, RegisterPluginParams, SendCustomEventParams, SubscribeChatParams,
+    UpdateMessageParams, UpdateToolCallTagsParams,
 };
-use rhd_chat_client::{ChatClient, ChatEvent};
+use rhd_chat_client::{ChatClient, ChatEvent, ClientError};
 use rhd_chat_server::config::Config;
 use rhd_chat_server::connection::handle_connection;
 use rhd_chat_server::plugins::new_shared_plugin_registry;
@@ -84,6 +94,7 @@ async fn connect_client(port: u16) -> ChatClient {
 
 #[tokio::test]
 async fn test_create_chat() {
+    init_tracing();
     let (port, _handle) = start_test_server().await;
     let client = connect_client(port).await;
 
@@ -278,6 +289,140 @@ async fn test_subscription_chat_events() {
     // Connection 1 should receive messageAdded event
     let result = tokio::time::timeout(Duration::from_secs(5), event_received.notified()).await;
     assert!(result.is_ok(), "Did not receive messageAdded event");
+}
+
+#[tokio::test]
+async fn test_update_tool_call_tags_broadcasts_message_updated() {
+    init_tracing();
+    let (port, _handle) = start_test_server().await;
+
+    // Connection 1: subscribe to chat and capture messageUpdated events
+    let client1 = connect_client(port).await;
+    let create_result = client1
+        .create_chat(CreateChatParams {
+            title: "Test".to_string(),
+            tags: vec![],
+        })
+        .await
+        .unwrap();
+    let chat_id = create_result.chat_id;
+
+    client1
+        .subscribe_chat(SubscribeChatParams { chat_id })
+        .await
+        .unwrap();
+
+    let latest_update = Arc::new(Mutex::new(None));
+    let latest_update_clone = latest_update.clone();
+    let event_received = Arc::new(Notify::new());
+    let event_received_clone = event_received.clone();
+
+    let _cancel_token = client1.on_chat_event(chat_id, move |event| {
+        let latest_update = latest_update_clone.clone();
+        let event_received = event_received_clone.clone();
+        async move {
+            if let ChatEvent::MessageUpdated(data) = event {
+                *latest_update.lock().await = Some(data);
+                event_received.notify_one();
+            }
+        }
+    });
+
+    // Connection 2: add assistant message, then set tool calls
+    // (same JSON shape the ai_completions plugin writes)
+    let client2 = connect_client(port).await;
+    let add_result = client2
+        .add_message(AddMessageParams {
+            chat_id,
+            role: "assistant".to_string(),
+            content: "calling tool".to_string(),
+            reasoning_content: None,
+            tags: vec![],
+            is_finished: true,
+            is_streaming: false,
+        })
+        .await
+        .unwrap();
+
+    client2
+        .update_message(UpdateMessageParams {
+            message_id: add_result.message_id,
+            content: None,
+            reasoning_content: None,
+            role: None,
+            add_tags: vec![],
+            remove_tags: vec![],
+            is_finished: None,
+            is_streaming: None,
+            tool_calls: Some(
+                r#"[{"id":"call_1","type":"function","function":{"name":"get_weather","arguments":"{}"}}]"#
+                    .to_string(),
+            ),
+        })
+        .await
+        .unwrap();
+
+    // Consume the messageUpdated event emitted by updateMessage
+    tokio::time::timeout(Duration::from_secs(5), event_received.notified())
+        .await
+        .expect("Did not receive messageUpdated after setting tool calls");
+
+    let version_before = client1
+        .get_chat(GetChatParams {
+            chat_id,
+            if_version_higher_than: None,
+        })
+        .await
+        .unwrap()
+        .chat
+        .version;
+
+    // Add tags to the tool call
+    client2
+        .update_tool_call_tags(UpdateToolCallTagsParams {
+            message_id: add_result.message_id,
+            tool_call_id: "call_1".to_string(),
+            add_tags: vec!["reviewed".to_string()],
+            remove_tags: vec![],
+        })
+        .await
+        .unwrap();
+
+    tokio::time::timeout(Duration::from_secs(5), event_received.notified())
+        .await
+        .expect("Did not receive messageUpdated after updateToolCallTags");
+
+    let data = latest_update
+        .lock()
+        .await
+        .take()
+        .expect("messageUpdated event captured");
+    assert_eq!(data.chat_id, chat_id);
+    assert_eq!(
+        data.chat_version,
+        version_before + 1,
+        "messageUpdated must carry the chat version covering the tag change"
+    );
+    assert_eq!(data.message.tool_calls.len(), 1);
+    assert_eq!(data.message.tool_calls[0].id, "call_1");
+    assert_eq!(data.message.tool_calls[0].call_type, "function");
+    assert_eq!(
+        data.message.tool_calls[0].tags,
+        vec!["reviewed".to_string()]
+    );
+
+    // Unknown tool call id is rejected
+    let err = client2
+        .update_tool_call_tags(UpdateToolCallTagsParams {
+            message_id: add_result.message_id,
+            tool_call_id: "missing".to_string(),
+            add_tags: vec!["x".to_string()],
+            remove_tags: vec![],
+        })
+        .await
+        .unwrap_err();
+    assert!(matches!(err, ClientError::Server { .. }));
+    assert!(err.to_string().contains("not found"));
 }
 
 #[tokio::test]

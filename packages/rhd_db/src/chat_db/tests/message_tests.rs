@@ -1,5 +1,6 @@
 use super::super::*;
 use super::helpers::cleanup;
+use crate::DbError;
 
 #[test]
 fn test_add_and_get_messages() {
@@ -39,6 +40,99 @@ fn test_update_message() {
 
     let msg = db.get_message(msg_id).unwrap().unwrap();
     assert_eq!(msg.content, "Updated");
+
+    cleanup(path);
+}
+
+fn create_message_with_tool_calls(db: &ChatDb, chat_id: i64, tool_calls_json: &str) -> i64 {
+    let (msg_id, _) = db
+        .add_message(chat_id, "assistant", "", Some("gpt4"), None, true, false)
+        .unwrap();
+    db.update_message(msg_id, None, None, Some(tool_calls_json), None, None)
+        .unwrap();
+    msg_id
+}
+
+#[test]
+fn test_update_tool_call_tags_add_and_remove() {
+    let path = "test_chat_tool_call_tags.db";
+    cleanup(path);
+
+    let db = ChatDb::new(path).unwrap();
+    let chat_id = db.create_chat("Chat").unwrap();
+    // Shape written by ai_completions plugin today: API ToolCall JSON with "type", no "tags".
+    let tool_calls_json = r#"[
+        {"id":"call_1","type":"function","function":{"name":"get_weather","arguments":"{}"}},
+        {"id":"call_2","type":"function","function":{"name":"search","arguments":"{}"},"tags":["keep"]}
+    ]"#;
+    let msg_id = create_message_with_tool_calls(&db, chat_id, tool_calls_json);
+
+    // Backward compat: tag-less stored JSON parses with empty tags.
+    let msg = db.get_message(msg_id).unwrap().unwrap();
+    let calls = msg.tool_calls.as_ref().unwrap();
+    assert_eq!(calls[0].tags, Vec::<String>::new());
+    assert_eq!(calls[1].tags, vec!["keep".to_string()]);
+
+    let version_before = db.get_chat(chat_id).unwrap().unwrap().version;
+
+    // Add tags to call_1 (with a duplicate to verify dedup), then change call_2 tags.
+    let new_version = db
+        .update_message_tool_call_tags(
+            msg_id,
+            "call_1",
+            &["reviewed".to_string(), "reviewed".to_string()],
+            &[],
+        )
+        .unwrap();
+    let new_version = db
+        .update_message_tool_call_tags(msg_id, "call_2", &["extra".to_string()], &["keep".to_string()])
+        .unwrap();
+
+    assert_eq!(new_version, version_before + 2);
+    assert_eq!(db.get_chat(chat_id).unwrap().unwrap().version, new_version);
+
+    let msg = db.get_message(msg_id).unwrap().unwrap();
+    let calls = msg.tool_calls.as_ref().unwrap();
+    assert_eq!(calls[0].tags, vec!["reviewed".to_string()]);
+    assert_eq!(calls[1].tags, vec!["extra".to_string()]);
+
+    cleanup(path);
+}
+
+#[test]
+fn test_update_tool_call_tags_unknown_tool_call_id() {
+    let path = "test_chat_tool_call_tags_404.db";
+    cleanup(path);
+
+    let db = ChatDb::new(path).unwrap();
+    let chat_id = db.create_chat("Chat").unwrap();
+    let tool_calls_json =
+        r#"[{"id":"call_1","type":"function","function":{"name":"get_weather","arguments":"{}"}}]"#;
+    let msg_id = create_message_with_tool_calls(&db, chat_id, tool_calls_json);
+
+    let result = db.update_message_tool_call_tags(msg_id, "missing_id", &["x".to_string()], &[]);
+    assert!(matches!(result, Err(DbError::NotFound(_))));
+
+    // Tags unchanged after failed attempt.
+    let msg = db.get_message(msg_id).unwrap().unwrap();
+    assert!(msg.tool_calls.as_ref().unwrap()[0].tags.is_empty());
+
+    cleanup(path);
+}
+
+#[test]
+fn test_update_tool_call_tags_message_without_tool_calls() {
+    let path = "test_chat_tool_call_tags_none.db";
+    cleanup(path);
+
+    let db = ChatDb::new(path).unwrap();
+    let chat_id = db.create_chat("Chat").unwrap();
+    let (msg_id, _) = db
+        .add_message(chat_id, "user", "Hello", None, None, true, false)
+        .unwrap();
+
+    let result = db.update_message_tool_call_tags(msg_id, "call_1", &["x".to_string()], &[]);
+    assert!(matches!(result, Err(DbError::NotFound(_))));
 
     cleanup(path);
 }

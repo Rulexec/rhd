@@ -54,7 +54,8 @@ pub use methods::{
     UnsubscribeChatParams, UnsubscribeChatResult, UnsubscribeChatsListParams,
     UnsubscribeChatsListResult, UnsubscribePluginsListParams, UnsubscribePluginsListResult,
     UpdateChatParams, UpdateChatResult, UpdateMessageParams, UpdateMessageResult,
-    UpdateQueueMessageParams, UpdateQueueMessageResult,
+    UpdateQueueMessageParams, UpdateQueueMessageResult, UpdateToolCallTagsParams,
+    UpdateToolCallTagsResult,
 };
 pub use protocol::{Event, Request, Response};
 pub use tools::{FunctionCall, FunctionDefinition, ToolCall, ToolDefinition, ToolInfo};

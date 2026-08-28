@@ -12,6 +12,10 @@ pub enum DbError {
     SqliteError(#[from] rusqlite::Error),
     #[error("Database initialization error: {0}")]
     InitializationError(String),
+    #[error("Not found: {0}")]
+    NotFound(String),
+    #[error("Serialization error: {0}")]
+    SerializationError(String),
 }
 
 pub type DbResult<T> = Result<T, DbError>;

@@ -52,6 +52,7 @@ mod tests {
                 tags: vec!["tag1".to_string()],
                 is_finished: true,
                 is_streaming: false,
+                tool_calls: vec![],
             },
             chat_version: 2,
         };

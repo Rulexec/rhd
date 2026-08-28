@@ -152,6 +152,74 @@ pub(crate) fn update_message(
     Ok(new_version)
 }
 
+/// Add and/or remove tags on a single tool call within a message.
+///
+/// Reads the message's `tool_calls` JSON blob, parses it, applies the tag
+/// changes to the tool call with the given id, saves the updated blob, and
+/// bumps the chat version. Returns the new chat version.
+pub(crate) fn update_message_tool_call_tags(
+    conn: &Mutex<Connection>,
+    message_id: i64,
+    tool_call_id: &str,
+    add_tags: &[String],
+    remove_tags: &[String],
+) -> DbResult<i64> {
+    let conn = conn
+        .lock()
+        .map_err(|e| DbError::InitializationError(e.to_string()))?;
+    let tx = conn.unchecked_transaction()?;
+
+    let (chat_id, tool_calls_json): (i64, Option<String>) = tx.query_row(
+        "SELECT chat_id, tool_calls FROM messages WHERE id = ?1",
+        params![message_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )
+    .map_err(|_| DbError::NotFound(format!("message {}", message_id)))?;
+
+    let mut tool_calls: Vec<ToolCall> = match tool_calls_json {
+        Some(json) => serde_json::from_str(&json)
+            .map_err(|e| DbError::SerializationError(format!("invalid tool_calls JSON for message {}: {}", message_id, e)))?,
+        None => return Err(DbError::NotFound(format!(
+            "tool call {} in message {} (message has no tool calls)",
+            tool_call_id, message_id
+        ))),
+    };
+
+    let tool_call = tool_calls
+        .iter_mut()
+        .find(|tc| tc.id == tool_call_id)
+        .ok_or_else(|| {
+            DbError::NotFound(format!("tool call {} in message {}", tool_call_id, message_id))
+        })?;
+
+    for tag in add_tags {
+        if !tool_call.tags.contains(tag) {
+            tool_call.tags.push(tag.clone());
+        }
+    }
+    tool_call.tags.retain(|tag| !remove_tags.contains(tag));
+
+    let updated_json = serde_json::to_string(&tool_calls)
+        .map_err(|e| DbError::SerializationError(format!("failed to serialize tool_calls: {}", e)))?;
+    tx.execute(
+        "UPDATE messages SET tool_calls = ?1 WHERE id = ?2",
+        params![updated_json, message_id],
+    )?;
+
+    let now = now_iso();
+    tx.execute(
+        "UPDATE chats SET updated_at = ?1, version = version + 1 WHERE id = ?2",
+        params![now, chat_id],
+    )?;
+    let new_version: i64 = tx.query_row(
+        "SELECT version FROM chats WHERE id = ?1",
+        params![chat_id],
+        |row| row.get(0),
+    )?;
+    tx.commit()?;
+    Ok(new_version)
+}
+
 /// Delete a message by ID
 pub(crate) fn delete_message(conn: &Mutex<Connection>, message_id: i64) -> DbResult<i64> {
     let conn = conn

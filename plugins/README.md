@@ -35,6 +35,14 @@ Plugins acknowledge events via `ackCustomEvent`. This is used for coordination b
 
 Events that haven't been acknowledged by the current plugin are called "pending acks". On startup, plugins must call `getPendingAcks` to handle events they may have missed while disconnected.
 
+## Tool Call Tags
+
+Assistant messages carry their tool calls in the `toolCalls` array of the `Message` payload (visible in `getChat`, `messageAdded`, and `messageUpdated`). Each tool call has an optional `tags` array that plugins can use for per-call state tracking (e.g., `reviewed`, `failed`, `processed`).
+
+- **Mutate tags**: call `updateToolCallTags` with `{ messageId, toolCallId, addTags, removeTags }`. The server reads the message's stored tool calls, parses them, applies the tag changes to the matching tool call, saves the result, and broadcasts a `messageUpdated` event to all chat subscribers so they can sync their state.
+- **Validate freshness**: every `messageUpdated` event carries `chatVersion` — the chat version after the change. Plugins can compare it against their cached version to detect missed events (or refetch via `getChat`).
+- **Hazard — full-blob overwrite**: `updateMessage` with `toolCalls` replaces the entire tool-call JSON blob, wiping any tags added via `updateToolCallTags`. Write `toolCalls` only once (at stream finish, as the ai_completions plugin does); always change tags through `updateToolCallTags`.
+
 ## Plugin Responsibilities
 
 Each plugin should document:

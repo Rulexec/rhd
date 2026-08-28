@@ -18,6 +18,7 @@ use uuid::Uuid;
 use rhd_chat_api::protocol::{Event, Request, Response};
 use rhd_chat_api::{
     AckCustomEventParams, AckCustomEventResult, AddMessageParams, AddMessageResult,
+    ErrorResponse,
     AddQueueMessageParams, AddQueueMessageResult, AddToolsParams, AddToolsResult,
     CreateChatParams, CreateChatResult, DeleteChatParams, DeleteChatResult, DeleteMessageParams,
     DeleteMessageResult, DeleteQueueMessageParams, DeleteQueueMessageResult, GetChatParams,
@@ -32,6 +33,7 @@ use rhd_chat_api::{
     UnsubscribeChatResult, UnsubscribeChatsListParams, UnsubscribeChatsListResult,
     UnsubscribePluginsListParams, UnsubscribePluginsListResult, UpdateChatParams, UpdateChatResult,
     UpdateMessageParams, UpdateMessageResult, UpdateQueueMessageParams, UpdateQueueMessageResult,
+    UpdateToolCallTagsParams, UpdateToolCallTagsResult,
 };
 
 use crate::error::ClientError;
@@ -229,6 +231,37 @@ impl ChatClient {
                         pending_count = pending.len(),
                         "no pending request found for response"
                     );
+                }
+                return;
+            }
+        }
+
+        // Try to parse as an error response. The server serializes errors using
+        // the ErrorResponse envelope (top-level error/errorCode, no data field),
+        // which the Response struct cannot deserialize. Route it to the pending
+        // request as a failed Response carrying data.error.{code,message}, the
+        // shape send_request expects.
+        if let Ok(error_response) = serde_json::from_str::<ErrorResponse>(text) {
+            if error_response.r#type == "response" {
+                tracing::debug!(
+                    response_id = %error_response.id,
+                    error_code = %error_response.error_code,
+                    "received error response"
+                );
+                let mut pending = pending_requests.lock().await;
+                if let Some(sender) = pending.remove(&error_response.id) {
+                    let error = serde_json::json!({
+                        "error": {
+                            "code": error_response.error_code.to_string(),
+                            "message": error_response.error,
+                        }
+                    });
+                    let _ = sender.send(Ok(Response {
+                        r#type: "response".to_string(),
+                        id: error_response.id,
+                        success: false,
+                        data: error,
+                    }));
                 }
                 return;
             }
@@ -570,6 +603,14 @@ impl ChatClient {
     /// Delete a message.
     pub async fn delete_message(&self, params: DeleteMessageParams) -> Result<DeleteMessageResult, ClientError> {
         self.send_request("deleteMessage", params).await
+    }
+
+    /// Add and/or remove tags on a single tool call within a message.
+    ///
+    /// The server parses the message's stored tool calls, applies the tag
+    /// changes, saves, and broadcasts a `messageUpdated` event to subscribers.
+    pub async fn update_tool_call_tags(&self, params: UpdateToolCallTagsParams) -> Result<UpdateToolCallTagsResult, ClientError> {
+        self.send_request("updateToolCallTags", params).await
     }
 
     // ========================================================================

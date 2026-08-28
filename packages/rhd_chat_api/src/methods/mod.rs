@@ -32,6 +32,7 @@ pub mod unsubscribe_plugins_list;
 pub mod update_chat;
 pub mod update_message;
 pub mod update_queue_message;
+pub mod update_tool_call_tags;
 
 pub use ack_custom_event::*;
 pub use add_message::*;
@@ -63,3 +64,4 @@ pub use unsubscribe_plugins_list::*;
 pub use update_chat::*;
 pub use update_message::*;
 pub use update_queue_message::*;
+pub use update_tool_call_tags::*;

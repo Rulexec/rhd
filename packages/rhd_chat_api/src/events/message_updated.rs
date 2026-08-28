@@ -37,6 +37,7 @@ pub struct MessageUpdatedData {
 mod tests {
     use super::*;
     use chrono::Utc;
+    use crate::tools::{FunctionCall, ToolCall};
 
     #[test]
     fn test_message_updated_data_serialization() {
@@ -52,6 +53,15 @@ mod tests {
                 tags: vec!["tag1".to_string()],
                 is_finished: true,
                 is_streaming: false,
+                tool_calls: vec![ToolCall {
+                    id: "call_1".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "get_weather".to_string(),
+                        arguments: "{}".to_string(),
+                    },
+                    tags: vec!["reviewed".to_string()],
+                }],
             },
             chat_version: 3,
         };
@@ -60,6 +70,9 @@ mod tests {
         assert!(json.contains("\"chatId\":123"));
         assert!(json.contains("\"message\""));
         assert!(json.contains("\"id\":456"));
+        assert!(json.contains("\"toolCalls\""));
+        assert!(json.contains("\"tags\":[\"reviewed\"]"));
+        assert!(json.contains("\"chatVersion\":3"));
 
         let deserialized: MessageUpdatedData = serde_json::from_str(&json).unwrap();
         assert_eq!(data, deserialized);

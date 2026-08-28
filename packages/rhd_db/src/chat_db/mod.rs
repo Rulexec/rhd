@@ -50,6 +50,9 @@ pub struct Message {
 pub struct ToolCall {
     pub id: String,
     pub function: FunctionCall,
+    /// Tags attached to this tool call. Stored inside the message's tool_calls JSON blob.
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -147,6 +150,16 @@ impl ChatDb {
 
     pub fn delete_message(&self, message_id: i64) -> DbResult<i64> {
         messages::delete_message(&self.conn, message_id)
+    }
+
+    pub fn update_message_tool_call_tags(
+        &self,
+        message_id: i64,
+        tool_call_id: &str,
+        add_tags: &[String],
+        remove_tags: &[String],
+    ) -> DbResult<i64> {
+        messages::update_message_tool_call_tags(&self.conn, message_id, tool_call_id, add_tags, remove_tags)
     }
 
     // Tag operations

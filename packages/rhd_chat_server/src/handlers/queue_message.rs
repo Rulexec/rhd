@@ -37,6 +37,12 @@ fn convert_message_to_api(
         tags,
         is_finished: msg.is_finished,
         is_streaming: msg.is_streaming,
+        tool_calls: msg
+            .tool_calls
+            .unwrap_or_default()
+            .into_iter()
+            .map(super::convert_tool_call_to_api)
+            .collect(),
     })
 }
 

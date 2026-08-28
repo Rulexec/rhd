@@ -71,6 +71,7 @@ mod tests {
             tags: vec![],
             is_finished: true,
             is_streaming: false,
+            tool_calls: vec![],
         }
     }
 

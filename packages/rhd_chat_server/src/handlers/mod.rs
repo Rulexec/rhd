@@ -19,6 +19,22 @@ use crate::plugins::SharedPluginRegistry;
 use crate::streams::SharedStreamManager;
 use crate::subscriptions::SharedSubscriptionManager;
 
+/// Convert a DB tool call to its API representation.
+///
+/// The DB does not store the OpenAI-style `type` discriminator, so it is
+/// always emitted as `"function"` on the wire.
+pub(crate) fn convert_tool_call_to_api(tc: rhd_db::ToolCall) -> rhd_chat_api::ToolCall {
+    rhd_chat_api::ToolCall {
+        id: tc.id,
+        call_type: "function".to_string(),
+        function: rhd_chat_api::FunctionCall {
+            name: tc.function.name,
+            arguments: tc.function.arguments,
+        },
+        tags: tc.tags,
+    }
+}
+
 /// Route a request to the appropriate handler.
 pub async fn handle_request(
     request: Request,
@@ -42,6 +58,7 @@ pub async fn handle_request(
         "addMessage" => message::add_message(request.params, db, &request_id, &subscription_manager).await,
         "updateMessage" => message::update_message(request.params, db, &request_id, &subscription_manager).await,
         "deleteMessage" => message::delete_message(request.params, db, &request_id, &subscription_manager).await,
+        "updateToolCallTags" => message::update_tool_call_tags(request.params, db, &request_id, &subscription_manager).await,
         
         // Subscription methods
         "subscribeChat" => subscription::subscribe_chat(request.params, db, &request_id, connection_id, subscription_manager).await,
