@@ -16,6 +16,7 @@ pub(crate) fn add_queue_message(
     content: &str,
     model: Option<&str>,
     thinking_content: Option<&str>,
+    tool_call_id: Option<&str>,
 ) -> DbResult<(i64, i64)> {
     let conn = conn
         .lock()
@@ -23,8 +24,8 @@ pub(crate) fn add_queue_message(
     let tx = conn.unchecked_transaction()?;
     let now = now_iso();
     tx.execute(
-        "INSERT INTO messages_queue (chat_id, role, content, created_at, model, thinking_content) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        params![chat_id, role, content, now, model, thinking_content],
+        "INSERT INTO messages_queue (chat_id, role, content, created_at, model, thinking_content, tool_call_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![chat_id, role, content, now, model, thinking_content, tool_call_id],
     )?;
     let message_id = tx.last_insert_rowid();
     tx.execute(
@@ -45,7 +46,7 @@ pub(crate) fn get_queue_messages(conn: &Mutex<Connection>, chat_id: i64) -> DbRe
         .lock()
         .map_err(|e| DbError::InitializationError(e.to_string()))?;
     let mut stmt = conn.prepare(
-        "SELECT id, chat_id, role, content, created_at, model, thinking_content, tool_calls FROM messages_queue WHERE chat_id = ?1 ORDER BY id ASC",
+        "SELECT id, chat_id, role, content, created_at, model, thinking_content, tool_calls, tool_call_id FROM messages_queue WHERE chat_id = ?1 ORDER BY id ASC",
     )?;
     let rows = stmt.query_map(params![chat_id], |row| {
         let tool_calls_json: Option<String> = row.get(7)?;
@@ -62,6 +63,7 @@ pub(crate) fn get_queue_messages(conn: &Mutex<Connection>, chat_id: i64) -> DbRe
             tool_calls,
             is_finished: true,
             is_streaming: false,
+            tool_call_id: row.get(8)?,
         })
     })?;
     let mut messages = Vec::new();
@@ -76,7 +78,7 @@ pub(crate) fn get_queue_message(conn: &Mutex<Connection>, message_id: i64) -> Db
         .lock()
         .map_err(|e| DbError::InitializationError(e.to_string()))?;
     let mut stmt = conn.prepare(
-        "SELECT id, chat_id, role, content, created_at, model, thinking_content, tool_calls FROM messages_queue WHERE id = ?1",
+        "SELECT id, chat_id, role, content, created_at, model, thinking_content, tool_calls, tool_call_id FROM messages_queue WHERE id = ?1",
     )?;
     let mut rows = stmt.query_map(params![message_id], |row| {
         let tool_calls_json: Option<String> = row.get(7)?;
@@ -93,6 +95,7 @@ pub(crate) fn get_queue_message(conn: &Mutex<Connection>, message_id: i64) -> Db
             tool_calls,
             is_finished: true,
             is_streaming: false,
+            tool_call_id: row.get(8)?,
         })
     })?;
     match rows.next() {
@@ -147,8 +150,8 @@ pub(crate) fn insert_queue_message(
         .as_ref()
         .map(|tc| serde_json::to_string(tc).unwrap_or_default());
     tx.execute(
-        "INSERT INTO messages_queue (id, chat_id, role, content, created_at, model, thinking_content, tool_calls)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        "INSERT INTO messages_queue (id, chat_id, role, content, created_at, model, thinking_content, tool_calls, tool_call_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         params![
             message.id,
             message.chat_id,
@@ -158,6 +161,7 @@ pub(crate) fn insert_queue_message(
             message.model,
             message.thinking_content,
             tool_calls_json,
+            message.tool_call_id,
         ],
     )?;
     let now = now_iso();

@@ -75,6 +75,7 @@ pub async fn add_message(
         params.reasoning_content.as_deref(),
         params.is_finished,
         params.is_streaming,
+        None, // tool_call_id - phase-2 will pass the real value
     )?;
 
     // Set tags if provided

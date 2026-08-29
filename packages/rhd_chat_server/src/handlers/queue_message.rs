@@ -78,6 +78,7 @@ pub async fn add_queue_message(
         &params.content,
         None, // model
         params.reasoning_content.as_deref(),
+        None, // tool_call_id - phase-2 will pass the real value
     )?;
 
     // Set tags if provided

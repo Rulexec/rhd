@@ -225,5 +225,25 @@ fn migrate(conn: &Connection) -> DbResult<()> {
         conn.execute_batch("ALTER TABLE messages ADD COLUMN is_streaming INTEGER NOT NULL DEFAULT 0")?;
     }
 
+    // Check if tool_call_id column exists in messages table
+    let has_tool_call_id: bool = conn
+        .prepare("SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name='tool_call_id'")?
+        .query_row([], |row| row.get::<_, i64>(0))?
+        > 0;
+
+    if !has_tool_call_id {
+        conn.execute_batch("ALTER TABLE messages ADD COLUMN tool_call_id TEXT")?;
+    }
+
+    // Check if tool_call_id column exists in messages_queue table
+    let has_queue_tool_call_id: bool = conn
+        .prepare("SELECT COUNT(*) FROM pragma_table_info('messages_queue') WHERE name='tool_call_id'")?
+        .query_row([], |row| row.get::<_, i64>(0))?
+        > 0;
+
+    if !has_queue_tool_call_id {
+        conn.execute_batch("ALTER TABLE messages_queue ADD COLUMN tool_call_id TEXT")?;
+    }
+
     Ok(())
 }

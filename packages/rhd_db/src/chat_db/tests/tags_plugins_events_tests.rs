@@ -34,7 +34,7 @@ fn test_chat_tags() {
 fn test_message_tags() {
     let db = ChatDb::new(":memory:").unwrap();
     let chat_id = db.create_chat("Test Chat").unwrap();
-    let (message_id, _) = db.add_message(chat_id, "user", "Hello", None, None, true, false).unwrap();
+    let (message_id, _) = db.add_message(chat_id, "user", "Hello", None, None, true, false, None).unwrap();
     
     // Initially no tags
     let tags = db.get_message_tags(message_id).unwrap();

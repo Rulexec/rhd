@@ -18,6 +18,7 @@ pub(crate) fn add_message(
     thinking_content: Option<&str>,
     is_finished: bool,
     is_streaming: bool,
+    tool_call_id: Option<&str>,
 ) -> DbResult<(i64, i64)> {
     let conn = conn
         .lock()
@@ -25,8 +26,8 @@ pub(crate) fn add_message(
     let tx = conn.unchecked_transaction()?;
     let now = now_iso();
     tx.execute(
-        "INSERT INTO messages (chat_id, role, content, created_at, model, thinking_content, is_finished, is_streaming) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-        params![chat_id, role, content, now, model, thinking_content, is_finished, is_streaming],
+        "INSERT INTO messages (chat_id, role, content, created_at, model, thinking_content, is_finished, is_streaming, tool_call_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        params![chat_id, role, content, now, model, thinking_content, is_finished, is_streaming, tool_call_id],
     )?;
     let message_id = tx.last_insert_rowid();
     tx.execute(
@@ -47,7 +48,7 @@ pub(crate) fn get_messages(conn: &Mutex<Connection>, chat_id: i64) -> DbResult<V
         .lock()
         .map_err(|e| DbError::InitializationError(e.to_string()))?;
     let mut stmt = conn.prepare(
-        "SELECT id, chat_id, role, content, created_at, model, thinking_content, tool_calls, is_finished, is_streaming FROM messages WHERE chat_id = ?1 ORDER BY id ASC",
+        "SELECT id, chat_id, role, content, created_at, model, thinking_content, tool_calls, is_finished, is_streaming, tool_call_id FROM messages WHERE chat_id = ?1 ORDER BY id ASC",
     )?;
     let rows = stmt.query_map(params![chat_id], |row| {
         let tool_calls_json: Option<String> = row.get(7)?;
@@ -64,6 +65,7 @@ pub(crate) fn get_messages(conn: &Mutex<Connection>, chat_id: i64) -> DbResult<V
             tool_calls,
             is_finished: row.get::<_, bool>(8)?,
             is_streaming: row.get::<_, bool>(9)?,
+            tool_call_id: row.get(10)?,
         })
     })?;
     let mut messages = Vec::new();
@@ -78,7 +80,7 @@ pub(crate) fn get_message(conn: &Mutex<Connection>, message_id: i64) -> DbResult
         .lock()
         .map_err(|e| DbError::InitializationError(e.to_string()))?;
     let mut stmt = conn.prepare(
-        "SELECT id, chat_id, role, content, created_at, model, thinking_content, tool_calls, is_finished, is_streaming FROM messages WHERE id = ?1",
+        "SELECT id, chat_id, role, content, created_at, model, thinking_content, tool_calls, is_finished, is_streaming, tool_call_id FROM messages WHERE id = ?1",
     )?;
     let mut rows = stmt.query_map(params![message_id], |row| {
         let tool_calls_json: Option<String> = row.get(7)?;
@@ -95,6 +97,7 @@ pub(crate) fn get_message(conn: &Mutex<Connection>, message_id: i64) -> DbResult
             tool_calls,
             is_finished: row.get::<_, bool>(8)?,
             is_streaming: row.get::<_, bool>(9)?,
+            tool_call_id: row.get(10)?,
         })
     })?;
     match rows.next() {

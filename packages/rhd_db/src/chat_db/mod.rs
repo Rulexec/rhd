@@ -37,6 +37,8 @@ pub struct Message {
     pub chat_id: i64,
     pub role: String,
     pub content: String,
+    /// For `tool`-role messages: the id of the assistant tool call this message answers.
+    pub tool_call_id: Option<String>,
     pub created_at: String,
     pub model: Option<String>,
     pub thinking_content: Option<String>,
@@ -124,8 +126,9 @@ impl ChatDb {
         thinking_content: Option<&str>,
         is_finished: bool,
         is_streaming: bool,
+        tool_call_id: Option<&str>,
     ) -> DbResult<(i64, i64)> {
-        messages::add_message(&self.conn, chat_id, role, content, model, thinking_content, is_finished, is_streaming)
+        messages::add_message(&self.conn, chat_id, role, content, model, thinking_content, is_finished, is_streaming, tool_call_id)
     }
 
     pub fn get_messages(&self, chat_id: i64) -> DbResult<Vec<Message>> {
@@ -251,8 +254,9 @@ impl ChatDb {
         content: &str,
         model: Option<&str>,
         thinking_content: Option<&str>,
+        tool_call_id: Option<&str>,
     ) -> DbResult<(i64, i64)> {
-        messages_queue::add_queue_message(&self.conn, chat_id, role, content, model, thinking_content)
+        messages_queue::add_queue_message(&self.conn, chat_id, role, content, model, thinking_content, tool_call_id)
     }
 
     pub fn get_queue_messages(&self, chat_id: i64) -> DbResult<Vec<Message>> {
