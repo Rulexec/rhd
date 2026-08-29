@@ -10,8 +10,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use rhd_ai_client::AiClient;
-use rhd_chat_api::{AckCustomEventParams, GetPendingAcksParams, RegisterPluginParams};
-use rhd_chat_client::ChatClient;
+use rhd_chat_api::{
+    AckCustomEventParams, GetPendingAcksParams, Message, RegisterPluginParams, UpdateChatParams,
+};
+use rhd_chat_client::{ChatClient, ChatMonitor};
 
 use crate::ai_request;
 use crate::config::{self, PluginConfig};
@@ -99,6 +101,10 @@ pub async fn run_plugin(
 
     tracing::info!("Subscribed to all chats");
 
+    // Startup reconciliation (D6): a chat left mid-stream by a previous crash must never
+    // trigger again — its partial assistant message must never reach the provider.
+    tag_crashed_chats(&client, &chat_monitor).await?;
+
     // Create AI client
     let default_model = &config.ai_completions.models["default"];
     let default_name = "default".to_string();
@@ -184,6 +190,61 @@ pub async fn run_plugin(
     }
 }
 
+/// Find the first message that proves the plugin crashed mid-stream.
+///
+/// An assistant message left with `is_streaming == true` or `is_finished == false`
+/// can only be the result of a crash between `add_message` and the
+/// `stream_finish` / `update_message` pair.
+fn find_unfinished_message(messages: &[Message]) -> Option<&Message> {
+    messages.iter().find(|m| m.is_streaming || !m.is_finished)
+}
+
+/// Once at startup, park every monitored chat that contains an unfinished message
+/// by adding the `ai_completions:error` tag (D6).
+///
+/// `has_error_tag` in `trigger_detection` then suppresses all future triggers for
+/// those chats. Chats already carrying the tag are skipped, making this idempotent
+/// across restarts.
+async fn tag_crashed_chats(
+    client: &ChatClient,
+    chat_monitor: &ChatMonitor,
+) -> Result<(), PluginError> {
+    for chat_id in chat_monitor.get_chat_ids().await {
+        let Some(state) = chat_monitor.get_chat_state(chat_id).await else {
+            continue;
+        };
+
+        // Already parked (possibly by a previous run) — nothing to do.
+        if state.tags.iter().any(|tag| tag == "ai_completions:error") {
+            continue;
+        }
+
+        let Some(offender) = find_unfinished_message(&state.messages) else {
+            continue;
+        };
+
+        tracing::warn!(
+            chat_id = chat_id,
+            message_id = offender.id,
+            is_streaming = offender.is_streaming,
+            is_finished = offender.is_finished,
+            "unfinished message found at startup; parking chat with error tag"
+        );
+
+        client
+            .update_chat(UpdateChatParams {
+                chat_id,
+                title: None,
+                add_tags: vec!["ai_completions:error".to_string()],
+                remove_tags: vec![],
+            })
+            .await
+            .map_err(|e| PluginError::StartupReconciliation(e.to_string()))?;
+    }
+
+    Ok(())
+}
+
 /// Errors that can occur during plugin execution.
 #[derive(Debug, thiserror::Error)]
 pub enum PluginError {
@@ -199,4 +260,51 @@ pub enum PluginError {
     Subscription(String),
     #[error("configuration error: {0}")]
     Config(String),
+    #[error("startup reconciliation failed: {0}")]
+    StartupReconciliation(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+
+    fn message(id: i64, is_finished: bool, is_streaming: bool) -> Message {
+        Message {
+            id,
+            chat_id: 1,
+            role: "assistant".to_string(),
+            content: "partial".to_string(),
+            tool_call_id: None,
+            created_at: Utc::now(),
+            reasoning_content: None,
+            tags: vec![],
+            is_finished,
+            is_streaming,
+            tool_calls: vec![],
+        }
+    }
+
+    #[test]
+    fn finds_streaming_message() {
+        let messages = vec![message(1, true, false), message(2, false, true)];
+        assert_eq!(find_unfinished_message(&messages).map(|m| m.id), Some(2));
+    }
+
+    #[test]
+    fn finds_not_finished_message() {
+        let messages = vec![message(1, false, false)];
+        assert_eq!(find_unfinished_message(&messages).map(|m| m.id), Some(1));
+    }
+
+    #[test]
+    fn all_finished_messages_is_none() {
+        let messages = vec![message(1, true, false), message(2, true, false)];
+        assert_eq!(find_unfinished_message(&messages).map(|m| m.id), None);
+    }
+
+    #[test]
+    fn empty_history_is_none() {
+        assert_eq!(find_unfinished_message(&[]).map(|m| m.id), None);
+    }
 }

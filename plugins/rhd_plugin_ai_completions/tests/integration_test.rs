@@ -5,7 +5,7 @@
 use std::time::Duration;
 
 use rhd_chat_api::{
-    AddQueueMessageParams, CreateChatParams, GetChatParams, GetPluginsParams,
+    AddMessageParams, AddQueueMessageParams, CreateChatParams, GetChatParams, GetPluginsParams,
 };
 use rhd_chat_client::ChatClient;
 use rhd_mock_ai_provider::{MockAiProvider, SimpleListener};
@@ -668,4 +668,173 @@ async fn test_finish_nonexistent_stream() {
     })
     .await
     .expect("Test timed out");
+}
+
+/// Test: Startup reconciliation tags chats with unfinished messages.
+/// A chat left mid-stream by a simulated crash gets the error tag and never triggers.
+#[tokio::test]
+async fn test_startup_tags_chat_with_unfinished_message() {
+    init_tracing();
+    timeout(Duration::from_secs(10), async {
+        let env = TestEnv::new().await;
+
+        // Seed the corrupted state BEFORE the plugin starts: an assistant message
+        // left streaming by a simulated crash.
+        let client = ChatClient::connect(&env.chat_server_url()).await.unwrap();
+        let chat_id = client
+            .create_chat(CreateChatParams {
+                title: "crashed".into(),
+                tags: vec![],
+            })
+            .await
+            .unwrap()
+            .chat_id;
+        client
+            .add_message(AddMessageParams {
+                chat_id,
+                role: "assistant".to_string(),
+                content: "partial answer".to_string(),
+                tool_call_id: None,
+                reasoning_content: None,
+                tags: vec![],
+                is_finished: false,
+                is_streaming: true,
+            })
+            .await
+            .unwrap();
+
+        // Wait for the chat to be fully created and visible to list_chats
+        sleep(Duration::from_millis(500)).await;
+
+        // Now start the plugin — startup reconciliation must park this chat.
+        let plugin_handle = tokio::spawn({
+            let url = env.chat_server_url();
+            let config = env.config.clone();
+            async move { plugin::run_plugin(&url, "test_plugin", config).await }
+        });
+
+        // Poll until the error tag appears.
+        let mut tagged = false;
+        for _ in 0..50 {
+            let chat = client
+                .get_chat(GetChatParams { chat_id, if_version_higher_than: None })
+                .await
+                .unwrap();
+            if chat.chat.tags.iter().any(|t| t == "ai_completions:error") {
+                tagged = true;
+                break;
+            }
+            sleep(Duration::from_millis(100)).await;
+        }
+        assert!(tagged, "chat with unfinished message must be tagged at startup");
+
+        // And it never triggers afterwards: queue a message, wait, assert no AI request.
+        client
+            .add_queue_message(AddQueueMessageParams {
+                chat_id,
+                role: "user".to_string(),
+                content: "still here?".to_string(),
+                tool_call_id: None,
+                reasoning_content: None,
+                tags: vec![],
+            })
+            .await
+            .unwrap();
+        sleep(Duration::from_secs(2)).await;
+        let chat = client
+            .get_chat(GetChatParams { chat_id, if_version_higher_than: None })
+            .await
+            .unwrap();
+        assert_eq!(
+            chat.queued_messages_count, 1,
+            "parked chat must not process its queue"
+        );
+
+        plugin_handle.abort();
+    })
+    .await
+    .unwrap();
+}
+
+/// Test: A chat with all finished messages does NOT get tagged at startup.
+#[tokio::test]
+async fn test_startup_does_not_tag_finished_chat() {
+    init_tracing();
+    timeout(Duration::from_secs(10), async {
+        let env = TestEnv::new().await;
+
+        // Create a chat with a finished message (normal state).
+        let client = ChatClient::connect(&env.chat_server_url()).await.unwrap();
+        let chat_id = client
+            .create_chat(CreateChatParams {
+                title: "normal".into(),
+                tags: vec![],
+            })
+            .await
+            .unwrap()
+            .chat_id;
+        client
+            .add_message(AddMessageParams {
+                chat_id,
+                role: "assistant".to_string(),
+                content: "complete answer".to_string(),
+                tool_call_id: None,
+                reasoning_content: None,
+                tags: vec![],
+                is_finished: true,
+                is_streaming: false,
+            })
+            .await
+            .unwrap();
+
+        // Start the plugin.
+        let plugin_handle = tokio::spawn({
+            let url = env.chat_server_url();
+            let config = env.config.clone();
+            async move { plugin::run_plugin(&url, "test_plugin", config).await }
+        });
+
+        // Wait for plugin to initialize.
+        sleep(Duration::from_secs(2)).await;
+
+        // Chat should NOT have the error tag.
+        let chat = client
+            .get_chat(GetChatParams { chat_id, if_version_higher_than: None })
+            .await
+            .unwrap();
+        assert!(
+            !chat.chat.tags.iter().any(|t| t == "ai_completions:error"),
+            "chat with finished messages must not be tagged"
+        );
+
+        // And it should trigger normally when a user message is queued.
+        client
+            .add_queue_message(AddQueueMessageParams {
+                chat_id,
+                role: "user".to_string(),
+                content: "hello".to_string(),
+                tool_call_id: None,
+                reasoning_content: None,
+                tags: vec![],
+            })
+            .await
+            .unwrap();
+
+        // Wait for plugin to process.
+        sleep(Duration::from_secs(3)).await;
+
+        let chat = client
+            .get_chat(GetChatParams { chat_id, if_version_higher_than: None })
+            .await
+            .unwrap();
+        // Should have processed the queue (queued_messages_count should be 0 or messages added).
+        assert!(
+            chat.messages.len() >= 2,
+            "normal chat should process queued messages"
+        );
+
+        plugin_handle.abort();
+    })
+    .await
+    .unwrap();
 }
