@@ -22,6 +22,17 @@ pub struct ModelConfig {
     #[serde(rename = "apiKey")]
     pub api_key: Option<ApiKeyConfig>,
     pub model: Option<String>,
+    /// Replay assistant `reasoning_content` to the provider (default: true).
+    /// Set false for providers that reject or mishandle it (e.g. DeepSeek-R1).
+    #[serde(rename = "sendReasoningContent")]
+    pub send_reasoning_content: Option<bool>,
+}
+
+impl ModelConfig {
+    /// D3: reasoning content is sent unless explicitly disabled for this model.
+    pub fn sends_reasoning_content(&self) -> bool {
+        self.send_reasoning_content.unwrap_or(true)
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -163,5 +174,30 @@ anotherKey: another-secret
 
         let creds = load_credentials(creds_file.path().to_str().unwrap()).unwrap();
         assert_eq!(creds.credentials.get("testKey"), Some(&"my-secret-key".to_string()));
+    }
+
+    #[test]
+    fn test_send_reasoning_content_flag() {
+        let mut config_file = NamedTempFile::new().unwrap();
+        std::io::Write::write_all(
+            &mut config_file,
+            br#"
+credentialsConfig: credentials.yaml
+ai_completions:
+  models:
+    default:
+      alias: strict
+    strict:
+      baseUrl: "https://example.com/v1"
+      apiKey:
+        cred: k
+      model: "m"
+      sendReasoningContent: false
+"#,
+        )
+        .unwrap();
+        let config = load_config(config_file.path().to_str().unwrap()).unwrap();
+        assert!(!config.ai_completions.models["strict"].sends_reasoning_content());
+        assert!(config.ai_completions.models["default"].sends_reasoning_content());
     }
 }

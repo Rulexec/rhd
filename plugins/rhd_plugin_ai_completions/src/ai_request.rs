@@ -3,7 +3,7 @@
 //! This module handles the complete flow of making an AI completion request:
 //! 1. Send preRequest event and wait for acknowledgments
 //! 2. Process queued messages (move from queue to regular messages)
-//! 3. Build AI request from chat messages
+//! 3. Build and validate AI request from chat messages (D4: refuse inconsistent histories)
 //! 4. Make AI completion request
 //! 5. Handle response (success or error)
 
@@ -11,15 +11,17 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures::StreamExt;
-use rhd_ai_client::{AiClient, ChatCompletionRequest, ChatMessage};
+use rhd_ai_client::{AiClient, ChatCompletionRequest};
 use rhd_chat_api::{
-    AckCustomEventParams, AddMessageParams, DeleteQueueMessageParams, GetChatParams,
-    GetQueueMessagesParams, Message, SendCustomEventParams, StreamFinishParams, StreamPushParams,
-    StreamToolCallDelta, UpdateChatParams, UpdateMessageParams,
+    AckCustomEventParams, AddMessageParams, GetChatParams, Message, SendCustomEventParams,
+    StreamFinishParams, StreamPushParams, StreamToolCallDelta, UpdateChatParams,
+    UpdateMessageParams,
 };
 use rhd_chat_client::{ChatClient, PluginsMonitor};
 
 use crate::config::PluginConfig;
+use crate::message_conversion;
+use crate::queued_messages::process_queued_messages;
 use crate::trigger_detection::TriggerReason;
 
 /// Handle AI completion request for a chat.
@@ -29,7 +31,7 @@ use crate::trigger_detection::TriggerReason;
 /// 2. Wait for all other plugins to acknowledge
 /// 3. Process queued messages if trigger reason is QueuedMessages
 /// 4. Acknowledge own event
-/// 5. Build and send AI completion request
+/// 5. Build and validate the AI completion request — on validation failure, park the chat and send nothing (D4)
 /// 6. Handle response (add assistant message on success, error tag/message on failure)
 pub async fn handle_ai_request(
     client: Arc<ChatClient>,
@@ -143,15 +145,41 @@ pub async fn handle_ai_request(
         .await
         .map_err(|e| AiRequestError::EventAck(e.to_string()))?;
 
-    // Build AI request
-    let filtered_messages = filter_messages_for_ai(&current_messages);
-    let ai_messages = convert_to_ai_messages(&filtered_messages);
-
     // Get model config
     let default_model = &config.ai_completions.models["default"];
     let default_name = "default".to_string();
     let model_name = default_model.alias.as_ref().unwrap_or(&default_name);
     let model_config = &config.ai_completions.models[model_name];
+
+    // Build AI request. A request is either complete or it is not sent (D4): an
+    // inconsistent history parks the chat instead of producing a stripped request.
+    let ai_messages = match message_conversion::build_chat_messages(&current_messages, model_config) {
+        Ok(built) => built,
+        Err(error) => {
+            tracing::error!(
+                chat_id = chat_id,
+                error = %error,
+                "message conversion failed; refusing to send request, parking chat"
+            );
+            client
+                .update_chat(UpdateChatParams {
+                    chat_id,
+                    title: None,
+                    add_tags: vec!["ai_completions:error".to_string()],
+                    remove_tags: vec![],
+                })
+                .await
+                .map_err(|tag_error| {
+                    tracing::error!(
+                        chat_id = chat_id,
+                        error = %tag_error,
+                        "failed to park chat after conversion error"
+                    );
+                    AiRequestError::TagAdd(tag_error.to_string())
+                })?;
+            return Err(AiRequestError::MessageConversion(error.to_string()));
+        }
+    };
 
     // Create message with streaming flags BEFORE AI request
     let add_result = client
@@ -427,110 +455,6 @@ pub async fn handle_ai_request(
     }
 }
 
-/// Process queued messages: remove from queue and add as regular messages.
-async fn process_queued_messages(
-    client: &ChatClient,
-    chat_id: i64,
-) -> Result<(), AiRequestError> {
-    tracing::debug!(chat_id = chat_id, "fetching queued messages");
-    // Get queued messages
-    let queue_result = client
-        .get_queue_messages(GetQueueMessagesParams { chat_id })
-        .await
-        .map_err(|e| AiRequestError::QueueGet(e.to_string()))?;
-
-    tracing::debug!(
-        chat_id = chat_id,
-        message_count = queue_result.messages.len(),
-        "found queued messages"
-    );
-
-    // Delete each queued message and add as regular message
-    for queue_msg in queue_result.messages {
-        tracing::debug!(
-            chat_id = chat_id,
-            message_id = queue_msg.id,
-            "deleting message from queue"
-        );
-        // Delete from queue
-        client
-            .delete_queue_message(DeleteQueueMessageParams {
-                message_id: queue_msg.id,
-            })
-            .await
-            .map_err(|e| AiRequestError::QueueDelete(e.to_string()))?;
-
-        tracing::debug!(
-            chat_id = chat_id,
-            message_id = queue_msg.id,
-            role = %queue_msg.role,
-            "adding message as regular message"
-        );
-        // Add as regular message
-        client
-            .add_message(AddMessageParams {
-                chat_id,
-                role: queue_msg.role,
-                content: queue_msg.content,
-                tool_call_id: queue_msg.tool_call_id,
-                reasoning_content: queue_msg.reasoning_content,
-                tags: queue_msg.tags,
-                is_finished: true,
-                is_streaming: false,
-            })
-            .await
-            .map_err(|e| AiRequestError::MessageAdd(e.to_string()))?;
-        tracing::debug!(
-            chat_id = chat_id,
-            message_id = queue_msg.id,
-            "successfully added message"
-        );
-    }
-
-    Ok(())
-}
-
-/// Filter messages for AI request (exclude error messages).
-///
-/// Only includes messages with roles: user, assistant, system, tool.
-/// Excludes messages with role "ai_completions:error".
-fn filter_messages_for_ai(messages: &[Message]) -> Vec<Message> {
-    messages
-        .iter()
-        .filter(|m| matches!(m.role.as_str(), "user" | "assistant" | "system" | "tool"))
-        .cloned()
-        .collect()
-}
-
-/// Convert chat messages to AI messages.
-///
-/// Maps Message objects to ChatMessage enum variants for the AI client.
-fn convert_to_ai_messages(messages: &[Message]) -> Vec<ChatMessage> {
-    messages
-        .iter()
-        .map(|m| match m.role.as_str() {
-            "user" => ChatMessage::User {
-                content: m.content.clone(),
-            },
-            "assistant" => ChatMessage::Assistant {
-                content: Some(m.content.clone()),
-                tool_calls: None, // TODO: Add tool calls support
-                reasoning_content: None,
-            },
-            "system" => ChatMessage::System {
-                content: m.content.clone(),
-            },
-            "tool" => ChatMessage::Tool {
-                tool_call_id: String::new(), // TODO: Extract from message
-                content: m.content.clone(),
-            },
-            _ => ChatMessage::User {
-                content: m.content.clone(),
-            },
-        })
-        .collect()
-}
-
 /// Errors that can occur during AI request handling.
 #[derive(Debug, thiserror::Error)]
 pub enum AiRequestError {
@@ -556,83 +480,6 @@ pub enum AiRequestError {
     StreamFinish(String),
     #[error("AI request failed: {0}")]
     AiRequest(String),
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use chrono::Utc;
-
-    fn create_message(id: i64, role: &str, content: &str) -> Message {
-        Message {
-            id,
-            chat_id: 1,
-            role: role.to_string(),
-            content: content.to_string(),
-            tool_call_id: None,
-            created_at: Utc::now(),
-            reasoning_content: None,
-            tags: vec![],
-            is_finished: true,
-            is_streaming: false,
-            tool_calls: vec![],
-        }
-    }
-
-    #[test]
-    fn test_filter_messages_for_ai() {
-        let messages = vec![
-            create_message(1, "user", "Hello"),
-            create_message(2, "ai_completions:error", "Error occurred"),
-            create_message(3, "assistant", "Response"),
-            create_message(4, "system", "System prompt"),
-            create_message(5, "tool", "Tool result"),
-        ];
-
-        let filtered = filter_messages_for_ai(&messages);
-        assert_eq!(filtered.len(), 4);
-        assert_eq!(filtered[0].role, "user");
-        assert_eq!(filtered[1].role, "assistant");
-        assert_eq!(filtered[2].role, "system");
-        assert_eq!(filtered[3].role, "tool");
-    }
-
-    #[test]
-    fn test_filter_messages_excludes_error_role() {
-        let messages = vec![
-            create_message(1, "user", "Hello"),
-            create_message(2, "ai_completions:error", "Error"),
-        ];
-
-        let filtered = filter_messages_for_ai(&messages);
-        assert_eq!(filtered.len(), 1);
-        assert_eq!(filtered[0].role, "user");
-    }
-
-    #[test]
-    fn test_convert_to_ai_messages() {
-        let messages = vec![
-            create_message(1, "user", "Hello"),
-            create_message(2, "assistant", "Hi there"),
-            create_message(3, "system", "You are helpful"),
-        ];
-
-        let ai_messages = convert_to_ai_messages(&messages);
-        assert_eq!(ai_messages.len(), 3);
-
-        match &ai_messages[0] {
-            ChatMessage::User { content } => assert_eq!(content, "Hello"),
-            _ => panic!("Expected User message"),
-        }
-
-        match &ai_messages[1] {
-            ChatMessage::Assistant { content, .. } => assert_eq!(content, &Some("Hi there".to_string())),
-            _ => panic!("Expected Assistant message"),
-        }
-
-        match &ai_messages[2] {
-            ChatMessage::System { content } => assert_eq!(content, "You are helpful"),
-            _ => panic!("Expected System message"),
-        }
-    }
+    #[error("message conversion failed: {0}")]
+    MessageConversion(String),
 }
