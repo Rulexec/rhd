@@ -119,6 +119,7 @@ mod tests {
             chat_id: 1,
             role: role.to_string(),
             content: content.to_string(),
+            tool_call_id: None,
             created_at: Utc::now(),
             reasoning_content: None,
             tags: vec![],

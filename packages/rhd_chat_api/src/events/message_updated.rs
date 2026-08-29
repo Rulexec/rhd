@@ -48,6 +48,7 @@ mod tests {
                 chat_id: 123,
                 role: "user".to_string(),
                 content: "Updated content".to_string(),
+                tool_call_id: None,
                 created_at: Utc::now(),
                 reasoning_content: Some("Updated reasoning".to_string()),
                 tags: vec!["tag1".to_string()],

@@ -10,8 +10,9 @@ use serde::{Deserialize, Serialize};
 /// ```json
 /// {
 ///   "chatId": 123,
-///   "role": "user",
-///   "content": "New message",
+///   "role": "tool",
+///   "content": "Tool result",
+///   "toolCallId": "call_abc123",
 ///   "reasoningContent": "Thinking...",
 ///   "tags": ["tag1"]
 /// }
@@ -29,6 +30,9 @@ pub struct AddMessageParams {
     pub role: String,
     /// Main content of the message.
     pub content: String,
+    /// For `tool`-role messages: the id of the assistant tool call being answered.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
     /// Optional reasoning/thinking content.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_content: Option<String>,
@@ -68,6 +72,7 @@ mod tests {
             chat_id: 123,
             role: "user".to_string(),
             content: "Hello".to_string(),
+            tool_call_id: None,
             reasoning_content: Some("Thinking...".to_string()),
             tags: vec!["tag1".to_string()],
             is_finished: true,
@@ -92,10 +97,18 @@ mod tests {
         assert_eq!(params.chat_id, 123);
         assert_eq!(params.role, "user");
         assert_eq!(params.content, "Hello");
+        assert!(params.tool_call_id.is_none());
         assert!(params.reasoning_content.is_none());
         assert!(params.tags.is_empty());
         assert!(params.is_finished);
         assert!(!params.is_streaming);
+    }
+
+    #[test]
+    fn test_add_message_params_with_tool_call_id() {
+        let json = r#"{"chatId":1,"role":"tool","content":"ok","toolCallId":"call_1"}"#;
+        let params: AddMessageParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.tool_call_id, Some("call_1".to_string()));
     }
 
     #[test]

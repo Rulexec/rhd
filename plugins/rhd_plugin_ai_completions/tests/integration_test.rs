@@ -178,6 +178,7 @@ async fn test_plugin_triggers_on_queued_messages() {
                 chat_id: create_result.chat_id,
                 role: "user".to_string(),
                 content: "Hello".to_string(),
+                tool_call_id: None,
                 reasoning_content: None,
                 tags: vec![],
             })
@@ -247,6 +248,7 @@ async fn test_plugin_skips_chats_with_error_tag() {
                 chat_id: create_result.chat_id,
                 role: "user".to_string(),
                 content: "Hello".to_string(),
+                tool_call_id: None,
                 reasoning_content: None,
                 tags: vec![],
             })
@@ -420,6 +422,7 @@ ai_completions:
                 chat_id: create_result.chat_id,
                 role: "user".to_string(),
                 content: "Hello".to_string(),
+                tool_call_id: None,
                 reasoning_content: None,
                 tags: vec![],
             })
@@ -513,6 +516,7 @@ async fn test_streaming_ai_request_flow() {
                 chat_id,
                 role: "user".to_string(),
                 content: "Hello".to_string(),
+                tool_call_id: None,
                 reasoning_content: None,
                 tags: vec![],
             })
@@ -599,6 +603,7 @@ async fn test_stream_subscription_receives_chunks() {
                 chat_id,
                 role: "user".to_string(),
                 content: "Test streaming".to_string(),
+                tool_call_id: None,
                 reasoning_content: None,
                 tags: vec![],
             })

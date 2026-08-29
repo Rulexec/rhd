@@ -18,6 +18,7 @@ pub async fn execute(subcommand: QueueSubcommand) -> Result<(), Box<dyn std::err
                 chat_id,
                 role: "user".to_string(),
                 content,
+                tool_call_id: None,
                 reasoning_content: None,
                 tags: vec![],
             }).await?;

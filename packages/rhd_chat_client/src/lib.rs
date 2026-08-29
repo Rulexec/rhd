@@ -28,6 +28,7 @@
 //!         chat_id,
 //!         role: "user".to_string(),
 //!         content: "Hello!".to_string(),
+//!         tool_call_id: None,
 //!         reasoning_content: None,
 //!         tags: vec![],
 //!         is_finished: true,

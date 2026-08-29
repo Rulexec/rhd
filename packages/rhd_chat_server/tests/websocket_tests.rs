@@ -174,6 +174,7 @@ async fn test_get_chat_includes_queue_count() {
             chat_id,
             role: "user".to_string(),
             content: "Queue message 1".to_string(),
+            tool_call_id: None,
             reasoning_content: None,
             tags: vec![],
         })
@@ -185,6 +186,7 @@ async fn test_get_chat_includes_queue_count() {
             chat_id,
             role: "user".to_string(),
             content: "Queue message 2".to_string(),
+            tool_call_id: None,
             reasoning_content: None,
             tags: vec![],
         })
@@ -222,6 +224,7 @@ async fn test_add_message() {
             chat_id,
             role: "user".to_string(),
             content: "Hello".to_string(),
+            tool_call_id: None,
             reasoning_content: None,
             tags: vec!["greeting".to_string()],
             is_finished: true,
@@ -278,6 +281,7 @@ async fn test_subscription_chat_events() {
             chat_id,
             role: "user".to_string(),
             content: "Test message".to_string(),
+            tool_call_id: None,
             reasoning_content: None,
             tags: vec![],
             is_finished: true,
@@ -336,6 +340,7 @@ async fn test_update_tool_call_tags_broadcasts_message_updated() {
             chat_id,
             role: "assistant".to_string(),
             content: "calling tool".to_string(),
+            tool_call_id: None,
             reasoning_content: None,
             tags: vec![],
             is_finished: true,
@@ -705,6 +710,7 @@ async fn test_message_streaming_flags_persisted() {
             chat_id,
             role: "assistant".to_string(),
             content: "".to_string(),
+            tool_call_id: None,
             reasoning_content: None,
             tags: vec![],
             is_finished: false,
@@ -765,4 +771,58 @@ async fn test_message_streaming_flags_persisted() {
     assert!(msg2.is_finished);
     assert!(!msg2.is_streaming);
     assert_eq!(msg2.content, "Final content");
+}
+
+#[tokio::test]
+async fn test_add_tool_message_requires_tool_call_id() {
+    let (port, _handle) = start_test_server().await;
+    let client = connect_client(port).await;
+
+    let chat_id = client
+        .create_chat(CreateChatParams { title: "t".into(), tags: vec![] })
+        .await
+        .unwrap()
+        .chat_id;
+
+    // Without toolCallId → invalid_request error
+    let err = client
+        .add_message(AddMessageParams {
+            chat_id,
+            role: "tool".to_string(),
+            content: "result".to_string(),
+            tool_call_id: None,
+            reasoning_content: None,
+            tags: vec![],
+            is_finished: true,
+            is_streaming: false,
+        })
+        .await
+        .expect_err("tool message without toolCallId must be rejected");
+    assert!(format!("{err:?}").contains("toolCallId") || format!("{err:?}").contains("Invalid"));
+
+    // With toolCallId → stored and returned
+    let ok = client
+        .add_message(AddMessageParams {
+            chat_id,
+            role: "tool".to_string(),
+            content: "result".to_string(),
+            tool_call_id: Some("call_1".to_string()),
+            reasoning_content: None,
+            tags: vec![],
+            is_finished: true,
+            is_streaming: false,
+        })
+        .await
+        .unwrap();
+
+    let chat_result = client
+        .get_chat(GetChatParams { chat_id, if_version_higher_than: None })
+        .await
+        .unwrap();
+    let tool_msg = chat_result
+        .messages
+        .iter()
+        .find(|m| m.id == ok.message_id)
+        .expect("tool message present");
+    assert_eq!(tool_msg.tool_call_id.as_deref(), Some("call_1"));
 }

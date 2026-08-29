@@ -79,6 +79,7 @@ fn convert_message_to_api(
         chat_id: msg.chat_id,
         role: msg.role,
         content: msg.content,
+        tool_call_id: msg.tool_call_id,
         created_at,
         reasoning_content: msg.thinking_content,
         tags,

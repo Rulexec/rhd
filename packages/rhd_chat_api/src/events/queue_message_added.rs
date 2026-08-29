@@ -45,6 +45,7 @@ mod tests {
                 chat_id: 123,
                 role: "user".to_string(),
                 content: "New queue message".to_string(),
+                tool_call_id: None,
                 created_at: Utc::now(),
                 reasoning_content: None,
                 tags: vec![],

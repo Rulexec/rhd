@@ -30,6 +30,7 @@ fn convert_message_to_api(
         chat_id: msg.chat_id,
         role: msg.role,
         content: msg.content,
+        tool_call_id: msg.tool_call_id,
         created_at,
         reasoning_content: msg.thinking_content,
         tags,
@@ -66,6 +67,14 @@ pub async fn add_message(
         return Ok(serde_json::to_value(ErrorResponse::chat_not_found(request_id, params.chat_id))?);
     }
 
+    // A tool message is unusable without the id of the call it answers — reject at the boundary.
+    if params.role == "tool" && params.tool_call_id.is_none() {
+        return Ok(serde_json::to_value(ErrorResponse::invalid_request(
+            request_id,
+            "role \"tool\" requires toolCallId".to_string(),
+        ))?);
+    }
+
     // Add message
     let (message_id, chat_version) = db.add_message(
         params.chat_id,
@@ -75,7 +84,7 @@ pub async fn add_message(
         params.reasoning_content.as_deref(),
         params.is_finished,
         params.is_streaming,
-        None, // tool_call_id - phase-2 will pass the real value
+        params.tool_call_id.as_deref(),
     )?;
 
     // Set tags if provided

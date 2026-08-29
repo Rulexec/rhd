@@ -48,8 +48,9 @@ pub struct Chat {
 /// {
 ///   "id": 456,
 ///   "chatId": 123,
-///   "role": "user",
-///   "content": "Hello",
+///   "role": "tool",
+///   "content": "Sunny, 22C",
+///   "toolCallId": "call_abc123",
 ///   "createdAt": "2026-08-20T18:00:00Z",
 ///   "reasoningContent": null,
 ///   "tags": ["important"],
@@ -68,6 +69,9 @@ pub struct Message {
     pub role: String,
     /// Main content of the message.
     pub content: String,
+    /// For `tool`-role messages: the id of the assistant tool call this message answers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
     /// Timestamp when the message was created.
     pub created_at: DateTime<Utc>,
     /// Optional reasoning/thinking content.
@@ -235,6 +239,7 @@ mod tests {
             chat_id: 123,
             role: "user".to_string(),
             content: "Hello".to_string(),
+            tool_call_id: None,
             created_at: "2026-08-20T18:00:00Z".parse().unwrap(),
             reasoning_content: None,
             tags: vec!["important".to_string()],
@@ -264,6 +269,7 @@ mod tests {
             chat_id: 123,
             role: "assistant".to_string(),
             content: "Answer".to_string(),
+            tool_call_id: None,
             created_at: "2026-08-20T18:00:00Z".parse().unwrap(),
             reasoning_content: Some("Thinking...".to_string()),
             tags: vec![],
@@ -277,6 +283,39 @@ mod tests {
 
         let deserialized: Message = serde_json::from_str(&json).unwrap();
         assert_eq!(message, deserialized);
+    }
+
+    #[test]
+    fn test_message_tool_call_id_serialization() {
+        let message = Message {
+            id: 456,
+            chat_id: 123,
+            role: "tool".to_string(),
+            content: "Sunny, 22C".to_string(),
+            tool_call_id: Some("call_abc123".to_string()),
+            created_at: "2026-08-20T18:00:00Z".parse().unwrap(),
+            reasoning_content: None,
+            tags: vec![],
+            is_finished: true,
+            is_streaming: false,
+            tool_calls: vec![],
+        };
+
+        let json = serde_json::to_string(&message).unwrap();
+        assert!(json.contains("\"toolCallId\":\"call_abc123\""));
+
+        let deserialized: Message = serde_json::from_str(&json).unwrap();
+        assert_eq!(message, deserialized);
+    }
+
+    #[test]
+    fn test_message_omits_tool_call_id_when_none() {
+        let json = r#"{"id":1,"chatId":1,"role":"user","content":"Hi","createdAt":"2026-08-20T18:00:00Z","isFinished":true,"isStreaming":false}"#;
+        let message: Message = serde_json::from_str(json).unwrap();
+        assert_eq!(message.tool_call_id, None);
+
+        let out = serde_json::to_string(&message).unwrap();
+        assert!(!out.contains("toolCallId"));
     }
 
     #[test]
