@@ -82,6 +82,139 @@ pub async fn run_plugin(
 
     tracing::info!("Subscribed to all chats");
 
+    // Subscribe to custom events for coordination with AI completions plugin
+    let client_for_events = Arc::clone(&client);
+    let chat_monitor_for_events = Arc::clone(&chat_monitor);
+    let cached_prompts_for_events = cached_prompts.clone();
+    let plugin_id_for_events = plugin_id.to_string();
+
+    client.on_custom_event(move |event| {
+        let client = Arc::clone(&client_for_events);
+        let chat_monitor = Arc::clone(&chat_monitor_for_events);
+        let cached_prompts = cached_prompts_for_events.clone();
+        let _plugin_id = plugin_id_for_events.clone();
+
+        async move {
+            // Only handle ai_completions:preRequest events
+            if event.event_name != "ai_completions:preRequest" {
+                return;
+            }
+
+            let event_id = event.event_id.clone();
+
+            tracing::info!(
+                event_id = %event_id,
+                "received ai_completions:preRequest event"
+            );
+
+            // Extract chat ID from event
+            let chat_id = match extract_chat_id_from_event(&event) {
+                Some(id) => id,
+                None => {
+                    tracing::warn!(
+                        event_id = %event_id,
+                        "event missing chatId, acknowledging without action"
+                    );
+                    // Still acknowledge to avoid blocking
+                    let _ = client.ack_custom_event(rhd_chat_api::AckCustomEventParams {
+                        event_id: event_id.clone(),
+                        is_rejected: None,
+                    }).await;
+                    return;
+                }
+            };
+
+            // Get chat state
+            let chat_state = match chat_monitor.get_chat_state(chat_id).await {
+                Some(state) => state,
+                None => {
+                    tracing::warn!(
+                        chat_id = chat_id,
+                        "chat not found in monitor, acknowledging without action"
+                    );
+                    let _ = client.ack_custom_event(rhd_chat_api::AckCustomEventParams {
+                        event_id: event_id.clone(),
+                        is_rejected: None,
+                    }).await;
+                    return;
+                }
+            };
+
+            // Check if chat has unfinished assistant message
+            if system_prompt::has_unfinished_assistant_message(&chat_state) {
+                tracing::debug!(
+                    chat_id = chat_id,
+                    "chat has unfinished assistant message, acknowledging without injection"
+                );
+                let _ = client.ack_custom_event(rhd_chat_api::AckCustomEventParams {
+                    event_id: event_id.clone(),
+                    is_rejected: None,
+                }).await;
+                return;
+            }
+
+            // Check if we need to inject system prompts
+            let required_names = system_prompt::get_required_prompt_names(&chat_state);
+            let mut needs_injection = false;
+
+            for prompt_name in &required_names {
+                if !system_prompt::has_system_prompt_message(&chat_state, prompt_name) {
+                    needs_injection = true;
+                    break;
+                }
+            }
+
+            if needs_injection {
+                // Inject system prompts BEFORE acknowledging
+                tracing::info!(
+                    chat_id = chat_id,
+                    "injecting system prompts before acknowledging event"
+                );
+
+                match system_prompt::process_chat(&client, &chat_state, &cached_prompts).await {
+                    Ok(count) => {
+                        tracing::info!(
+                            chat_id = chat_id,
+                            injected_count = count,
+                            "injected system prompts before ack"
+                        );
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            chat_id = chat_id,
+                            error = %e,
+                            "failed to inject system prompts, acknowledging anyway"
+                        );
+                    }
+                }
+            }
+
+            // Acknowledge the event
+            match client.ack_custom_event(rhd_chat_api::AckCustomEventParams {
+                event_id: event_id.clone(),
+                is_rejected: None,
+            }).await {
+                Ok(_) => {
+                    tracing::info!(
+                        event_id = %event_id,
+                        chat_id = chat_id,
+                        "acknowledged ai_completions:preRequest event"
+                    );
+                }
+                Err(e) => {
+                    tracing::error!(
+                        event_id = %event_id,
+                        chat_id = chat_id,
+                        error = %e,
+                        "failed to acknowledge event"
+                    );
+                }
+            }
+        }
+    });
+
+    tracing::info!("Subscribed to custom events for coordination");
+
     // Startup reconciliation
     let injected_count = startup_reconciliation(&client, &chat_monitor, &cached_prompts).await?;
     tracing::info!("Startup reconciliation: injected {} system prompts", injected_count);
@@ -150,6 +283,16 @@ async fn startup_reconciliation(
     }
 
     Ok(total_injected)
+}
+
+/// Extract chat ID from a custom event's additional data.
+///
+/// The AI completions plugin includes `chatId` in the event's additional JSON field.
+fn extract_chat_id_from_event(event: &rhd_chat_api::CustomEventData) -> Option<i64> {
+    let additional = event.additional.as_ref()?;
+    let json: serde_json::Value = serde_json::from_str(additional).ok()?;
+    let chat_id_str = json.get("chatId")?.as_str()?;
+    chat_id_str.parse::<i64>().ok()
 }
 
 /// Errors that can occur during plugin execution.
