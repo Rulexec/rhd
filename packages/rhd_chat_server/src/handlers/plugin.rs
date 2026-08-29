@@ -195,6 +195,9 @@ pub async fn send_custom_event(
         &params.event_name,
         sender_plugin_id.as_deref(),
         params.additional.as_deref(),
+        params.chat_id.as_deref(),
+        params.message_id.as_deref(),
+        params.tool_call_id.as_deref(),
     )?;
 
     // Broadcast to ALL connected clients
@@ -242,8 +245,11 @@ pub async fn ack_custom_event(
         }
     };
 
+    // Determine rejection status (default to false if not provided)
+    let is_rejected = params.is_rejected.unwrap_or(false);
+
     // Acknowledge event
-    let ack_event = custom_events::ack_custom_event(db, &params.event_id, &plugin_id)?;
+    let ack_event = custom_events::ack_custom_event(db, &params.event_id, &plugin_id, is_rejected)?;
 
     // Send acknowledgment to the original sender
     if let Some(event) = ack_event {

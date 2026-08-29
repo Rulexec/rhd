@@ -222,8 +222,11 @@ impl ChatDb {
         event_name: &str,
         sender_plugin_id: Option<&str>,
         additional: Option<&str>,
+        chat_id: Option<&str>,
+        message_id: Option<&str>,
+        tool_call_id: Option<&str>,
     ) -> DbResult<()> {
-        custom_events::create_custom_event(&self.conn, event_id, event_name, sender_plugin_id, additional)
+        custom_events::create_custom_event(&self.conn, event_id, event_name, sender_plugin_id, additional, chat_id, message_id, tool_call_id)
     }
 
     pub fn get_custom_event(&self, event_id: &str) -> DbResult<Option<CustomEventInfo>> {

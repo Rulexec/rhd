@@ -245,5 +245,35 @@ fn migrate(conn: &Connection) -> DbResult<()> {
         conn.execute_batch("ALTER TABLE messages_queue ADD COLUMN tool_call_id TEXT")?;
     }
 
+    // Check if chat_id column exists in custom_events table
+    let has_chat_id: bool = conn
+        .prepare("SELECT COUNT(*) FROM pragma_table_info('custom_events') WHERE name='chat_id'")?
+        .query_row([], |row| row.get::<_, i64>(0))?
+        > 0;
+
+    if !has_chat_id {
+        conn.execute_batch("ALTER TABLE custom_events ADD COLUMN chat_id TEXT")?;
+    }
+
+    // Check if message_id column exists in custom_events table
+    let has_message_id: bool = conn
+        .prepare("SELECT COUNT(*) FROM pragma_table_info('custom_events') WHERE name='message_id'")?
+        .query_row([], |row| row.get::<_, i64>(0))?
+        > 0;
+
+    if !has_message_id {
+        conn.execute_batch("ALTER TABLE custom_events ADD COLUMN message_id TEXT")?;
+    }
+
+    // Check if tool_call_id column exists in custom_events table
+    let has_custom_event_tool_call_id: bool = conn
+        .prepare("SELECT COUNT(*) FROM pragma_table_info('custom_events') WHERE name='tool_call_id'")?
+        .query_row([], |row| row.get::<_, i64>(0))?
+        > 0;
+
+    if !has_custom_event_tool_call_id {
+        conn.execute_batch("ALTER TABLE custom_events ADD COLUMN tool_call_id TEXT")?;
+    }
+
     Ok(())
 }

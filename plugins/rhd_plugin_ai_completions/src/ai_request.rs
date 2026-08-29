@@ -59,6 +59,9 @@ pub async fn handle_ai_request(
                 }))
                 .map_err(|e| AiRequestError::EventSend(e.to_string()))?,
             ),
+            chat_id: None,
+            message_id: None,
+            tool_call_id: None,
         })
         .await
         .map_err(|e| AiRequestError::EventSend(e.to_string()))?;
@@ -141,6 +144,7 @@ pub async fn handle_ai_request(
     client
         .ack_custom_event(AckCustomEventParams {
             event_id: event_id.clone(),
+            is_rejected: None,
         })
         .await
         .map_err(|e| AiRequestError::EventAck(e.to_string()))?;

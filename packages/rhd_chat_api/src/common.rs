@@ -154,6 +154,9 @@ pub struct PluginSummary {
 ///   "eventName": "my-custom-event",
 ///   "senderPluginId": "sender-plugin",
 ///   "additional": "{\"key\": \"value\"}",
+///   "chatId": "chat-123",
+///   "messageId": "message-456",
+///   "toolCallId": "call-789",
 ///   "createdAt": "2026-08-20T18:00:00Z"
 /// }
 /// ```
@@ -168,6 +171,15 @@ pub struct PendingEvent {
     pub sender_plugin_id: Option<String>,
     /// Additional JSON data.
     pub additional: Option<String>,
+    /// Optional chat ID for context.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chat_id: Option<String>,
+    /// Optional message ID for context.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_id: Option<String>,
+    /// Optional tool call ID for context.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
     /// Timestamp when the event was created.
     pub created_at: DateTime<Utc>,
 }
@@ -335,5 +347,49 @@ mod tests {
         assert_eq!(summary.created_at, chat.created_at);
         assert_eq!(summary.updated_at, chat.updated_at);
         assert_eq!(summary.tags, chat.tags);
+    }
+
+    #[test]
+    fn test_pending_event_with_context_fields() {
+        let event = PendingEvent {
+            event_id: "test-event-id".to_string(),
+            event_name: "my-event".to_string(),
+            sender_plugin_id: Some("sender".to_string()),
+            additional: None,
+            chat_id: Some("chat-123".to_string()),
+            message_id: Some("message-456".to_string()),
+            tool_call_id: Some("call-789".to_string()),
+            created_at: "2026-08-20T18:00:00Z".parse().unwrap(),
+        };
+
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("\"chatId\":\"chat-123\""));
+        assert!(json.contains("\"messageId\":\"message-456\""));
+        assert!(json.contains("\"toolCallId\":\"call-789\""));
+
+        let deserialized: PendingEvent = serde_json::from_str(&json).unwrap();
+        assert_eq!(event, deserialized);
+    }
+
+    #[test]
+    fn test_pending_event_without_context_fields() {
+        let event = PendingEvent {
+            event_id: "test-event-id".to_string(),
+            event_name: "my-event".to_string(),
+            sender_plugin_id: None,
+            additional: None,
+            chat_id: None,
+            message_id: None,
+            tool_call_id: None,
+            created_at: "2026-08-20T18:00:00Z".parse().unwrap(),
+        };
+
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(!json.contains("chatId"));
+        assert!(!json.contains("messageId"));
+        assert!(!json.contains("toolCallId"));
+
+        let deserialized: PendingEvent = serde_json::from_str(&json).unwrap();
+        assert_eq!(event, deserialized);
     }
 }

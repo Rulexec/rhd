@@ -11,6 +11,9 @@ pub struct CustomEventInfo {
     pub event_name: String,
     pub sender_plugin_id: Option<String>,
     pub additional: Option<String>,
+    pub chat_id: Option<String>,
+    pub message_id: Option<String>,
+    pub tool_call_id: Option<String>,
     pub created_at: String,
 }
 
@@ -21,11 +24,14 @@ pub fn create_custom_event(
     event_name: &str,
     sender_plugin_id: Option<&str>,
     additional: Option<&str>,
+    chat_id: Option<&str>,
+    message_id: Option<&str>,
+    tool_call_id: Option<&str>,
 ) -> DbResult<()> {
     let conn_guard = conn.lock().map_err(|e| DbError::InitializationError(e.to_string()))?;
     conn_guard.execute(
-        "INSERT INTO custom_events (event_id, event_name, sender_plugin_id, additional) VALUES (?, ?, ?, ?)",
-        rusqlite::params![event_id, event_name, sender_plugin_id, additional],
+        "INSERT INTO custom_events (event_id, event_name, sender_plugin_id, additional, chat_id, message_id, tool_call_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        rusqlite::params![event_id, event_name, sender_plugin_id, additional, chat_id, message_id, tool_call_id],
     )?;
     Ok(())
 }
@@ -34,7 +40,7 @@ pub fn create_custom_event(
 pub fn get_custom_event(conn: &Mutex<Connection>, event_id: &str) -> DbResult<Option<CustomEventInfo>> {
     let conn_guard = conn.lock().map_err(|e| DbError::InitializationError(e.to_string()))?;
     let mut stmt = conn_guard.prepare(
-        "SELECT event_id, event_name, sender_plugin_id, additional, created_at FROM custom_events WHERE event_id = ?"
+        "SELECT event_id, event_name, sender_plugin_id, additional, chat_id, message_id, tool_call_id, created_at FROM custom_events WHERE event_id = ?"
     )?;
     let event = stmt
         .query_map([event_id], |row| {
@@ -43,7 +49,10 @@ pub fn get_custom_event(conn: &Mutex<Connection>, event_id: &str) -> DbResult<Op
                 event_name: row.get::<_, String>(1)?,
                 sender_plugin_id: row.get::<_, Option<String>>(2)?,
                 additional: row.get::<_, Option<String>>(3)?,
-                created_at: row.get::<_, String>(4)?,
+                chat_id: row.get::<_, Option<String>>(4)?,
+                message_id: row.get::<_, Option<String>>(5)?,
+                tool_call_id: row.get::<_, Option<String>>(6)?,
+                created_at: row.get::<_, String>(7)?,
             })
         })?
         .next()
@@ -74,7 +83,7 @@ pub fn has_plugin_acked(conn: &Mutex<Connection>, event_id: &str, plugin_id: &st
 pub fn get_pending_events_for_plugin(conn: &Mutex<Connection>, plugin_id: &str) -> DbResult<Vec<CustomEventInfo>> {
     let conn_guard = conn.lock().map_err(|e| DbError::InitializationError(e.to_string()))?;
     let mut stmt = conn_guard.prepare(
-        "SELECT ce.event_id, ce.event_name, ce.sender_plugin_id, ce.additional, ce.created_at
+        "SELECT ce.event_id, ce.event_name, ce.sender_plugin_id, ce.additional, ce.chat_id, ce.message_id, ce.tool_call_id, ce.created_at
          FROM custom_events ce
          WHERE ce.event_id NOT IN (
              SELECT event_id FROM custom_event_acks WHERE plugin_id = ?
@@ -88,7 +97,10 @@ pub fn get_pending_events_for_plugin(conn: &Mutex<Connection>, plugin_id: &str) 
                 event_name: row.get::<_, String>(1)?,
                 sender_plugin_id: row.get::<_, Option<String>>(2)?,
                 additional: row.get::<_, Option<String>>(3)?,
-                created_at: row.get::<_, String>(4)?,
+                chat_id: row.get::<_, Option<String>>(4)?,
+                message_id: row.get::<_, Option<String>>(5)?,
+                tool_call_id: row.get::<_, Option<String>>(6)?,
+                created_at: row.get::<_, String>(7)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;

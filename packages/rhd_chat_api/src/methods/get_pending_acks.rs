@@ -60,6 +60,9 @@ mod tests {
                 event_name: "test-event".to_string(),
                 sender_plugin_id: Some("sender-plugin".to_string()),
                 additional: Some("{\"key\": \"value\"}".to_string()),
+                chat_id: None,
+                message_id: None,
+                tool_call_id: None,
                 created_at: Utc::now(),
             }],
         };

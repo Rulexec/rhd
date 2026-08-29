@@ -14,6 +14,9 @@ use serde::{Deserialize, Serialize};
 ///   "eventName": "my-custom-event",
 ///   "senderPluginId": "sender-plugin-id",
 ///   "additional": "{\"key\": \"value\"}",
+///   "chatId": "chat-123",
+///   "messageId": "message-456",
+///   "toolCallId": "call-789",
 ///   "createdAt": "2026-08-20T18:00:00Z"
 /// }
 /// ```
@@ -30,6 +33,15 @@ pub struct CustomEventData {
     /// Optional additional JSON data.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub additional: Option<String>,
+    /// Optional chat ID for context.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chat_id: Option<String>,
+    /// Optional message ID for context.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_id: Option<String>,
+    /// Optional tool call ID for context.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
     /// Timestamp when the event was created.
     pub created_at: DateTime<Utc>,
 }
@@ -45,6 +57,9 @@ mod tests {
             event_name: "my-custom-event".to_string(),
             sender_plugin_id: Some("sender-plugin".to_string()),
             additional: Some("{\"key\": \"value\"}".to_string()),
+            chat_id: Some("chat-123".to_string()),
+            message_id: Some("message-456".to_string()),
+            tool_call_id: Some("call-789".to_string()),
             created_at: "2026-08-20T18:00:00Z".parse().unwrap(),
         };
 
@@ -53,6 +68,9 @@ mod tests {
         assert!(json.contains("\"eventName\":\"my-custom-event\""));
         assert!(json.contains("\"senderPluginId\":\"sender-plugin\""));
         assert!(json.contains("\"additional\""));
+        assert!(json.contains("\"chatId\":\"chat-123\""));
+        assert!(json.contains("\"messageId\":\"message-456\""));
+        assert!(json.contains("\"toolCallId\":\"call-789\""));
         assert!(json.contains("\"createdAt\""));
 
         let deserialized: CustomEventData = serde_json::from_str(&json).unwrap();
@@ -66,6 +84,9 @@ mod tests {
             event_name: "my-custom-event".to_string(),
             sender_plugin_id: None,
             additional: None,
+            chat_id: None,
+            message_id: None,
+            tool_call_id: None,
             created_at: "2026-08-20T18:00:00Z".parse().unwrap(),
         };
 
@@ -74,6 +95,9 @@ mod tests {
         // Optional fields should be skipped
         assert!(!json.contains("senderPluginId"));
         assert!(!json.contains("additional"));
+        assert!(!json.contains("chatId"));
+        assert!(!json.contains("messageId"));
+        assert!(!json.contains("toolCallId"));
 
         let deserialized: CustomEventData = serde_json::from_str(&json).unwrap();
         assert_eq!(data, deserialized);

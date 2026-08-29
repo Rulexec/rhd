@@ -105,6 +105,9 @@ fn test_custom_events() {
         "my-event",
         Some("sender-plugin"),
         Some("{\"key\": \"value\"}"),
+        None,
+        None,
+        None,
     ).unwrap();
     
     // Get event
@@ -132,4 +135,120 @@ fn test_custom_events() {
     db.delete_custom_event("event-1").unwrap();
     let event = db.get_custom_event("event-1").unwrap();
     assert!(event.is_none());
+}
+
+#[test]
+fn test_custom_events_with_context_fields() {
+    let db = ChatDb::new(":memory:").unwrap();
+    
+    // Register a plugin first
+    db.register_plugin("sender-plugin").unwrap();
+    
+    // Create custom event with context fields
+    db.create_custom_event(
+        "event-1",
+        "my-event",
+        Some("sender-plugin"),
+        Some("{\"key\": \"value\"}"),
+        Some("chat-123"),
+        Some("message-456"),
+        Some("call-789"),
+    ).unwrap();
+    
+    // Get event and verify context fields
+    let event = db.get_custom_event("event-1").unwrap().unwrap();
+    assert_eq!(event.event_id, "event-1");
+    assert_eq!(event.event_name, "my-event");
+    assert_eq!(event.sender_plugin_id, Some("sender-plugin".to_string()));
+    assert_eq!(event.chat_id, Some("chat-123".to_string()));
+    assert_eq!(event.message_id, Some("message-456".to_string()));
+    assert_eq!(event.tool_call_id, Some("call-789".to_string()));
+    
+    // Check pending events include context fields
+    db.register_plugin("receiver-plugin").unwrap();
+    let pending = db.get_pending_events_for_plugin("receiver-plugin").unwrap();
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0].chat_id, Some("chat-123".to_string()));
+    assert_eq!(pending[0].message_id, Some("message-456".to_string()));
+    assert_eq!(pending[0].tool_call_id, Some("call-789".to_string()));
+}
+
+#[test]
+fn test_custom_events_without_context_fields() {
+    let db = ChatDb::new(":memory:").unwrap();
+    
+    // Register a plugin first
+    db.register_plugin("sender-plugin").unwrap();
+    
+    // Create custom event without context fields (backward compatibility)
+    db.create_custom_event(
+        "event-1",
+        "my-event",
+        Some("sender-plugin"),
+        Some("{\"key\": \"value\"}"),
+        None,
+        None,
+        None,
+    ).unwrap();
+    
+    // Get event and verify context fields are None
+    let event = db.get_custom_event("event-1").unwrap().unwrap();
+    assert_eq!(event.chat_id, None);
+    assert_eq!(event.message_id, None);
+    assert_eq!(event.tool_call_id, None);
+}
+
+#[test]
+fn test_custom_events_partial_context_fields() {
+    let db = ChatDb::new(":memory:").unwrap();
+    
+    // Register a plugin first
+    db.register_plugin("sender-plugin").unwrap();
+    
+    // Create custom event with only some context fields
+    db.create_custom_event(
+        "event-1",
+        "my-event",
+        Some("sender-plugin"),
+        None,
+        Some("chat-123"),
+        None,
+        Some("call-789"),
+    ).unwrap();
+    
+    // Get event and verify only provided context fields are stored
+    let event = db.get_custom_event("event-1").unwrap().unwrap();
+    assert_eq!(event.chat_id, Some("chat-123".to_string()));
+    assert_eq!(event.message_id, None);
+    assert_eq!(event.tool_call_id, Some("call-789".to_string()));
+}
+
+#[test]
+fn test_custom_events_pending_includes_context_fields() {
+    let db = ChatDb::new(":memory:").unwrap();
+    
+    // Register plugins
+    db.register_plugin("sender-plugin").unwrap();
+    db.register_plugin("receiver-plugin").unwrap();
+    
+    // Create custom event with context fields
+    db.create_custom_event(
+        "event-1",
+        "my-event",
+        Some("sender-plugin"),
+        None,
+        Some("chat-123"),
+        Some("message-456"),
+        Some("call-789"),
+    ).unwrap();
+    
+    // Get pending events for receiver
+    let pending = db.get_pending_events_for_plugin("receiver-plugin").unwrap();
+    assert_eq!(pending.len(), 1);
+    
+    let pending_event = &pending[0];
+    assert_eq!(pending_event.event_id, "event-1");
+    assert_eq!(pending_event.chat_id, Some("chat-123".to_string()));
+    assert_eq!(pending_event.message_id, Some("message-456".to_string()));
+    assert_eq!(pending_event.tool_call_id, Some("call-789".to_string()));
 }

@@ -301,6 +301,9 @@ async fn test_plugin_processes_pending_acks() {
             .send_custom_event(rhd_chat_api::SendCustomEventParams {
                 event_name: "test:event".to_string(),
                 additional: None,
+                chat_id: None,
+                message_id: None,
+                tool_call_id: None,
             })
             .await
             .expect("Failed to send event");

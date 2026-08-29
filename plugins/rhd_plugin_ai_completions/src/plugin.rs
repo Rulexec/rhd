@@ -68,6 +68,7 @@ pub async fn run_plugin(
         client
             .ack_custom_event(AckCustomEventParams {
                 event_id: event.event_id,
+                is_rejected: None,
             })
             .await
             .map_err(|e| PluginError::PendingAcks(e.to_string()))?;
