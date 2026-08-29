@@ -34,6 +34,9 @@ pub enum Command {
     CreateChat {
         /// Chat title
         title: String,
+        /// Optional tags (space-separated)
+        #[arg(long, num_args = 0..)]
+        tags: Option<Vec<String>>,
     },
     /// Plugin operations
     Plugins {
@@ -51,6 +54,22 @@ pub enum Command {
 pub enum ChatsSubcommand {
     /// List all chats
     List,
+    /// Add tags to a chat
+    AddTag {
+        /// Chat ID
+        chat_id: i64,
+        /// Tags to add (space-separated)
+        #[arg(required = true, num_args = 1..)]
+        tags: Vec<String>,
+    },
+    /// Remove tags from a chat
+    RemoveTag {
+        /// Chat ID
+        chat_id: i64,
+        /// Tags to remove (space-separated)
+        #[arg(required = true, num_args = 1..)]
+        tags: Vec<String>,
+    },
 }
 
 #[derive(Subcommand)]

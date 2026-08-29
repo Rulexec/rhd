@@ -20,8 +20,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         cli::Command::Queue { subcommand } => {
             commands::queue::execute(subcommand).await?;
         }
-        cli::Command::CreateChat { title } => {
-            commands::create_chat::execute(title).await?;
+        cli::Command::CreateChat { title, tags } => {
+            commands::create_chat::execute(title, tags).await?;
         }
         cli::Command::Plugins { subcommand } => {
             commands::plugins::execute(subcommand).await?;
