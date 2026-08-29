@@ -841,3 +841,221 @@ async fn test_startup_does_not_tag_finished_chat() {
     .await
     .unwrap();
 }
+
+/// Test: After successful AI completion, the `ai_completions:running` tag is removed.
+#[tokio::test]
+async fn test_running_tag_removed_after_success() {
+    init_tracing();
+    timeout(Duration::from_secs(15), async {
+        let env = TestEnv::new().await;
+
+        // Start plugin in background
+        let plugin_handle = tokio::spawn({
+            let url = env.chat_server_url();
+            let config = env.config.clone();
+            async move {
+                plugin::run_plugin(&url, "test_plugin", config).await
+            }
+        });
+
+        // Wait for plugin to initialize
+        sleep(Duration::from_millis(500)).await;
+
+        // Connect client
+        let client = ChatClient::connect(&env.chat_server_url())
+            .await
+            .expect("Failed to connect");
+
+        // Create a chat
+        let create_result = client
+            .create_chat(CreateChatParams {
+                title: "Test Chat".to_string(),
+                tags: vec![],
+            })
+            .await
+            .expect("Failed to create chat");
+
+        // Add a queued message to trigger AI request
+        client
+            .add_queue_message(AddQueueMessageParams {
+                chat_id: create_result.chat_id,
+                role: "user".to_string(),
+                content: "Hello".to_string(),
+                tool_call_id: None,
+                reasoning_content: None,
+                tags: vec![],
+            })
+            .await
+            .expect("Failed to add queue message");
+
+        // Wait for plugin to process and complete
+        sleep(Duration::from_secs(5)).await;
+
+        // Check that the running tag is NOT present (it should have been removed)
+        let chat_result = client
+            .get_chat(GetChatParams {
+                chat_id: create_result.chat_id,
+                if_version_higher_than: None,
+            })
+            .await
+            .expect("Failed to get chat");
+
+        assert!(
+            !chat_result.chat.tags.iter().any(|t| t == "ai_completions:running"),
+            "running tag should be removed after successful completion"
+        );
+        assert!(
+            !chat_result.chat.tags.iter().any(|t| t == "ai_completions:error"),
+            "error tag should not be present on success"
+        );
+
+        // Cleanup
+        plugin_handle.abort();
+    })
+    .await
+    .expect("Test timed out");
+}
+
+/// Test: Startup reconciliation removes running tag from eligible chat.
+#[tokio::test]
+async fn test_startup_reconciliation_running_tag_eligible_chat() {
+    init_tracing();
+    timeout(Duration::from_secs(10), async {
+        let env = TestEnv::new().await;
+
+        // Connect client and create a chat with running tag but no unfinished messages
+        let client = ChatClient::connect(&env.chat_server_url())
+            .await
+            .expect("Failed to connect");
+
+        let create_result = client
+            .create_chat(CreateChatParams {
+                title: "Running Tag Chat".to_string(),
+                tags: vec!["ai_completions:running".to_string()],
+            })
+            .await
+            .expect("Failed to create chat");
+
+        // Add a finished assistant message (chat is eligible)
+        client
+            .add_message(AddMessageParams {
+                chat_id: create_result.chat_id,
+                role: "assistant".to_string(),
+                content: "complete answer".to_string(),
+                tool_call_id: None,
+                reasoning_content: None,
+                tags: vec![],
+                is_finished: true,
+                is_streaming: false,
+            })
+            .await
+            .expect("Failed to add message");
+
+        // Start the plugin
+        let plugin_handle = tokio::spawn({
+            let url = env.chat_server_url();
+            let config = env.config.clone();
+            async move {
+                plugin::run_plugin(&url, "test_plugin", config).await
+            }
+        });
+
+        // Wait for plugin to initialize and reconcile
+        sleep(Duration::from_secs(2)).await;
+
+        // Check that running tag was removed
+        let chat_result = client
+            .get_chat(GetChatParams {
+                chat_id: create_result.chat_id,
+                if_version_higher_than: None,
+            })
+            .await
+            .expect("Failed to get chat");
+
+        assert!(
+            !chat_result.chat.tags.iter().any(|t| t == "ai_completions:running"),
+            "running tag should be removed from eligible chat at startup"
+        );
+        assert!(
+            !chat_result.chat.tags.iter().any(|t| t == "ai_completions:error"),
+            "error tag should not be added to eligible chat"
+        );
+
+        // Cleanup
+        plugin_handle.abort();
+    })
+    .await
+    .expect("Test timed out");
+}
+
+/// Test: Startup reconciliation adds error tag to chat with running tag and unfinished message.
+#[tokio::test]
+async fn test_startup_reconciliation_running_tag_with_unfinished_message() {
+    init_tracing();
+    timeout(Duration::from_secs(10), async {
+        let env = TestEnv::new().await;
+
+        // Connect client and create a chat with running tag and unfinished message
+        let client = ChatClient::connect(&env.chat_server_url())
+            .await
+            .expect("Failed to connect");
+
+        let create_result = client
+            .create_chat(CreateChatParams {
+                title: "Crashed Chat".to_string(),
+                tags: vec!["ai_completions:running".to_string()],
+            })
+            .await
+            .expect("Failed to create chat");
+
+        // Add an unfinished assistant message (simulates crash)
+        client
+            .add_message(AddMessageParams {
+                chat_id: create_result.chat_id,
+                role: "assistant".to_string(),
+                content: "partial".to_string(),
+                tool_call_id: None,
+                reasoning_content: None,
+                tags: vec![],
+                is_finished: false,
+                is_streaming: true,
+            })
+            .await
+            .expect("Failed to add message");
+
+        // Start the plugin
+        let plugin_handle = tokio::spawn({
+            let url = env.chat_server_url();
+            let config = env.config.clone();
+            async move {
+                plugin::run_plugin(&url, "test_plugin", config).await
+            }
+        });
+
+        // Wait for plugin to initialize and reconcile
+        sleep(Duration::from_secs(2)).await;
+
+        // Check that error tag was added and running tag was removed
+        let chat_result = client
+            .get_chat(GetChatParams {
+                chat_id: create_result.chat_id,
+                if_version_higher_than: None,
+            })
+            .await
+            .expect("Failed to get chat");
+
+        assert!(
+            chat_result.chat.tags.iter().any(|t| t == "ai_completions:error"),
+            "error tag should be added to chat with unfinished message"
+        );
+        assert!(
+            !chat_result.chat.tags.iter().any(|t| t == "ai_completions:running"),
+            "running tag should be removed when error tag is added"
+        );
+
+        // Cleanup
+        plugin_handle.abort();
+    })
+    .await
+    .expect("Test timed out");
+}

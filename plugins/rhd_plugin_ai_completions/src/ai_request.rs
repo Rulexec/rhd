@@ -134,6 +134,20 @@ pub async fn handle_ai_request(
         }
     };
 
+    // Add running tag before acknowledging own event
+    client
+        .update_chat(UpdateChatParams {
+            chat_id,
+            title: None,
+            add_tags: vec!["ai_completions:running".to_string()],
+            remove_tags: vec![],
+        })
+        .await
+        .map_err(|e| {
+            tracing::error!(chat_id = chat_id, error = %e, "failed to add running tag");
+            AiRequestError::TagAdd(e.to_string())
+        })?;
+
     // Acknowledge own event
     tracing::debug!(
         chat_id = chat_id,
@@ -169,7 +183,7 @@ pub async fn handle_ai_request(
                     chat_id,
                     title: None,
                     add_tags: vec!["ai_completions:error".to_string()],
-                    remove_tags: vec![],
+                    remove_tags: vec!["ai_completions:running".to_string()],
                 })
                 .await
                 .map_err(|tag_error| {
@@ -323,6 +337,16 @@ pub async fn handle_ai_request(
                             })
                             .await;
 
+                        // Remove running tag from chat on streaming error
+                        let _ = client
+                            .update_chat(UpdateChatParams {
+                                chat_id,
+                                title: None,
+                                add_tags: vec![],
+                                remove_tags: vec!["ai_completions:running".to_string()],
+                            })
+                            .await;
+
                         let error_content = format!("AI streaming error: {}", e);
                         client
                             .update_message(UpdateMessageParams {
@@ -367,6 +391,22 @@ pub async fn handle_ai_request(
                     tracing::error!(chat_id = chat_id, error = %e, "failed to finish stream");
                     AiRequestError::StreamFinish(e.to_string())
                 })?;
+
+            // Remove running tag if no tool calls (tool loop will continue otherwise)
+            if final_tool_calls.is_empty() {
+                client
+                    .update_chat(UpdateChatParams {
+                        chat_id,
+                        title: None,
+                        add_tags: vec![],
+                        remove_tags: vec!["ai_completions:running".to_string()],
+                    })
+                    .await
+                    .map_err(|e| {
+                        tracing::error!(chat_id = chat_id, error = %e, "failed to remove running tag");
+                        AiRequestError::TagAdd(e.to_string())
+                    })?;
+            }
 
             // Update message with final content
             let tool_calls_json = if final_tool_calls.is_empty() {
@@ -422,13 +462,13 @@ pub async fn handle_ai_request(
                 })
                 .await;
 
-            // Add error tag to chat
+            // Add error tag to chat and remove running tag
             client
                 .update_chat(UpdateChatParams {
                     chat_id,
                     title: None,
                     add_tags: vec!["ai_completions:error".to_string()],
-                    remove_tags: vec![],
+                    remove_tags: vec!["ai_completions:running".to_string()],
                 })
                 .await
                 .map_err(|e| {

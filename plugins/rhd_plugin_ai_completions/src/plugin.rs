@@ -200,11 +200,17 @@ fn find_unfinished_message(messages: &[Message]) -> Option<&Message> {
     messages.iter().find(|m| m.is_streaming || !m.is_finished)
 }
 
-/// Once at startup, park every monitored chat that contains an unfinished message
-/// by adding the `ai_completions:error` tag (D6).
+/// Once at startup, reconcile chats that may have been left in an inconsistent state.
+///
+/// For chats with `ai_completions:running` tag:
+/// - If chat has unfinished message → add error tag, remove running tag
+/// - If chat is eligible for request → remove running tag only
+///
+/// For chats without running tag but with unfinished message:
+/// - Add error tag (existing behavior)
 ///
 /// `has_error_tag` in `trigger_detection` then suppresses all future triggers for
-/// those chats. Chats already carrying the tag are skipped, making this idempotent
+/// those chats. Chats already carrying the error tag are skipped, making this idempotent
 /// across restarts.
 async fn tag_crashed_chats(
     client: &ChatClient,
@@ -215,32 +221,72 @@ async fn tag_crashed_chats(
             continue;
         };
 
-        // Already parked (possibly by a previous run) — nothing to do.
-        if state.tags.iter().any(|tag| tag == "ai_completions:error") {
+        let has_running_tag = state.tags.iter().any(|tag| tag == "ai_completions:running");
+        let has_error_tag = state.tags.iter().any(|tag| tag == "ai_completions:error");
+
+        // Already parked — nothing to do
+        if has_error_tag {
             continue;
         }
 
-        let Some(offender) = find_unfinished_message(&state.messages) else {
-            continue;
-        };
+        // Check for unfinished message
+        let unfinished_message = find_unfinished_message(&state.messages);
 
-        tracing::warn!(
-            chat_id = chat_id,
-            message_id = offender.id,
-            is_streaming = offender.is_streaming,
-            is_finished = offender.is_finished,
-            "unfinished message found at startup; parking chat with error tag"
-        );
+        if has_running_tag {
+            if let Some(offender) = unfinished_message {
+                // Chat was left mid-stream → park it
+                tracing::warn!(
+                    chat_id = chat_id,
+                    message_id = offender.id,
+                    is_streaming = offender.is_streaming,
+                    is_finished = offender.is_finished,
+                    "chat has running tag and unfinished message; parking with error tag"
+                );
+                client
+                    .update_chat(UpdateChatParams {
+                        chat_id,
+                        title: None,
+                        add_tags: vec!["ai_completions:error".to_string()],
+                        remove_tags: vec!["ai_completions:running".to_string()],
+                    })
+                    .await
+                    .map_err(|e| PluginError::StartupReconciliation(e.to_string()))?;
+            } else {
+                // Chat is in good state, just remove running tag
+                tracing::info!(
+                    chat_id = chat_id,
+                    "chat has running tag but is eligible; removing running tag"
+                );
+                client
+                    .update_chat(UpdateChatParams {
+                        chat_id,
+                        title: None,
+                        add_tags: vec![],
+                        remove_tags: vec!["ai_completions:running".to_string()],
+                    })
+                    .await
+                    .map_err(|e| PluginError::StartupReconciliation(e.to_string()))?;
+            }
+        } else if let Some(offender) = unfinished_message {
+            // Existing behavior: park chats with unfinished messages
+            tracing::warn!(
+                chat_id = chat_id,
+                message_id = offender.id,
+                is_streaming = offender.is_streaming,
+                is_finished = offender.is_finished,
+                "unfinished message found at startup; parking chat with error tag"
+            );
 
-        client
-            .update_chat(UpdateChatParams {
-                chat_id,
-                title: None,
-                add_tags: vec!["ai_completions:error".to_string()],
-                remove_tags: vec![],
-            })
-            .await
-            .map_err(|e| PluginError::StartupReconciliation(e.to_string()))?;
+            client
+                .update_chat(UpdateChatParams {
+                    chat_id,
+                    title: None,
+                    add_tags: vec!["ai_completions:error".to_string()],
+                    remove_tags: vec![],
+                })
+                .await
+                .map_err(|e| PluginError::StartupReconciliation(e.to_string()))?;
+        }
     }
 
     Ok(())

@@ -84,6 +84,30 @@ Added to a chat when:
 
 **Effect**: Plugin skips chats with this tag (no further processing). The tag is deliberately not auto-cleared; **repairing crashed chats is not implemented yet**.
 
+### `ai_completions:running`
+
+Added to a chat when the plugin is actively processing an AI request.
+
+**When added**: Right before acknowledging the plugin's own `ai_completions:preRequest` event.
+
+**When removed**:
+1. When the AI request completes successfully and the response has no tool calls
+2. When transitioning to `ai_completions:error` state (request failure, message conversion failure, streaming error)
+3. At plugin startup, if the chat is eligible for a new request
+
+**When kept**:
+- When the AI response contains tool calls (tool loop continues)
+- If the plugin crashes or fails to acknowledge its own event (chat considered broken until restart)
+
+**Effect**: Provides visibility into when a chat is being processed. Other plugins can use this tag to:
+- Display loading indicators in UI
+- Avoid conflicting operations on the chat
+- Monitor plugin activity
+
+**Startup reconciliation**: At plugin startup, chats with this tag are checked:
+- If the chat has an unfinished message (crash recovery) → add `ai_completions:error`, remove `ai_completions:running`
+- If the chat is eligible for a request → remove `ai_completions:running` only, let normal flow continue
+
 ## Messages Added
 
 ### Error Messages
