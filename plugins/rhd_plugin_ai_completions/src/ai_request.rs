@@ -515,6 +515,7 @@ fn convert_to_ai_messages(messages: &[Message]) -> Vec<ChatMessage> {
             "assistant" => ChatMessage::Assistant {
                 content: Some(m.content.clone()),
                 tool_calls: None, // TODO: Add tool calls support
+                reasoning_content: None,
             },
             "system" => ChatMessage::System {
                 content: m.content.clone(),

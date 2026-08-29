@@ -22,6 +22,9 @@ pub enum ChatMessage {
         content: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         tool_calls: Option<Vec<ToolCall>>,
+        /// Model reasoning/thinking content, replayed only when the plugin decides to send it.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        reasoning_content: Option<String>,
     },
     Tool {
         tool_call_id: String,
@@ -158,4 +161,65 @@ pub struct FunctionCallDelta {
 pub struct StreamResult {
     pub finish_reason: Option<String>,
     pub usage: Option<Usage>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assistant(content: Option<&str>, reasoning: Option<&str>) -> ChatMessage {
+        ChatMessage::Assistant {
+            content: content.map(str::to_string),
+            tool_calls: None,
+            reasoning_content: reasoning.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn assistant_serializes_reasoning_content_when_set() {
+        let msg = assistant(Some("answer"), Some("thinking hard"));
+        let json = serde_json::to_value(&msg).unwrap();
+        assert_eq!(json["role"], "assistant");
+        assert_eq!(json["content"], "answer");
+        assert_eq!(json["reasoning_content"], "thinking hard");
+    }
+
+    #[test]
+    fn assistant_omits_reasoning_content_when_none() {
+        let json = serde_json::to_value(assistant(Some("answer"), None)).unwrap();
+        assert!(json.get("reasoning_content").is_none());
+        assert_eq!(json["role"], "assistant");
+    }
+
+    #[test]
+    fn assistant_round_trips_all_fields() {
+        let msg = ChatMessage::Assistant {
+            content: Some("answer".to_string()),
+            tool_calls: Some(vec![ToolCall {
+                id: "call_1".to_string(),
+                call_type: "function".to_string(),
+                function: FunctionCall {
+                    name: "get_weather".to_string(),
+                    arguments: "{}".to_string(),
+                },
+            }]),
+            reasoning_content: Some("because".to_string()),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        let back: ChatMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(msg, back);
+    }
+
+    #[test]
+    fn role_tagging_unaffected_for_other_variants() {
+        let user = serde_json::to_value(ChatMessage::User { content: "hi".into() }).unwrap();
+        assert_eq!(user["role"], "user");
+        let tool = serde_json::to_value(ChatMessage::Tool {
+            tool_call_id: "call_1".into(),
+            content: "ok".into(),
+        })
+        .unwrap();
+        assert_eq!(tool["role"], "tool");
+        assert_eq!(tool["tool_call_id"], "call_1");
+    }
 }

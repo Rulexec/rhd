@@ -129,6 +129,7 @@ async fn test_tool_call_with_result() {
             ChatMessage::Assistant {
                 content: None,
                 tool_calls: Some(vec![tool_call.clone()]),
+                reasoning_content: None,
             },
             ChatMessage::Tool {
                 tool_call_id: tool_call.id.clone(),
