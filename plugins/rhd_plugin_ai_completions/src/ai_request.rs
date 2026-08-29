@@ -50,7 +50,6 @@ pub async fn handle_ai_request(
             event_name: "ai_completions:preRequest".to_string(),
             additional: Some(
                 serde_json::to_string(&serde_json::json!({
-                    "chatId": chat_id,
                     "triggerReason": match trigger_reason {
                         TriggerReason::QueuedMessages => "queuedMessages",
                         TriggerReason::ToolLoopContinuation => "toolLoopContinuation",
@@ -59,7 +58,7 @@ pub async fn handle_ai_request(
                 }))
                 .map_err(|e| AiRequestError::EventSend(e.to_string()))?,
             ),
-            chat_id: None,
+            chat_id: Some(chat_id.to_string()),
             message_id: None,
             tool_call_id: None,
         })
