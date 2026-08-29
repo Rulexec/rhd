@@ -14,15 +14,40 @@ The plugin automatically processes queued messages, makes AI completion requests
 
 The plugin triggers when:
 - Chat has non-zero queued messages count
-- Chat has no unresolved tool calls
+- Chat has no unresolved tool calls (resolution is matched on tool-call ids: `tool_calls[].id` vs `toolCallId`)
 - Chat does not have `ai_completions:error` tag
 
 ### Tool Loop Continuation Mode
 
 The plugin triggers when:
 - Last assistant message has tool calls
-- All tool calls have corresponding tool result messages
+- All tool calls have corresponding tool result messages (resolution is matched on tool-call ids: `tool_calls[].id` vs `toolCallId`)
 - Chat does not have `ai_completions:error` tag
+
+## Request Construction
+
+The request sent to the provider is a **faithful rendering of the stored chat history**. Core principle: **a request is either complete or it is not sent.**
+
+- Assistant `tool_calls` are forwarded field-for-field (`id`, `type`, `function.name`, `function.arguments`). Per-call `tags` are RHD-internal orchestration metadata and never reach the provider.
+- `tool`-role messages are sent with their `tool_call_id`.
+- Assistant `reasoning_content` is sent when stored, non-empty, and enabled for the model (see `sendReasoningContent`).
+- Excluded by policy: messages with unknown roles, and messages tagged `ai_completions:error`.
+
+### Integrity validation
+
+Before sending, the tool-call sequence is validated:
+
+- every assistant `tool_calls[].id` is answered by a following `tool` message,
+- every `tool` message carries a `tool_call_id` that was previously declared,
+- every assistant message has content, tool calls, or reasoning.
+
+A violation means the trigger gate was bypassed or raced (e.g. another plugin deleted a message between the decision and the build). The plugin then **sends nothing**, adds the `ai_completions:error` tag to the chat (parking it, same as a failed response), and logs the offending message and tool-call id. There are no partial requests, ever.
+
+### Unresolved tool calls: no request, keep waiting
+
+While the last assistant message has tool calls without matching results, the plugin does not trigger at all (`TriggerReason::None`). This is a conversation in progress, not a malformed request — the plugin keeps polling until a tool-executing plugin posts the results, then triggers normally.
+
+> Note: no tool-executing plugin exists yet, so a chat whose assistant message has tool calls will simply stop triggering. That is correct, safe behavior.
 
 ## Events Emitted
 
@@ -50,21 +75,25 @@ Emitted before making AI completion request.
 
 ### `ai_completions:error`
 
-Added to chat when AI request fails.
+Added to a chat when:
+1. an AI request fails, or
+2. message conversion refused to build a request (history inconsistency), or
+3. at plugin startup, a chat contains a message left unfinished by a crash (`isStreaming` or not `isFinished`) — its partial content must never be replayed.
 
-**When**: AI completion request returns error (timeout, API error, etc.)
+**When**: see above.
 
-**Effect**: Plugin skips chats with this tag (no further processing).
+**Effect**: Plugin skips chats with this tag (no further processing). The tag is deliberately not auto-cleared; **repairing crashed chats is not implemented yet**.
 
 ## Messages Added
 
 ### Error Messages
 
-When AI request fails, plugin adds message with:
-- **Role**: `ai_completions:error`
+When an AI request fails, the assistant message is updated with:
+- **Role**: `assistant` (unchanged)
+- **Tags**: `ai_completions:error` added to the message
 - **Content**: Error details (error message, timeout info, etc.)
 
-**Filtering**: These messages are filtered out when building AI requests (only `user`, `assistant`, `system`, `tool` roles are sent to AI).
+**Filtering**: Messages tagged `ai_completions:error` are excluded from AI requests by policy — they are internal bookkeeping, never model output. Messages with unknown roles are excluded as well. These two are the *only* permitted exclusions; nothing else is ever silently dropped (see "Request Construction").
 
 ## Configuration Format
 
@@ -79,6 +108,7 @@ ai_completions:
       apiKey:
         cred: alibabaApiKey
       model: "qwen3.7-plus"
+      sendReasoningContent: true
 ```
 
 **Credentials File** (`credentials.yaml`):
@@ -96,6 +126,7 @@ alibabaApiKey: your-api-key-here
     - `baseUrl`: Optional base URL for API (overrides default)
     - `apiKey.cred`: Credential name to look up in credentials file
     - `model`: Model identifier to use
+    - `sendReasoningContent`: Optional. Replay assistant `reasoning_content` to the provider. Default `true`. Set `false` for providers that reject or mishandle it (e.g. DeepSeek-R1).
 
 ## Dependencies
 
@@ -106,6 +137,7 @@ alibabaApiKey: your-api-key-here
 ## Error Handling
 
 - On AI request failure: adds error tag and error message
+- On message conversion failure (history inconsistency): adds error tag to chat, sends nothing
 - Skips chats with error tag
 - Filters out error messages when building AI requests
 - Tool calls in AI response are executed by other plugins
@@ -154,7 +186,7 @@ export RUST_LOG=rhd_plugin_ai_completions=info
 - Check API key is valid
 - Verify model configuration
 - Check network connectivity to AI API
-- Review error messages in chat (role: `ai_completions:error`)
+- Review error messages in chat (tagged `ai_completions:error`)
 
 ## Integration with Other Plugins
 

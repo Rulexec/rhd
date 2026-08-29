@@ -43,6 +43,16 @@ Assistant messages carry their tool calls in the `toolCalls` array of the `Messa
 - **Validate freshness**: every `messageUpdated` event carries `chatVersion` — the chat version after the change. Plugins can compare it against their cached version to detect missed events (or refetch via `getChat`).
 - **Hazard — full-blob overwrite**: `updateMessage` with `toolCalls` replaces the entire tool-call JSON blob, wiping any tags added via `updateToolCallTags`. Write `toolCalls` only once (at stream finish, as the ai_completions plugin does); always change tags through `updateToolCallTags`.
 
+## Tool Messages
+
+A plugin that executed tools posts results as regular messages:
+
+- `addMessage` with `role: "tool"` **and** `toolCallId` (the id of the assistant tool call being answered). The server rejects `role: "tool"` without `toolCallId`.
+- The id is stored immutably and reaches the AI provider in `tool.tool_call_id` on the next request.
+- `addQueueMessage` accepts the same optional `toolCallId`; the id survives promotion into the conversation.
+
+Per-call `tags` on assistant `tool_calls` (see "Tool Call Tags") are RHD-internal orchestration metadata: they are **never** sent to the AI provider.
+
 ## Plugin Responsibilities
 
 Each plugin should document:
