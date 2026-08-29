@@ -58,7 +58,7 @@ pub fn has_error_tag(chat_state: &ChatState) -> bool {
 mod tests {
     use super::*;
     use chrono::Utc;
-    use rhd_chat_api::Message;
+    use rhd_chat_api::{FunctionCall, Message, ToolCall};
 
     fn create_message(id: i64, role: &str, content: &str) -> Message {
         Message {
@@ -74,6 +74,29 @@ mod tests {
             is_streaming: false,
             tool_calls: vec![],
         }
+    }
+
+    fn assistant_with_calls(id: i64, call_ids: &[&str]) -> Message {
+        let mut msg = create_message(id, "assistant", "");
+        msg.tool_calls = call_ids
+            .iter()
+            .map(|call_id| ToolCall {
+                id: call_id.to_string(),
+                call_type: "function".to_string(),
+                function: FunctionCall {
+                    name: "get_weather".to_string(),
+                    arguments: "{}".to_string(),
+                },
+                tags: vec![],
+            })
+            .collect();
+        msg
+    }
+
+    fn tool_result(id: i64, tool_call_id: &str) -> Message {
+        let mut msg = create_message(id, "tool", "result");
+        msg.tool_call_id = Some(tool_call_id.to_string());
+        msg
     }
 
     fn create_chat_state(
@@ -116,23 +139,48 @@ mod tests {
     #[test]
     fn test_trigger_tool_loop_continuation() {
         let messages = vec![
-            create_message(1, "user", "Use a tool"),
-            create_message(2, "assistant", "Using tool"),
-            create_message(3, "tool", "Tool result"),
+            create_message(1, "user", "Use tools"),
+            assistant_with_calls(2, &["call_a", "call_b"]),
+            tool_result(3, "call_a"),
+            tool_result(4, "call_b"),
         ];
         let state = create_chat_state(messages, 0, vec![]);
         assert_eq!(should_trigger(&state), TriggerReason::ToolLoopContinuation);
     }
 
     #[test]
+    fn test_no_trigger_while_tool_calls_unresolved() {
+        // Last assistant declares 2 calls; only 1 tool result posted.
+        let messages = vec![
+            create_message(1, "user", "Use tools"),
+            assistant_with_calls(2, &["call_a", "call_b"]),
+            tool_result(3, "call_a"),
+        ];
+        let state = create_chat_state(messages, 0, vec![]);
+        assert_eq!(should_trigger(&state), TriggerReason::None);
+    }
+
+    #[test]
     fn test_queued_messages_takes_priority_over_tool_loop() {
         let messages = vec![
-            create_message(1, "user", "Use a tool"),
-            create_message(2, "assistant", "Using tool"),
-            create_message(3, "tool", "Tool result"),
+            create_message(1, "user", "Use tools"),
+            assistant_with_calls(2, &["call_a", "call_b"]),
+            tool_result(3, "call_a"),
+            tool_result(4, "call_b"),
         ];
         let state = create_chat_state(messages, 2, vec![]);
         assert_eq!(should_trigger(&state), TriggerReason::QueuedMessages);
+    }
+
+    #[test]
+    fn test_queued_messages_still_gated_on_resolution() {
+        let messages = vec![
+            create_message(1, "user", "Use tools"),
+            assistant_with_calls(2, &["call_a", "call_b"]),
+            tool_result(3, "call_a"),
+        ];
+        let state = create_chat_state(messages, 1, vec![]);
+        assert_eq!(should_trigger(&state), TriggerReason::None);
     }
 
     #[test]
