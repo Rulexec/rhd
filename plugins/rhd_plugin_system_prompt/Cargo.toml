@@ -18,3 +18,7 @@ thiserror = "1"
 [dev-dependencies]
 tempfile = "3"
 chrono = "0.4"
+rhd_chat_server = { path = "../../packages/rhd_chat_server" }
+rhd_db = { path = "../../packages/rhd_db" }
+tokio-tungstenite = { workspace = true }
+futures-util = { workspace = true }

@@ -1424,14 +1424,18 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "clap",
+ "futures-util",
  "rhd_chat_api",
  "rhd_chat_client",
+ "rhd_chat_server",
+ "rhd_db",
  "serde",
  "serde_json",
  "serde_yaml",
  "tempfile",
  "thiserror",
  "tokio",
+ "tokio-tungstenite",
  "tracing",
  "tracing-subscriber",
 ]
