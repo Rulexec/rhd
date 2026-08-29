@@ -1422,6 +1422,7 @@ dependencies = [
 name = "rhd_plugin_system_prompt"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "clap",
  "rhd_chat_api",
  "rhd_chat_client",
