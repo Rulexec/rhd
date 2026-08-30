@@ -28,6 +28,7 @@ pub struct ChatMonitor {
     chat_states: Arc<RwLock<HashMap<i64, ChatState>>>,
     _chats_list_token: CancellationToken,
     chat_tokens: Arc<RwLock<Vec<CancellationToken>>>,
+    state_change_callbacks: Arc<RwLock<Vec<Box<dyn Fn(i64, ChatState) + Send + Sync + 'static>>>>,
 }
 
 impl ChatMonitor {
@@ -35,6 +36,7 @@ impl ChatMonitor {
     pub async fn new(client: Arc<ChatClient>) -> Result<Self, ClientError> {
         let chat_states = Arc::new(RwLock::new(HashMap::new()));
         let chat_tokens = Arc::new(RwLock::new(Vec::new()));
+        let state_change_callbacks: Arc<RwLock<Vec<Box<dyn Fn(i64, ChatState) + Send + Sync + 'static>>>> = Arc::new(RwLock::new(Vec::new()));
 
         // Tell the server to send chats list events
         client
@@ -45,10 +47,12 @@ impl ChatMonitor {
         let chat_states_clone = Arc::clone(&chat_states);
         let chat_tokens_clone = Arc::clone(&chat_tokens);
         let client_clone = Arc::clone(&client);
+        let callbacks_clone = Arc::clone(&state_change_callbacks);
         let chats_list_token = client.on_chats_list_event(move |event| {
             let states = Arc::clone(&chat_states_clone);
             let tokens = Arc::clone(&chat_tokens_clone);
             let client = Arc::clone(&client_clone);
+            let callbacks: Arc<RwLock<Vec<Box<dyn Fn(i64, ChatState) + Send + Sync + 'static>>>> = Arc::clone(&callbacks_clone);
             async move {
                 match event {
                     ChatsListEvent::ChatCreated(data) => {
@@ -73,7 +77,13 @@ impl ChatMonitor {
                                 tags: data.chat.tags.clone(),
                                 version: chat_result.chat.version,
                             };
-                            states.write().await.insert(chat_id, state);
+                            states.write().await.insert(chat_id, state.clone());
+                            
+                            // Notify callbacks about state change
+                            let cbs = callbacks.read().await;
+                            for cb in cbs.iter() {
+                                cb(chat_id, state.clone());
+                            }
                             
                             // Tell server to send events for this chat
                             let _ = client.subscribe_chat(rhd_chat_api::SubscribeChatParams { chat_id }).await;
@@ -88,15 +98,23 @@ impl ChatMonitor {
                                     tags: data.chat.tags.clone(),
                                     version: latest_chat_result.chat.version,
                                 };
-                                states.write().await.insert(chat_id, state);
+                                states.write().await.insert(chat_id, state.clone());
+                                
+                                // Notify callbacks about state change
+                                let cbs = callbacks.read().await;
+                                for cb in cbs.iter() {
+                                    cb(chat_id, state.clone());
+                                }
                             }
                             
                             // Subscribe to the new chat's events
                             let chat_states_for_sub = Arc::clone(&states);
                             let client_for_sub = Arc::clone(&client);
+                            let callbacks_for_sub: Arc<RwLock<Vec<Box<dyn Fn(i64, ChatState) + Send + Sync + 'static>>>> = Arc::clone(&callbacks);
                             let token = client.on_chat_event(chat_id, move |event| {
                                 let states = Arc::clone(&chat_states_for_sub);
                                 let client = Arc::clone(&client_for_sub);
+                                let callbacks: Arc<RwLock<Vec<Box<dyn Fn(i64, ChatState) + Send + Sync + 'static>>>> = Arc::clone(&callbacks_for_sub);
                                 async move {
                                     // Extract version from event
                                     let event_version = match &event {
@@ -150,6 +168,12 @@ impl ChatMonitor {
                                                     state.messages = chat_result.messages;
                                                     state.queued_messages_count = chat_result.queued_messages_count;
                                                     state.version = chat_result.chat.version;
+                                                    
+                                                    // Notify callbacks about state change
+                                                    let cbs = callbacks.read().await;
+                                                    for cb in cbs.iter() {
+                                                        cb(chat_id, state.clone());
+                                                    }
                                                 }
                                             }
                                             return;
@@ -182,6 +206,12 @@ impl ChatMonitor {
                                                     state.messages = chat_result.messages;
                                                     state.queued_messages_count = chat_result.queued_messages_count;
                                                     state.version = chat_result.chat.version;
+                                                    
+                                                    // Notify callbacks about state change
+                                                    let cbs = callbacks.read().await;
+                                                    for cb in cbs.iter() {
+                                                        cb(chat_id, state.clone());
+                                                    }
                                                 }
                                             }
                                         }
@@ -209,7 +239,13 @@ impl ChatMonitor {
                                 tags: data.chat.tags,
                                 version: chat_result.chat.version,
                             };
-                            states.write().await.insert(data.chat.id, state);
+                            states.write().await.insert(data.chat.id, state.clone());
+                            
+                            // Notify callbacks about state change
+                            let cbs = callbacks.read().await;
+                            for cb in cbs.iter() {
+                                cb(data.chat.id, state.clone());
+                            }
                         }
                     }
                     ChatsListEvent::ChatDeleted(data) => {
@@ -240,6 +276,7 @@ impl ChatMonitor {
             chat_states,
             _chats_list_token: chats_list_token,
             chat_tokens,
+            state_change_callbacks,
         })
     }
 
@@ -263,11 +300,13 @@ impl ChatMonitor {
 
         let chat_states = Arc::clone(&self.chat_states);
         let client = Arc::clone(&self.client);
+        let callbacks: Arc<RwLock<Vec<Box<dyn Fn(i64, ChatState) + Send + Sync + 'static>>>> = Arc::clone(&self.state_change_callbacks);
 
         // Register local callback for chat events
         let token = self.client.on_chat_event(chat_id, move |event| {
             let states = Arc::clone(&chat_states);
             let client = Arc::clone(&client);
+            let callbacks = Arc::clone(&callbacks);
             async move {
                 // Extract version from event
                 let event_version = match &event {
@@ -321,6 +360,12 @@ impl ChatMonitor {
                                 state.messages = chat_result.messages;
                                 state.queued_messages_count = chat_result.queued_messages_count;
                                 state.version = chat_result.chat.version;
+                                
+                                // Notify callbacks about state change
+                                let cbs = callbacks.read().await;
+                                for cb in cbs.iter() {
+                                    cb(chat_id, state.clone());
+                                }
                             }
                         }
                         return;
@@ -352,6 +397,12 @@ impl ChatMonitor {
                                 state.messages = chat_result.messages;
                                 state.queued_messages_count = chat_result.queued_messages_count;
                                 state.version = chat_result.chat.version;
+                                
+                                // Notify callbacks about state change
+                                let cbs = callbacks.read().await;
+                                for cb in cbs.iter() {
+                                    cb(chat_id, state.clone());
+                                }
                             }
                         }
                     }
@@ -388,5 +439,25 @@ impl ChatMonitor {
         };
         self.chat_states.write().await.insert(chat_id, state);
         Ok(())
+    }
+
+    /// Register a callback to be notified when a chat's state changes.
+    /// The callback receives the chat_id and the new ChatState.
+    pub async fn on_chat_state_change<F>(&self, callback: F)
+    where
+        F: Fn(i64, ChatState) + Send + Sync + 'static,
+    {
+        self.state_change_callbacks
+            .write()
+            .await
+            .push(Box::new(callback));
+    }
+
+    /// Notify all registered callbacks about a chat state change.
+    async fn notify_state_change(&self, chat_id: i64, state: ChatState) {
+        let callbacks = self.state_change_callbacks.read().await;
+        for callback in callbacks.iter() {
+            callback(chat_id, state.clone());
+        }
     }
 }

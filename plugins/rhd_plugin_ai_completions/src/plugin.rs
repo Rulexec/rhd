@@ -132,82 +132,80 @@ pub async fn run_plugin(
     // Track chats currently being processed to prevent duplicate triggers
     let processing_chats = Arc::new(RwLock::new(HashSet::new()));
 
-    // Main loop: check for trigger conditions and handle AI requests
-    loop {
-        // Get all chat IDs
-        let chat_ids = chat_monitor.get_chat_ids().await;
-        tracing::debug!(
-            monitored_chats = chat_ids.len(),
-            "main loop iteration"
-        );
+    // Register callback for chat state changes
+    let processing_chats_clone = Arc::clone(&processing_chats);
+    let client_for_callback = Arc::clone(&client);
+    let plugins_monitor_for_callback = Arc::clone(&plugins_monitor);
+    let ai_client_for_callback = Arc::clone(&ai_client);
+    let config_for_callback = config.clone();
+    let plugin_id_for_callback = plugin_id.to_string();
 
-        for chat_id in chat_ids {
-            // Get chat state
-            if let Some(chat_state) = chat_monitor.get_chat_state(chat_id).await {
-                tracing::debug!(
-                    chat_id = chat_id,
-                    queued_messages_count = chat_state.queued_messages_count,
-                    messages_count = chat_state.messages.len(),
-                    tags = ?chat_state.tags,
-                    "evaluating chat state"
-                );
-                // Check trigger condition
-                let trigger_reason = trigger_detection::should_trigger(&chat_state);
+    chat_monitor.on_chat_state_change(move |chat_id, chat_state| {
+        let processing_chats = Arc::clone(&processing_chats_clone);
+        let client = Arc::clone(&client_for_callback);
+        let plugins_monitor = Arc::clone(&plugins_monitor_for_callback);
+        let ai_client = Arc::clone(&ai_client_for_callback);
+        let config = config_for_callback.clone();
+        let plugin_id = plugin_id_for_callback.clone();
+        let chat_state_clone = chat_state.clone();
 
-                if trigger_reason != trigger_detection::TriggerReason::None {
-                    // Check if this chat is already being processed
-                    let is_processing = processing_chats.read().await.contains(&chat_id);
-                    if is_processing {
-                        continue;
-                    }
+        // Spawn async task to handle the trigger check
+        tokio::spawn(async move {
+            // Check trigger condition
+            let trigger_reason = trigger_detection::should_trigger(&chat_state_clone);
 
-                    tracing::info!(
-                        chat_id = chat_id,
-                        trigger_reason = ?trigger_reason,
-                        "triggering AI completion"
-                    );
-
-                    // Mark chat as processing
-                    processing_chats.write().await.insert(chat_id);
-
-                    // Handle AI request in a separate task to avoid blocking the main loop
-                    let client_clone = Arc::clone(&client);
-                    let plugins_monitor_clone = Arc::clone(&plugins_monitor);
-                    let ai_client_clone = Arc::clone(&ai_client);
-                    let config_clone = config.clone();
-                    let plugin_id_clone = plugin_id.to_string();
-                    let messages_clone = chat_state.messages.clone();
-                    let trigger_reason_clone = trigger_reason.clone();
-                    let known_version = chat_state.version;
-                    let processing_chats_clone = Arc::clone(&processing_chats);
-                    
-                    tokio::spawn(async move {
-                        let result = ai_request::handle_ai_request(
-                            client_clone,
-                            plugins_monitor_clone,
-                            ai_client_clone,
-                            &config_clone,
-                            &plugin_id_clone,
-                            chat_id,
-                            &messages_clone,
-                            trigger_reason_clone,
-                            Some(known_version),
-                        )
-                        .await;
-                        
-                        // Remove chat from processing set when done
-                        processing_chats_clone.write().await.remove(&chat_id);
-                        
-                        if let Err(e) = result {
-                            tracing::error!("AI request failed for chat {}: {}", chat_id, e);
-                        }
-                    });
-                }
+            if trigger_reason == trigger_detection::TriggerReason::None {
+                return;
             }
-        }
 
-        // Wait before next check
-        tokio::time::sleep(Duration::from_secs(1)).await;
+            // Check if this chat is already being processed
+            let is_processing = processing_chats.read().await.contains(&chat_id);
+            if is_processing {
+                return;
+            }
+
+            tracing::info!(
+                chat_id = chat_id,
+                trigger_reason = ?trigger_reason,
+                "triggering AI completion"
+            );
+
+            // Mark chat as processing
+            processing_chats.write().await.insert(chat_id);
+
+            // Handle AI request
+            let messages_clone = chat_state_clone.messages.clone();
+            let trigger_reason_clone = trigger_reason.clone();
+            let known_version = chat_state_clone.version;
+            let processing_chats_clone2 = Arc::clone(&processing_chats);
+
+            let result = ai_request::handle_ai_request(
+                client,
+                plugins_monitor,
+                ai_client,
+                &config,
+                &plugin_id,
+                chat_id,
+                &messages_clone,
+                trigger_reason_clone,
+                Some(known_version),
+            )
+            .await;
+
+            // Remove chat from processing set when done
+            processing_chats_clone2.write().await.remove(&chat_id);
+
+            if let Err(e) = result {
+                tracing::error!("AI request failed for chat {}: {}", chat_id, e);
+            }
+        });
+    }).await;
+
+    // Keep the plugin running (no more polling loop)
+    tracing::info!("Plugin running in event-driven mode");
+    loop {
+        tokio::time::sleep(Duration::from_secs(60)).await;
+        // Just keep the process alive; all work happens in callbacks
     }
 }
 
