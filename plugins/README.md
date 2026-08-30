@@ -166,6 +166,57 @@ How does this plugin handle errors?
 5. **State Management**: Use tags to track state and prevent duplicate processing
 6. **Graceful Shutdown**: Handle shutdown signals gracefully
 
+## Event-Driven Design
+
+Plugins should use event-driven triggers instead of polling loops. The `ChatMonitor` provides a callback mechanism to react to chat state changes.
+
+### Recommended Pattern
+
+```rust
+// Register callback for chat state changes
+chat_monitor.on_chat_state_change(move |chat_id, chat_state| {
+    // Check trigger conditions for THIS chat only
+    if should_trigger(&chat_state) {
+        // Handle the trigger
+    }
+}).await;
+
+// Keep the plugin running
+loop {
+    tokio::time::sleep(Duration::from_secs(60)).await;
+}
+```
+
+### Why Event-Driven?
+
+- **Efficiency**: Only check chats that actually changed, not all chats
+- **Scalability**: O(1) work per event instead of O(n) work per second
+- **Lower latency**: React immediately to events instead of waiting for next poll cycle
+- **Resource usage**: Reduced CPU and network traffic
+
+### When to Use Startup Reconciliation
+
+Startup reconciliation (checking all chats once on startup) is still needed to:
+- Handle chats that existed before the plugin started
+- Recover from crashes or inconsistent states
+- Process chats that may have been missed during disconnection
+
+### Avoid Polling Loops
+
+**DO NOT** use this pattern:
+
+```rust
+// BAD: Polling all chats every second
+loop {
+    for chat_id in chat_monitor.get_chat_ids().await {
+        // Check conditions for EVERY chat
+    }
+    tokio::time::sleep(Duration::from_secs(1)).await;
+}
+```
+
+This pattern doesn't scale and wastes resources checking chats that haven't changed.
+
 ## Examples
 
 See `plugins/rhd_plugin_ai_completions/` for a complete example implementation.
