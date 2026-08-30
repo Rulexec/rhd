@@ -113,3 +113,10 @@ pub fn delete_custom_event(conn: &Mutex<Connection>, event_id: &str) -> DbResult
     conn_guard.execute("DELETE FROM custom_events WHERE event_id = ?", [event_id])?;
     Ok(())
 }
+
+/// Delete all custom events and their acknowledgments.
+pub fn clear_all_custom_events(conn: &Mutex<Connection>) -> DbResult<()> {
+    let conn_guard = conn.lock().map_err(|e| DbError::InitializationError(e.to_string()))?;
+    conn_guard.execute("DELETE FROM custom_events", [])?;
+    Ok(())
+}

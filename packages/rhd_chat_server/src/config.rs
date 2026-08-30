@@ -19,6 +19,10 @@ pub struct Config {
     /// Path to folder for SQLite database (chats.db will be created inside)
     #[arg(long, default_value = "./rhd_db")]
     pub db_path: String,
+
+    /// Clear all pending custom event acknowledgments before starting server
+    #[arg(long)]
+    pub clear_pending_acks: bool,
 }
 
 impl Config {

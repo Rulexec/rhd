@@ -249,6 +249,10 @@ impl ChatDb {
         custom_events::delete_custom_event(&self.conn, event_id)
     }
 
+    pub fn clear_all_custom_events(&self) -> DbResult<()> {
+        custom_events::clear_all_custom_events(&self.conn)
+    }
+
     // Queue message operations
     pub fn add_queue_message(
         &self,

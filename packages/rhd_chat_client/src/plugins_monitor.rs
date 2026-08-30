@@ -27,6 +27,8 @@ pub struct PluginsMonitor {
     acknowledgments: Arc<RwLock<HashMap<String, HashSet<String>>>>,
     /// Cancellation token for the plugins list subscription.
     _plugins_list_token: CancellationToken,
+    /// Cancellation token for the custom event acknowledgment subscription.
+    _ack_token: CancellationToken,
 }
 
 impl PluginsMonitor {
@@ -81,10 +83,24 @@ impl PluginsMonitor {
             }
         });
 
+        // Subscribe to custom event acknowledgments
+        let acknowledgments_clone = Arc::clone(&acknowledgments);
+        let ack_token = client.on_custom_event_acknowledged(move |event| {
+            let acks = Arc::clone(&acknowledgments_clone);
+            async move {
+                let mut acks_guard = acks.write().await;
+                acks_guard
+                    .entry(event.event_id)
+                    .or_insert_with(HashSet::new)
+                    .insert(event.acknowledging_plugin_id);
+            }
+        });
+
         Ok(Self {
             all_plugins,
             acknowledgments,
             _plugins_list_token: token,
+            _ack_token: ack_token,
         })
     }
 

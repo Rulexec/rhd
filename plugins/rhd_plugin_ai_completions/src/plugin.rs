@@ -6,8 +6,11 @@
 //! 3. Create monitors for plugins and chats
 //! 4. Main loop: detect trigger conditions and handle AI requests
 
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
+
+use tokio::sync::RwLock;
 
 use rhd_ai_client::AiClient;
 use rhd_chat_api::{
@@ -126,6 +129,9 @@ pub async fn run_plugin(
 
     tracing::info!("Created AI client");
 
+    // Track chats currently being processed to prevent duplicate triggers
+    let processing_chats = Arc::new(RwLock::new(HashSet::new()));
+
     // Main loop: check for trigger conditions and handle AI requests
     loop {
         // Get all chat IDs
@@ -149,11 +155,20 @@ pub async fn run_plugin(
                 let trigger_reason = trigger_detection::should_trigger(&chat_state);
 
                 if trigger_reason != trigger_detection::TriggerReason::None {
+                    // Check if this chat is already being processed
+                    let is_processing = processing_chats.read().await.contains(&chat_id);
+                    if is_processing {
+                        continue;
+                    }
+
                     tracing::info!(
                         chat_id = chat_id,
                         trigger_reason = ?trigger_reason,
                         "triggering AI completion"
                     );
+
+                    // Mark chat as processing
+                    processing_chats.write().await.insert(chat_id);
 
                     // Handle AI request in a separate task to avoid blocking the main loop
                     let client_clone = Arc::clone(&client);
@@ -164,9 +179,10 @@ pub async fn run_plugin(
                     let messages_clone = chat_state.messages.clone();
                     let trigger_reason_clone = trigger_reason.clone();
                     let known_version = chat_state.version;
+                    let processing_chats_clone = Arc::clone(&processing_chats);
                     
                     tokio::spawn(async move {
-                        if let Err(e) = ai_request::handle_ai_request(
+                        let result = ai_request::handle_ai_request(
                             client_clone,
                             plugins_monitor_clone,
                             ai_client_clone,
@@ -177,8 +193,12 @@ pub async fn run_plugin(
                             trigger_reason_clone,
                             Some(known_version),
                         )
-                        .await
-                        {
+                        .await;
+                        
+                        // Remove chat from processing set when done
+                        processing_chats_clone.write().await.remove(&chat_id);
+                        
+                        if let Err(e) = result {
                             tracing::error!("AI request failed for chat {}: {}", chat_id, e);
                         }
                     });
