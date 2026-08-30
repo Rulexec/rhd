@@ -22,18 +22,19 @@ use rhd_chat_api::{
     AddQueueMessageParams, AddQueueMessageResult, AddToolsParams, AddToolsResult,
     CreateChatParams, CreateChatResult, DeleteChatParams, DeleteChatResult, DeleteMessageParams,
     DeleteMessageResult, DeleteQueueMessageParams, DeleteQueueMessageResult, GetChatParams,
-    GetChatResult, GetPendingAcksParams, GetPendingAcksResult, GetPluginsParams, GetPluginsResult,
-    GetQueueMessagesParams, GetQueueMessagesResult, GetToolsParams, GetToolsResult,
-    ListChatsParams, ListChatsResult, RegisterPluginParams, RegisterPluginResult,
-    RemovePluginParams, RemovePluginResult, RemoveToolsParams, RemoveToolsResult,
-    SendCustomEventParams, SendCustomEventResult, StreamFinishParams, StreamFinishResult,
-    StreamPushParams, StreamPushResult, StreamSubscribeParams, StreamSubscribeResult,
-    SubscribeChatParams, SubscribeChatResult, SubscribeChatsListParams, SubscribeChatsListResult,
-    SubscribePluginsListParams, SubscribePluginsListResult, UnsubscribeChatParams,
-    UnsubscribeChatResult, UnsubscribeChatsListParams, UnsubscribeChatsListResult,
-    UnsubscribePluginsListParams, UnsubscribePluginsListResult, UpdateChatParams, UpdateChatResult,
-    UpdateMessageParams, UpdateMessageResult, UpdateQueueMessageParams, UpdateQueueMessageResult,
-    UpdateToolCallTagsParams, UpdateToolCallTagsResult,
+    GetChatResult, GetMessagesParams, GetMessagesResult, GetPendingAcksParams, GetPendingAcksResult,
+    GetPluginsParams, GetPluginsResult, GetQueueMessagesParams, GetQueueMessagesResult,
+    GetToolsParams, GetToolsResult, ListChatsParams, ListChatsResult, RegisterPluginParams,
+    RegisterPluginResult, RemovePluginParams, RemovePluginResult, RemoveToolsParams,
+    RemoveToolsResult, SendCustomEventParams, SendCustomEventResult, StreamFinishParams,
+    StreamFinishResult, StreamPushParams, StreamPushResult, StreamSubscribeParams,
+    StreamSubscribeResult, SubscribeChatParams, SubscribeChatResult, SubscribeChatsListParams,
+    SubscribeChatsListResult, SubscribePluginsListParams, SubscribePluginsListResult,
+    UnsubscribeChatParams, UnsubscribeChatResult, UnsubscribeChatsListParams,
+    UnsubscribeChatsListResult, UnsubscribePluginsListParams, UnsubscribePluginsListResult,
+    UpdateChatParams, UpdateChatResult, UpdateMessageParams, UpdateMessageResult,
+    UpdateQueueMessageParams, UpdateQueueMessageResult, UpdateToolCallTagsParams,
+    UpdateToolCallTagsResult,
 };
 
 use crate::error::ClientError;
@@ -603,6 +604,13 @@ impl ChatClient {
     /// Delete a message.
     pub async fn delete_message(&self, params: DeleteMessageParams) -> Result<DeleteMessageResult, ClientError> {
         self.send_request("deleteMessage", params).await
+    }
+
+    /// Get messages with optional filters (unresolved tool calls, tags).
+    ///
+    /// Returns filtered messages and the current chat version for consistency checking.
+    pub async fn get_messages(&self, params: GetMessagesParams) -> Result<GetMessagesResult, ClientError> {
+        self.send_request("getMessages", params).await
     }
 
     /// Add and/or remove tags on a single tool call within a message.

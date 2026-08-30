@@ -59,6 +59,7 @@ pub async fn handle_request(
         "updateMessage" => message::update_message(request.params, db, &request_id, &subscription_manager).await,
         "deleteMessage" => message::delete_message(request.params, db, &request_id, &subscription_manager).await,
         "updateToolCallTags" => message::update_tool_call_tags(request.params, db, &request_id, &subscription_manager).await,
+        "getMessages" => message::get_messages(request.params, db, &request_id).await,
         
         // Subscription methods
         "subscribeChat" => subscription::subscribe_chat(request.params, db, &request_id, connection_id, subscription_manager).await,

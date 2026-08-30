@@ -2,10 +2,12 @@
 
 use chrono::{DateTime, Utc};
 use serde_json::Value;
+use std::collections::HashSet;
 
 use rhd_chat_api::methods::{
     AddMessageParams, AddMessageResult, DeleteMessageParams, DeleteMessageResult,
-    UpdateMessageParams, UpdateMessageResult, UpdateToolCallTagsParams, UpdateToolCallTagsResult,
+    GetMessagesParams, GetMessagesResult, UpdateMessageParams, UpdateMessageResult,
+    UpdateToolCallTagsParams, UpdateToolCallTagsResult,
 };
 use rhd_chat_api::protocol::Response;
 use rhd_chat_api::ErrorResponse;
@@ -268,4 +270,115 @@ pub async fn update_tool_call_tags(
 
     let result = UpdateToolCallTagsResult {};
     Ok(serde_json::to_value(Response::success(request_id, serde_json::to_value(result)?))?)
+}
+
+/// Check if a message has unresolved tool calls.
+///
+/// A tool call is considered unresolved if there is no corresponding tool message
+/// (a message with role="tool" and matching tool_call_id) in the chat.
+fn has_unresolved_tool_calls(
+    message: &rhd_chat_api::Message,
+    answered_tool_call_ids: &HashSet<String>,
+) -> bool {
+    // If the message has no tool calls, it doesn't have unresolved ones
+    if message.tool_calls.is_empty() {
+        return false;
+    }
+
+    // Check if any tool call is not answered
+    message
+        .tool_calls
+        .iter()
+        .any(|tc| !answered_tool_call_ids.contains(&tc.id))
+}
+
+/// Handle `getMessages` request.
+///
+/// Query messages with filters (unresolved tool calls, tags).
+pub async fn get_messages(
+    params: Value,
+    db: &ChatDb,
+    request_id: &str,
+) -> Result<Value, ServerError> {
+    let params: GetMessagesParams = match serde_json::from_value(params) {
+        Ok(p) => p,
+        Err(e) => {
+            return Ok(serde_json::to_value(ErrorResponse::invalid_request(
+                request_id,
+                format!("Invalid params: {}", e),
+            ))?);
+        }
+    };
+
+    // Check if chat exists
+    let chat = match db.get_chat(params.chat_id)? {
+        Some(c) => c,
+        None => {
+            return Ok(serde_json::to_value(ErrorResponse::chat_not_found(
+                request_id,
+                params.chat_id,
+            ))?);
+        }
+    };
+
+    // Get all messages for the chat
+    let db_messages = db.get_messages(params.chat_id)?;
+
+    // Convert DB messages to API messages with tags
+    let mut all_messages: Vec<rhd_chat_api::Message> = Vec::with_capacity(db_messages.len());
+    for db_msg in db_messages {
+        let tags = db.get_message_tags(db_msg.id)?;
+        let api_msg = convert_message_to_api(db_msg, tags)?;
+        all_messages.push(api_msg);
+    }
+
+    // Build set of answered tool call IDs (tool messages have tool_call_id set)
+    let answered_tool_call_ids: HashSet<String> = all_messages
+        .iter()
+        .filter_map(|m| m.tool_call_id.clone())
+        .collect();
+
+    // Apply filters
+    let mut filtered_messages = all_messages;
+
+    if params.with_unresolved_tool_calls {
+        filtered_messages = filtered_messages
+            .into_iter()
+            .filter(|m| has_unresolved_tool_calls(m, &answered_tool_call_ids))
+            .collect();
+    }
+
+    if !params.with_all_tags.is_empty() {
+        filtered_messages = filtered_messages
+            .into_iter()
+            .filter(|m| {
+                params
+                    .with_all_tags
+                    .iter()
+                    .all(|tag| m.tags.contains(tag))
+            })
+            .collect();
+    }
+
+    if !params.with_any_tag.is_empty() {
+        filtered_messages = filtered_messages
+            .into_iter()
+            .filter(|m| {
+                params
+                    .with_any_tag
+                    .iter()
+                    .any(|tag| m.tags.contains(tag))
+            })
+            .collect();
+    }
+
+    let result = GetMessagesResult {
+        messages: filtered_messages,
+        chat_version: chat.version,
+    };
+
+    Ok(serde_json::to_value(Response::success(
+        request_id,
+        serde_json::to_value(result)?,
+    ))?)
 }
