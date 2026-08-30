@@ -267,6 +267,21 @@ export const GetPluginsResultSchema = z.object({
   plugins: z.array(PluginSummarySchema)
 });
 
+/**
+ * Update chat params schema.
+ */
+export const UpdateChatParamsSchema = z.object({
+  chatId: z.number(),
+  title: z.string().optional(),
+  addTags: z.array(z.string()).optional(),
+  removeTags: z.array(z.string()).optional()
+});
+
+/**
+ * Update chat result schema.
+ */
+export const UpdateChatResultSchema = z.object({});
+
 // ============================================================================
 // Type Exports
 // ============================================================================
@@ -283,6 +298,8 @@ export type CreateChatResult = z.infer<typeof CreateChatResultSchema>;
 export type GetChatResult = z.infer<typeof GetChatResultSchema>;
 export type GetQueueMessagesResult = z.infer<typeof GetQueueMessagesResultSchema>;
 export type GetPluginsResult = z.infer<typeof GetPluginsResultSchema>;
+export type UpdateChatParams = z.infer<typeof UpdateChatParamsSchema>;
+export type UpdateChatResult = z.infer<typeof UpdateChatResultSchema>;
 
 export type ChatCreatedData = z.infer<typeof ChatCreatedDataSchema>;
 export type ChatUpdatedData = z.infer<typeof ChatUpdatedDataSchema>;

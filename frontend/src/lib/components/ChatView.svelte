@@ -1,12 +1,15 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
+  import { flowResult } from 'mobx';
   import { getAppStore } from '../../context.js';
   import { mobxObservable } from '../../util/mobxObservable.svelte.js';
   import Message from './Message.svelte';
   import MessageInput from './MessageInput.svelte';
+  import TagInput from './TagInput.svelte';
 
   const appStore = getAppStore();
   const chatStore = appStore.chat;
+  const chatsListStore = appStore.chatsList;
 
   // Bridge MobX observables to Svelte reactivity.
   // mobxObservable returns a getter and must be invoked at component top level.
@@ -15,12 +18,14 @@
   const chatLoadingGetter = mobxObservable(() => chatStore.loading);
   const chatErrorGetter = mobxObservable(() => chatStore.error);
   const streamContentGetter = mobxObservable(() => chatStore.streamContent);
+  const allTagsGetter = mobxObservable(() => chatsListStore.allTags);
 
   let currentChat = $derived(currentChatGetter());
   let allMessages = $derived(allMessagesGetter());
   let chatLoading = $derived(chatLoadingGetter());
   let chatError = $derived(chatErrorGetter());
   let streamContent = $derived(streamContentGetter());
+  let allTags = $derived(allTagsGetter());
 
   let disposeChatStore: (() => void) | null = null;
 
@@ -76,6 +81,15 @@
     setTimeout(() => scrollToBottom(), 0);
   }
 
+  /**
+   * Handle adding a tag to the current chat.
+   */
+  function handleAddTag(tag: string): void {
+    if (currentChat) {
+      flowResult(chatsListStore.addChatTags(currentChat.id, [tag]));
+    }
+  }
+
   // Auto-scroll when messages change (only if at bottom)
   $effect(() => {
     if (allMessages && isAtBottom) {
@@ -126,13 +140,11 @@
   {:else}
     <div class="chat-header">
       <h2>{currentChat.title}</h2>
-      {#if currentChat.tags && currentChat.tags.length > 0}
-        <div class="chat-tags">
-          {#each currentChat.tags as tag}
-            <span class="tag">{tag}</span>
-          {/each}
-        </div>
-      {/if}
+      <TagInput
+        currentTags={currentChat.tags}
+        suggestions={allTags}
+        onAddTag={handleAddTag}
+      />
     </div>
 
     <div
@@ -220,11 +232,6 @@
   .chat-header h2 {
     margin: 0 0 var(--spacing-xs) 0;
     font-size: var(--font-size-lg);
-  }
-
-  .chat-tags {
-    display: flex;
-    gap: var(--spacing-xs);
   }
 
   .messages-container {

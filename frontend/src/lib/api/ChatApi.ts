@@ -13,6 +13,7 @@ export interface ChatApi {
   listChats: typeof chatApi.listChats;
   createChat: typeof chatApi.createChat;
   deleteChat: typeof chatApi.deleteChat;
+  updateChat: typeof chatApi.updateChat;
   generateChatTitle: typeof chatApi.generateChatTitle;
   onChatListEvents: typeof chatApi.onChatListEvents;
   subscribeChat: typeof chatApi.subscribeChat;
@@ -36,6 +37,7 @@ export const defaultChatApi: ChatApi = {
   listChats: chatApi.listChats,
   createChat: chatApi.createChat,
   deleteChat: chatApi.deleteChat,
+  updateChat: chatApi.updateChat,
   generateChatTitle: chatApi.generateChatTitle,
   onChatListEvents: chatApi.onChatListEvents,
   subscribeChat: chatApi.subscribeChat,

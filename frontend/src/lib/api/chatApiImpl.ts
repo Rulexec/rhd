@@ -6,6 +6,8 @@ import {
   GetChatResultSchema,
   GetQueueMessagesResultSchema,
   GetPluginsResultSchema,
+  UpdateChatParamsSchema,
+  UpdateChatResultSchema,
   ChatCreatedDataSchema,
   ChatUpdatedDataSchema,
   ChatDeletedDataSchema,
@@ -26,6 +28,8 @@ import {
   type GetChatResult,
   type GetQueueMessagesResult,
   type GetPluginsResult,
+  type UpdateChatParams,
+  type UpdateChatResult,
   type ChatCreatedData,
   type ChatUpdatedData,
   type ChatDeletedData,
@@ -89,6 +93,15 @@ export async function createChat(title: string): Promise<CreateChatResult> {
  */
 export async function deleteChat(chatId: number): Promise<void> {
   await websocket.request('deleteChat', { chatId });
+}
+
+/**
+ * Update a chat (title, tags).
+ * @param params - Update parameters
+ */
+export async function updateChat(params: UpdateChatParams): Promise<UpdateChatResult> {
+  const data = await websocket.request('updateChat', params);
+  return UpdateChatResultSchema.parse(data);
 }
 
 /**

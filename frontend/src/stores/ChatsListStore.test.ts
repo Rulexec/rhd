@@ -32,6 +32,7 @@ describe('ChatsListStore', () => {
       listChats: vi.fn().mockResolvedValue({ chats: [mockChat] }),
       createChat: vi.fn().mockResolvedValue({ chatId: 2 }),
       deleteChat: vi.fn().mockResolvedValue(undefined),
+      updateChat: vi.fn().mockResolvedValue({}),
       generateChatTitle: vi.fn().mockReturnValue('2024-01-01 00:00'),
       onChatListEvents: vi.fn().mockReturnValue(() => {}),
       // Other ChatApi members are not exercised by these tests.
@@ -182,5 +183,50 @@ describe('ChatsListStore', () => {
 
     expect(cleanup).toHaveBeenCalled();
     expect(store.chats).toEqual([]);
+  });
+
+  describe('allTags getter', () => {
+    it('should return empty array when no chats', () => {
+      expect(store.allTags).toEqual([]);
+    });
+
+    it('should return unique sorted tags from all chats', async () => {
+      const chat1: Chat = { ...mockChat, id: 1, tags: ['beta', 'alpha'] };
+      const chat2: Chat = { ...mockChat, id: 2, tags: ['gamma', 'alpha'] };
+
+      vi.mocked(mockChatApi.listChats).mockResolvedValueOnce({ chats: [chat1, chat2] });
+      await store.loadChats();
+
+      expect(store.allTags).toEqual(['alpha', 'beta', 'gamma']);
+    });
+
+    it('should not include duplicate tags', async () => {
+      const chat1: Chat = { ...mockChat, id: 1, tags: ['tag1', 'tag2'] };
+      const chat2: Chat = { ...mockChat, id: 2, tags: ['tag1', 'tag3'] };
+
+      vi.mocked(mockChatApi.listChats).mockResolvedValueOnce({ chats: [chat1, chat2] });
+      await store.loadChats();
+
+      expect(store.allTags).toEqual(['tag1', 'tag2', 'tag3']);
+    });
+  });
+
+  describe('addChatTags', () => {
+    it('should call updateChat with correct params', async () => {
+      await store.addChatTags(1, ['new-tag']);
+
+      expect(mockChatApi.updateChat).toHaveBeenCalledWith({
+        chatId: 1,
+        addTags: ['new-tag']
+      });
+    });
+
+    it('should handle errors', async () => {
+      vi.mocked(mockChatApi.updateChat).mockRejectedValueOnce(new Error('Update failed'));
+
+      await store.addChatTags(1, ['new-tag']);
+
+      expect(store.error).toBe('Update failed');
+    });
   });
 });

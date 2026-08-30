@@ -48,6 +48,19 @@ export class ChatsListStore {
   }
 
   /**
+   * Get all unique tags across all chats (for suggestions).
+   */
+  get allTags(): string[] {
+    const tagSet = new Set<string>();
+    for (const chat of this._chats) {
+      for (const tag of chat.tags) {
+        tagSet.add(tag);
+      }
+    }
+    return Array.from(tagSet).sort();
+  }
+
+  /**
    * Initialize the store: subscribe to events and load initial data.
    * Should be called once on app startup.
    */
@@ -137,6 +150,24 @@ export class ChatsListStore {
     } catch (error) {
       this.error = error instanceof Error ? error.message : String(error);
       return false;
+    }
+  }
+
+  /**
+   * Add tags to a chat.
+   * @param chatId - Chat ID
+   * @param tags - Tags to add
+   */
+  *addChatTags(chatId: number, tags: string[]): Generator<unknown, void, unknown> {
+    this.error = null;
+    try {
+      yield* yieldPromise(this.#chatApi.updateChat({
+        chatId,
+        addTags: tags
+      }));
+      // Chat will be updated via chatUpdated event
+    } catch (error) {
+      this.error = error instanceof Error ? error.message : String(error);
     }
   }
 
