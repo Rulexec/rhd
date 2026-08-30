@@ -249,35 +249,40 @@ pub async fn run_plugin(
         injected_count
     );
 
-    // Main loop
-    loop {
-        let chat_ids = chat_monitor.get_chat_ids().await;
-        tracing::debug!(monitored_chats = chat_ids.len(), "main loop iteration");
+    // Register callback for chat state changes
+    let client_for_callback = Arc::clone(&client);
+    let cached_prompts_for_callback = cached_prompts.clone();
 
-        for chat_id in chat_ids {
-            if let Some(chat_state) = chat_monitor.get_chat_state(chat_id).await {
-                match system_prompt::process_chat(&client, &chat_state, &cached_prompts).await {
-                    Ok(count) if count > 0 => {
-                        tracing::info!(
-                            chat_id = chat_id,
-                            injected_count = count,
-                            "injected system prompts in main loop"
-                        );
-                    }
-                    Ok(_) => {}
-                    Err(e) => {
-                        tracing::error!(
-                            chat_id = chat_id,
-                            error = %e,
-                            "failed to process chat"
-                        );
-                    }
+    chat_monitor.on_chat_state_change(move |chat_id, chat_state| {
+        let client = Arc::clone(&client_for_callback);
+        let cached_prompts = cached_prompts_for_callback.clone();
+        let chat_state_clone = chat_state.clone();
+
+        tokio::spawn(async move {
+            match system_prompt::process_chat(&client, &chat_state_clone, &cached_prompts).await {
+                Ok(count) if count > 0 => {
+                    tracing::info!(
+                        chat_id = chat_id,
+                        injected_count = count,
+                        "injected system prompts after state change"
+                    );
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::error!(
+                        chat_id = chat_id,
+                        error = %e,
+                        "failed to process chat after state change"
+                    );
                 }
             }
-        }
+        });
+    }).await;
 
-        // Wait before next check
-        tokio::time::sleep(Duration::from_secs(1)).await;
+    // Keep the plugin running (no more polling loop)
+    tracing::info!("Plugin running in event-driven mode");
+    loop {
+        tokio::time::sleep(Duration::from_secs(60)).await;
     }
 }
 
