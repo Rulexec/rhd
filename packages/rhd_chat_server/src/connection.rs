@@ -60,7 +60,7 @@ pub async fn handle_connection(
     let write_task = tokio::spawn(async move {
         while let Some(msg) = outgoing_rx.recv().await {
             // Log the first 100 chars of the message to identify what's being sent
-            let msg_preview = if msg.len() > 100 { &msg[..100] } else { &msg };
+            let msg_preview: String = msg.chars().take(100).collect();
             debug!(
                 connection_id = %write_connection_id,
                 message_preview = %msg_preview,
