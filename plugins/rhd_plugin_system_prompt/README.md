@@ -76,6 +76,25 @@ Run the plugin:
    - If a chat needs a system prompt, injects it before acknowledging the event
    - Ensures system prompts are in place before AI requests proceed
 
+## Interaction with AI Completions Tags
+
+The plugin never injects system prompts into a chat while the chat is locked
+by the AI completions plugin, i.e. while its tags contain either:
+
+- `ai_completions:running` — an AI request is actively in progress
+  (including between tool-loop iterations)
+- `ai_completions:error` — the chat is parked after a failure
+
+**Effect:** injection happens only when the chat awaits its next queued user
+message, or when the chat is new. If a `systemPrompt:<name>` tag is added to a
+locked chat, the prompt is injected as soon as the lock tag is removed:
+
+- after `running` is removed (request finished) — within one main-loop tick
+- after `error` is removed by an operator — on the next main-loop tick
+
+The `ai_completions:preRequest` event is always acknowledged, even when
+injection is skipped, so the AI completions plugin is never blocked.
+
 ## Tag Format
 
 Chats should be tagged with `systemPrompt:<name>` where `<name>` matches a key in the configuration.
@@ -110,6 +129,8 @@ Ensure all prompt files exist and are readable. Check the paths in your configur
 1. Verify the chat has the correct tag (e.g., `systemPrompt:warhammer`)
 2. Check that the prompt name matches a key in the configuration
 3. Ensure the chat doesn't have an unfinished assistant message
+4. Check that the chat does not have an `ai_completions:running` or
+   `ai_completions:error` tag — injection is deferred until such a tag is removed
 
 ### AI requests proceeding without system prompts
 

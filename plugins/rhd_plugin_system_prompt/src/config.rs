@@ -33,28 +33,32 @@ pub struct CachedPrompt {
 /// 4. Fails if any prompt file is missing or unreadable
 pub fn load_config(path: &str) -> Result<(PluginConfig, Vec<CachedPrompt>), ConfigError> {
     let config_path = Path::new(path);
-    let config_dir = config_path.parent().ok_or_else(|| ConfigError::MainConfigFileRead {
-        path: path.to_string(),
-        details: "Cannot determine config file directory".to_string(),
-    })?;
+    let config_dir = config_path
+        .parent()
+        .ok_or_else(|| ConfigError::MainConfigFileRead {
+            path: path.to_string(),
+            details: "Cannot determine config file directory".to_string(),
+        })?;
 
-    let config_content = std::fs::read_to_string(path).map_err(|e| ConfigError::MainConfigFileRead {
-        path: path.to_string(),
-        details: e.to_string(),
-    })?;
+    let config_content =
+        std::fs::read_to_string(path).map_err(|e| ConfigError::MainConfigFileRead {
+            path: path.to_string(),
+            details: e.to_string(),
+        })?;
 
-    let config: PluginConfig = serde_yaml::from_str(&config_content)
-        .map_err(|e| ConfigError::Parse(e.to_string()))?;
+    let config: PluginConfig =
+        serde_yaml::from_str(&config_content).map_err(|e| ConfigError::Parse(e.to_string()))?;
 
     // Validate and cache all prompt files
     let mut cached_prompts = Vec::new();
     for (name, prompt_path) in &config.system_prompts {
         let resolved_path = resolve_path(prompt_path, config_dir);
-        let content = std::fs::read_to_string(&resolved_path).map_err(|e| ConfigError::PromptFileRead {
-            name: name.clone(),
-            path: resolved_path.clone(),
-            details: e.to_string(),
-        })?;
+        let content =
+            std::fs::read_to_string(&resolved_path).map_err(|e| ConfigError::PromptFileRead {
+                name: name.clone(),
+                path: resolved_path.clone(),
+                details: e.to_string(),
+            })?;
 
         cached_prompts.push(CachedPrompt {
             name: name.clone(),
@@ -119,7 +123,11 @@ systemPrompts:
         // Create temporary prompt files
         let config_dir = config_file.path().parent().unwrap();
         std::fs::create_dir_all(config_dir.join("prompts")).unwrap();
-        std::fs::write(config_dir.join("prompts/warhammer.md"), "Warhammer prompt content").unwrap();
+        std::fs::write(
+            config_dir.join("prompts/warhammer.md"),
+            "Warhammer prompt content",
+        )
+        .unwrap();
         std::fs::write(config_dir.join("prompts/jokes.md"), "Joke prompt content").unwrap();
 
         let (config, cached) = load_config(config_file.path().to_str().unwrap()).unwrap();

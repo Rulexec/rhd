@@ -8,14 +8,36 @@ use crate::config::CachedPrompt;
 /// Tag prefix for system prompt tags.
 pub const SYSTEM_PROMPT_TAG_PREFIX: &str = "systemPrompt:";
 
+/// Chat tag set by the AI completions plugin while a request is in flight
+/// (including tool-loop iterations). While present, system prompt injection
+/// must not touch the chat.
+pub const AI_COMPLETIONS_RUNNING_TAG: &str = "ai_completions:running";
+
+/// Chat tag set by the AI completions plugin when the chat is parked after a
+/// failure. While present, system prompt injection must not touch the chat.
+pub const AI_COMPLETIONS_ERROR_TAG: &str = "ai_completions:error";
+
+/// Check whether a chat is locked by the AI completions plugin.
+///
+/// A chat is locked while it carries `ai_completions:running` (request
+/// actively in progress) or `ai_completions:error` (chat parked after a
+/// failure). No system prompts may be injected until the tag is removed.
+pub fn has_blocking_tag(chat_state: &ChatState) -> bool {
+    chat_state
+        .tags
+        .iter()
+        .any(|tag| tag == AI_COMPLETIONS_RUNNING_TAG || tag == AI_COMPLETIONS_ERROR_TAG)
+}
+
 /// Check if a chat has a system prompt message for the given prompt name.
 ///
 /// A system prompt message is identified by having a tag matching `systemPrompt:<name>`.
 pub fn has_system_prompt_message(chat_state: &ChatState, prompt_name: &str) -> bool {
     let expected_tag = format!("{}{}", SYSTEM_PROMPT_TAG_PREFIX, prompt_name);
-    chat_state.messages.iter().any(|msg| {
-        msg.tags.iter().any(|tag| tag == &expected_tag)
-    })
+    chat_state
+        .messages
+        .iter()
+        .any(|msg| msg.tags.iter().any(|tag| tag == &expected_tag))
 }
 
 /// Check if a chat has an unfinished assistant message.
@@ -24,9 +46,10 @@ pub fn has_system_prompt_message(chat_state: &ChatState, prompt_name: &str) -> b
 /// - `role == "assistant"` AND
 /// - (`is_streaming == true` OR `is_finished == false`)
 pub fn has_unfinished_assistant_message(chat_state: &ChatState) -> bool {
-    chat_state.messages.iter().any(|msg| {
-        msg.role == "assistant" && (msg.is_streaming || !msg.is_finished)
-    })
+    chat_state
+        .messages
+        .iter()
+        .any(|msg| msg.role == "assistant" && (msg.is_streaming || !msg.is_finished))
 }
 
 /// Parse a system prompt tag and extract the prompt name.
@@ -90,10 +113,12 @@ pub async fn inject_system_prompt(
 /// Process a chat and inject any missing system prompts.
 ///
 /// This function:
-/// 1. Checks if the chat has an unfinished assistant message (if so, skip)
-/// 2. Gets the list of required prompt names from chat tags
-/// 3. For each required prompt, checks if it already exists
-/// 4. Injects any missing prompts
+/// 1. Checks if the chat is locked by the AI completions plugin
+///    (`ai_completions:running` or `ai_completions:error` tag; if so, skip)
+/// 2. Checks if the chat has an unfinished assistant message (if so, skip)
+/// 3. Gets the list of required prompt names from chat tags
+/// 4. For each required prompt, checks if it already exists
+/// 5. Injects any missing prompts
 ///
 /// Returns the number of prompts injected.
 pub async fn process_chat(
@@ -101,6 +126,16 @@ pub async fn process_chat(
     chat_state: &ChatState,
     cached_prompts: &[CachedPrompt],
 ) -> Result<usize, InjectError> {
+    // Skip while the chat is locked by the AI completions plugin
+    // (request in flight, or chat parked with error).
+    if has_blocking_tag(chat_state) {
+        tracing::debug!(
+            chat_id = chat_state.chat_id,
+            "skipping chat with ai_completions running/error tag"
+        );
+        return Ok(0);
+    }
+
     // Skip if chat has unfinished assistant message
     if has_unfinished_assistant_message(chat_state) {
         tracing::debug!(
@@ -184,8 +219,14 @@ mod tests {
 
     #[test]
     fn test_parse_system_prompt_tag_valid() {
-        assert_eq!(parse_system_prompt_tag("systemPrompt:warhammer"), Some("warhammer"));
-        assert_eq!(parse_system_prompt_tag("systemPrompt:jokeTeller"), Some("jokeTeller"));
+        assert_eq!(
+            parse_system_prompt_tag("systemPrompt:warhammer"),
+            Some("warhammer")
+        );
+        assert_eq!(
+            parse_system_prompt_tag("systemPrompt:jokeTeller"),
+            Some("jokeTeller")
+        );
     }
 
     #[test]
@@ -249,5 +290,44 @@ mod tests {
         assert_eq!(names.len(), 2);
         assert!(names.contains(&"warhammer".to_string()));
         assert!(names.contains(&"jokeTeller".to_string()));
+    }
+
+    #[test]
+    fn test_has_blocking_tag_running() {
+        let state = create_chat_state(vec![], vec!["ai_completions:running".to_string()]);
+        assert!(has_blocking_tag(&state));
+    }
+
+    #[test]
+    fn test_has_blocking_tag_error() {
+        let state = create_chat_state(vec![], vec!["ai_completions:error".to_string()]);
+        assert!(has_blocking_tag(&state));
+    }
+
+    #[test]
+    fn test_has_blocking_tag_both() {
+        let state = create_chat_state(
+            vec![],
+            vec![
+                "ai_completions:running".to_string(),
+                "ai_completions:error".to_string(),
+            ],
+        );
+        assert!(has_blocking_tag(&state));
+    }
+
+    #[test]
+    fn test_has_blocking_tag_none() {
+        let state = create_chat_state(
+            vec![],
+            vec!["systemPrompt:warhammer".to_string(), "other".to_string()],
+        );
+        assert!(!has_blocking_tag(&state));
+    }
+
+    #[test]
+    fn test_has_blocking_tag_empty() {
+        let state = create_chat_state(vec![], vec![]);
+        assert!(!has_blocking_tag(&state));
     }
 }

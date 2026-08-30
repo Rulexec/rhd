@@ -5,9 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures_util::StreamExt;
-use rhd_chat_api::{
-    AddMessageParams, CreateChatParams, GetChatParams,
-};
+use rhd_chat_api::{AddMessageParams, CreateChatParams, GetChatParams, UpdateChatParams};
 use rhd_chat_client::ChatClient;
 use rhd_chat_server::config::Config;
 use rhd_chat_server::connection::handle_connection;
@@ -44,7 +42,9 @@ async fn start_test_server() -> (u16, tokio::task::JoinHandle<()>) {
     let stream_manager = Arc::new(StreamManager::new());
 
     // Bind TCP listener
-    let listener = tokio::net::TcpListener::bind(&config.socket_addr()).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(&config.socket_addr())
+        .await
+        .unwrap();
 
     // Start server in background
     let handle = tokio::spawn(async move {
@@ -63,7 +63,15 @@ async fn start_test_server() -> (u16, tokio::task::JoinHandle<()>) {
                 match tokio_tungstenite::accept_async(stream).await {
                     Ok(ws_stream) => {
                         let (write, read) = ws_stream.split();
-                        let _ = handle_connection(read, write, db, subscription_manager, plugin_registry, stream_manager).await;
+                        let _ = handle_connection(
+                            read,
+                            write,
+                            db,
+                            subscription_manager,
+                            plugin_registry,
+                            stream_manager,
+                        )
+                        .await;
                     }
                     Err(_) => {}
                 }
@@ -112,10 +120,9 @@ async fn test_plugin_startup_with_valid_config() {
     ]);
 
     // Load config to verify it works
-    let (config, cached) = rhd_plugin_system_prompt::config::load_config(
-        config_file.path().to_str().unwrap(),
-    )
-    .expect("Failed to load config");
+    let (config, cached) =
+        rhd_plugin_system_prompt::config::load_config(config_file.path().to_str().unwrap())
+            .expect("Failed to load config");
 
     assert_eq!(config.system_prompts.len(), 2);
     assert_eq!(cached.len(), 2);
@@ -133,9 +140,8 @@ systemPrompts:
     )
     .unwrap();
 
-    let result = rhd_plugin_system_prompt::config::load_config(
-        config_file.path().to_str().unwrap(),
-    );
+    let result =
+        rhd_plugin_system_prompt::config::load_config(config_file.path().to_str().unwrap());
 
     assert!(result.is_err());
 }
@@ -144,14 +150,12 @@ systemPrompts:
 async fn test_system_prompt_injection_on_chat_with_tag() {
     let (port, _handle) = start_test_server().await;
     let client = connect_client(port).await;
-    let (config_file, _prompt_files) = create_test_config(&[
-        ("warhammer", "Warhammer 40k system prompt"),
-    ]);
+    let (config_file, _prompt_files) =
+        create_test_config(&[("warhammer", "Warhammer 40k system prompt")]);
 
-    let (_config, cached_prompts) = rhd_plugin_system_prompt::config::load_config(
-        config_file.path().to_str().unwrap(),
-    )
-    .unwrap();
+    let (_config, cached_prompts) =
+        rhd_plugin_system_prompt::config::load_config(config_file.path().to_str().unwrap())
+            .unwrap();
 
     // Create a chat with the systemPrompt:warhammer tag
     let chat_result = client
@@ -209,21 +213,21 @@ async fn test_system_prompt_injection_on_chat_with_tag() {
 
     assert_eq!(system_messages.len(), 1);
     assert_eq!(system_messages[0].content, "Warhammer 40k system prompt");
-    assert!(system_messages[0].tags.contains(&"systemPrompt:warhammer".to_string()));
+    assert!(system_messages[0]
+        .tags
+        .contains(&"systemPrompt:warhammer".to_string()));
 }
 
 #[tokio::test]
 async fn test_duplicate_prevention() {
     let (port, _handle) = start_test_server().await;
     let client = connect_client(port).await;
-    let (config_file, _prompt_files) = create_test_config(&[
-        ("warhammer", "Warhammer 40k system prompt"),
-    ]);
+    let (config_file, _prompt_files) =
+        create_test_config(&[("warhammer", "Warhammer 40k system prompt")]);
 
-    let (_config, cached_prompts) = rhd_plugin_system_prompt::config::load_config(
-        config_file.path().to_str().unwrap(),
-    )
-    .unwrap();
+    let (_config, cached_prompts) =
+        rhd_plugin_system_prompt::config::load_config(config_file.path().to_str().unwrap())
+            .unwrap();
 
     // Create a chat with the tag
     let chat_result = client
@@ -297,14 +301,12 @@ async fn test_duplicate_prevention() {
 async fn test_unfinished_message_blocks_injection() {
     let (port, _handle) = start_test_server().await;
     let client = connect_client(port).await;
-    let (config_file, _prompt_files) = create_test_config(&[
-        ("warhammer", "Warhammer 40k system prompt"),
-    ]);
+    let (config_file, _prompt_files) =
+        create_test_config(&[("warhammer", "Warhammer 40k system prompt")]);
 
-    let (_config, cached_prompts) = rhd_plugin_system_prompt::config::load_config(
-        config_file.path().to_str().unwrap(),
-    )
-    .unwrap();
+    let (_config, cached_prompts) =
+        rhd_plugin_system_prompt::config::load_config(config_file.path().to_str().unwrap())
+            .unwrap();
 
     // Create a chat with the tag
     let chat_result = client
@@ -370,10 +372,9 @@ async fn test_multiple_system_prompts_in_same_chat() {
         ("jokeTeller", "Joke teller system prompt"),
     ]);
 
-    let (_config, cached_prompts) = rhd_plugin_system_prompt::config::load_config(
-        config_file.path().to_str().unwrap(),
-    )
-    .unwrap();
+    let (_config, cached_prompts) =
+        rhd_plugin_system_prompt::config::load_config(config_file.path().to_str().unwrap())
+            .unwrap();
 
     // Create a chat with both tags
     let chat_result = client
@@ -433,4 +434,196 @@ async fn test_multiple_system_prompts_in_same_chat() {
         .collect();
 
     assert_eq!(system_messages.len(), 2);
+}
+
+/// Build a [`rhd_chat_client::ChatState`] from a fetched chat response.
+fn build_chat_state(
+    chat_id: i64,
+    chat: &rhd_chat_api::GetChatResult,
+) -> rhd_chat_client::ChatState {
+    rhd_chat_client::ChatState {
+        chat_id,
+        messages: chat.messages.clone(),
+        queued_messages_count: chat.queued_messages_count,
+        tags: chat.chat.tags.clone(),
+        version: chat.chat.version,
+    }
+}
+
+/// Create a chat with the given tags on the test server.
+async fn create_chat_with_tags(client: &ChatClient, tags: Vec<String>) -> i64 {
+    let chat_result = client
+        .create_chat(CreateChatParams {
+            title: "Test Chat".to_string(),
+            tags,
+        })
+        .await
+        .expect("Failed to create chat");
+    chat_result.chat_id
+}
+
+/// Fetch the current chat state from the server.
+async fn fetch_chat_state(client: &ChatClient, chat_id: i64) -> rhd_chat_client::ChatState {
+    let chat = client
+        .get_chat(GetChatParams {
+            chat_id,
+            if_version_higher_than: None,
+        })
+        .await
+        .expect("Failed to get chat");
+    build_chat_state(chat_id, &chat)
+}
+
+/// Count system prompt messages with the given tag in a fetched chat.
+async fn count_system_prompt_messages(
+    client: &ChatClient,
+    chat_id: i64,
+    prompt_tag: &str,
+) -> usize {
+    let chat = client
+        .get_chat(GetChatParams {
+            chat_id,
+            if_version_higher_than: None,
+        })
+        .await
+        .expect("Failed to get chat");
+    chat.messages
+        .iter()
+        .filter(|m| m.tags.iter().any(|t| t == prompt_tag))
+        .count()
+}
+
+#[tokio::test]
+async fn test_running_tag_blocks_injection() {
+    let (port, _handle) = start_test_server().await;
+    let client = connect_client(port).await;
+    let (config_file, _prompt_files) =
+        create_test_config(&[("warhammer", "Warhammer 40k system prompt")]);
+
+    let (_config, cached_prompts) =
+        rhd_plugin_system_prompt::config::load_config(config_file.path().to_str().unwrap())
+            .unwrap();
+
+    let chat_id = create_chat_with_tags(
+        &client,
+        vec![
+            "systemPrompt:warhammer".to_string(),
+            "ai_completions:running".to_string(),
+        ],
+    )
+    .await;
+
+    let chat_state = fetch_chat_state(&client, chat_id).await;
+
+    let injected = rhd_plugin_system_prompt::system_prompt::process_chat(
+        &client,
+        &chat_state,
+        &cached_prompts,
+    )
+    .await
+    .expect("Failed to process chat");
+
+    assert_eq!(injected, 0, "must not inject while running tag is present");
+    assert_eq!(
+        count_system_prompt_messages(&client, chat_id, "systemPrompt:warhammer").await,
+        0,
+        "no system prompt message should have been added"
+    );
+}
+
+#[tokio::test]
+async fn test_error_tag_blocks_injection() {
+    let (port, _handle) = start_test_server().await;
+    let client = connect_client(port).await;
+    let (config_file, _prompt_files) =
+        create_test_config(&[("warhammer", "Warhammer 40k system prompt")]);
+
+    let (_config, cached_prompts) =
+        rhd_plugin_system_prompt::config::load_config(config_file.path().to_str().unwrap())
+            .unwrap();
+
+    let chat_id = create_chat_with_tags(
+        &client,
+        vec![
+            "systemPrompt:warhammer".to_string(),
+            "ai_completions:error".to_string(),
+        ],
+    )
+    .await;
+
+    let chat_state = fetch_chat_state(&client, chat_id).await;
+
+    let injected = rhd_plugin_system_prompt::system_prompt::process_chat(
+        &client,
+        &chat_state,
+        &cached_prompts,
+    )
+    .await
+    .expect("Failed to process chat");
+
+    assert_eq!(injected, 0, "must not inject while error tag is present");
+    assert_eq!(
+        count_system_prompt_messages(&client, chat_id, "systemPrompt:warhammer").await,
+        0,
+        "no system prompt message should have been added"
+    );
+}
+
+#[tokio::test]
+async fn test_injection_resumes_after_running_tag_removed() {
+    let (port, _handle) = start_test_server().await;
+    let client = connect_client(port).await;
+    let (config_file, _prompt_files) =
+        create_test_config(&[("warhammer", "Warhammer 40k system prompt")]);
+
+    let (_config, cached_prompts) =
+        rhd_plugin_system_prompt::config::load_config(config_file.path().to_str().unwrap())
+            .unwrap();
+
+    let chat_id = create_chat_with_tags(
+        &client,
+        vec![
+            "systemPrompt:warhammer".to_string(),
+            "ai_completions:running".to_string(),
+        ],
+    )
+    .await;
+
+    // Locked: no injection while running tag is present
+    let locked_state = fetch_chat_state(&client, chat_id).await;
+    let injected = rhd_plugin_system_prompt::system_prompt::process_chat(
+        &client,
+        &locked_state,
+        &cached_prompts,
+    )
+    .await
+    .expect("Failed to process chat");
+    assert_eq!(injected, 0);
+
+    // Operator/AI plugin removes the running tag → chat is idle again
+    client
+        .update_chat(UpdateChatParams {
+            chat_id,
+            title: None,
+            add_tags: vec![],
+            remove_tags: vec!["ai_completions:running".to_string()],
+        })
+        .await
+        .expect("Failed to remove running tag");
+
+    let idle_state = fetch_chat_state(&client, chat_id).await;
+    let injected = rhd_plugin_system_prompt::system_prompt::process_chat(
+        &client,
+        &idle_state,
+        &cached_prompts,
+    )
+    .await
+    .expect("Failed to process chat");
+
+    assert_eq!(injected, 1, "should inject once running tag is removed");
+    assert_eq!(
+        count_system_prompt_messages(&client, chat_id, "systemPrompt:warhammer").await,
+        1,
+        "system prompt message should have been added"
+    );
 }

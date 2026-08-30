@@ -116,10 +116,12 @@ pub async fn run_plugin(
                         "event missing chatId, acknowledging without action"
                     );
                     // Still acknowledge to avoid blocking
-                    let _ = client.ack_custom_event(rhd_chat_api::AckCustomEventParams {
-                        event_id: event_id.clone(),
-                        is_rejected: None,
-                    }).await;
+                    let _ = client
+                        .ack_custom_event(rhd_chat_api::AckCustomEventParams {
+                            event_id: event_id.clone(),
+                            is_rejected: None,
+                        })
+                        .await;
                     return;
                 }
             };
@@ -132,13 +134,33 @@ pub async fn run_plugin(
                         chat_id = chat_id,
                         "chat not found in monitor, acknowledging without action"
                     );
-                    let _ = client.ack_custom_event(rhd_chat_api::AckCustomEventParams {
-                        event_id: event_id.clone(),
-                        is_rejected: None,
-                    }).await;
+                    let _ = client
+                        .ack_custom_event(rhd_chat_api::AckCustomEventParams {
+                            event_id: event_id.clone(),
+                            is_rejected: None,
+                        })
+                        .await;
                     return;
                 }
             };
+
+            // Do not inject while the chat is locked by the AI completions
+            // plugin. The event is still acknowledged so the request is not
+            // blocked: a running tag here means a tool-loop continuation, and
+            // the prompt will be injected once the chat goes idle.
+            if system_prompt::has_blocking_tag(&chat_state) {
+                tracing::debug!(
+                    chat_id = chat_id,
+                    "chat has ai_completions running/error tag, acknowledging without injection"
+                );
+                let _ = client
+                    .ack_custom_event(rhd_chat_api::AckCustomEventParams {
+                        event_id: event_id.clone(),
+                        is_rejected: None,
+                    })
+                    .await;
+                return;
+            }
 
             // Check if chat has unfinished assistant message
             if system_prompt::has_unfinished_assistant_message(&chat_state) {
@@ -146,10 +168,12 @@ pub async fn run_plugin(
                     chat_id = chat_id,
                     "chat has unfinished assistant message, acknowledging without injection"
                 );
-                let _ = client.ack_custom_event(rhd_chat_api::AckCustomEventParams {
-                    event_id: event_id.clone(),
-                    is_rejected: None,
-                }).await;
+                let _ = client
+                    .ack_custom_event(rhd_chat_api::AckCustomEventParams {
+                        event_id: event_id.clone(),
+                        is_rejected: None,
+                    })
+                    .await;
                 return;
             }
 
@@ -190,10 +214,13 @@ pub async fn run_plugin(
             }
 
             // Acknowledge the event
-            match client.ack_custom_event(rhd_chat_api::AckCustomEventParams {
-                event_id: event_id.clone(),
-                is_rejected: None,
-            }).await {
+            match client
+                .ack_custom_event(rhd_chat_api::AckCustomEventParams {
+                    event_id: event_id.clone(),
+                    is_rejected: None,
+                })
+                .await
+            {
                 Ok(_) => {
                     tracing::info!(
                         event_id = %event_id,
@@ -217,15 +244,15 @@ pub async fn run_plugin(
 
     // Startup reconciliation
     let injected_count = startup_reconciliation(&client, &chat_monitor, &cached_prompts).await?;
-    tracing::info!("Startup reconciliation: injected {} system prompts", injected_count);
+    tracing::info!(
+        "Startup reconciliation: injected {} system prompts",
+        injected_count
+    );
 
     // Main loop
     loop {
         let chat_ids = chat_monitor.get_chat_ids().await;
-        tracing::debug!(
-            monitored_chats = chat_ids.len(),
-            "main loop iteration"
-        );
+        tracing::debug!(monitored_chats = chat_ids.len(), "main loop iteration");
 
         for chat_id in chat_ids {
             if let Some(chat_state) = chat_monitor.get_chat_state(chat_id).await {
@@ -285,10 +312,20 @@ async fn startup_reconciliation(
     Ok(total_injected)
 }
 
-/// Extract chat ID from a custom event's additional data.
+/// Extract chat ID from a custom event.
 ///
-/// The AI completions plugin includes `chatId` in the event's additional JSON field.
+/// The AI completions plugin sends the chat id in the top-level `chat_id`
+/// field of the event. The legacy `additional.chatId` JSON path is kept as a
+/// fallback for events produced by older senders.
 fn extract_chat_id_from_event(event: &rhd_chat_api::CustomEventData) -> Option<i64> {
+    if let Some(chat_id) = event
+        .chat_id
+        .as_deref()
+        .and_then(|chat_id_str| chat_id_str.parse::<i64>().ok())
+    {
+        return Some(chat_id);
+    }
+
     let additional = event.additional.as_ref()?;
     let json: serde_json::Value = serde_json::from_str(additional).ok()?;
     let chat_id_str = json.get("chatId")?.as_str()?;
@@ -310,4 +347,54 @@ pub enum PluginError {
     Subscription(String),
     #[error("failed to inject system prompt: {0}")]
     Inject(#[from] system_prompt::InjectError),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+    use rhd_chat_api::CustomEventData;
+
+    fn make_event(chat_id: Option<&str>, additional: Option<&str>) -> CustomEventData {
+        CustomEventData {
+            event_id: "evt-1".to_string(),
+            event_name: "ai_completions:preRequest".to_string(),
+            sender_plugin_id: Some("ai_completions".to_string()),
+            additional: additional.map(|s| s.to_string()),
+            chat_id: chat_id.map(|s| s.to_string()),
+            message_id: None,
+            tool_call_id: None,
+            created_at: Utc::now(),
+        }
+    }
+
+    #[test]
+    fn test_extract_chat_id_from_top_level_field() {
+        let event = make_event(Some("42"), Some(r#"{"triggerReason":"queuedMessages"}"#));
+        assert_eq!(extract_chat_id_from_event(&event), Some(42));
+    }
+
+    #[test]
+    fn test_extract_chat_id_from_legacy_additional() {
+        let event = make_event(None, Some(r#"{"chatId":"7"}"#));
+        assert_eq!(extract_chat_id_from_event(&event), Some(7));
+    }
+
+    #[test]
+    fn test_extract_chat_id_prefers_top_level_field() {
+        let event = make_event(Some("9"), Some(r#"{"chatId":"7"}"#));
+        assert_eq!(extract_chat_id_from_event(&event), Some(9));
+    }
+
+    #[test]
+    fn test_extract_chat_id_missing_everywhere() {
+        let event = make_event(None, Some(r#"{"triggerReason":"queuedMessages"}"#));
+        assert_eq!(extract_chat_id_from_event(&event), None);
+    }
+
+    #[test]
+    fn test_extract_chat_id_invalid_top_level_falls_back() {
+        let event = make_event(Some("not-a-number"), Some(r#"{"chatId":"7"}"#));
+        assert_eq!(extract_chat_id_from_event(&event), Some(7));
+    }
 }
