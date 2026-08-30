@@ -6,7 +6,6 @@ import {
   GetChatResultSchema,
   GetQueueMessagesResultSchema,
   GetPluginsResultSchema,
-  UpdateChatParamsSchema,
   UpdateChatResultSchema,
   ChatCreatedDataSchema,
   ChatUpdatedDataSchema,
@@ -185,6 +184,7 @@ export async function getChat(chatId: number): Promise<GetChatResult> {
 }
 
 export interface ChatEventHandlers {
+  onChatUpdated?: (data: ChatUpdatedData) => void;
   onMessageAdded?: (data: MessageAddedData) => void;
   onMessageUpdated?: (data: MessageUpdatedData) => void;
   onMessageDeleted?: (data: MessageDeletedData) => void;
@@ -198,6 +198,15 @@ export interface ChatEventHandlers {
  */
 export function onChatEvents(chatId: number, handlers: ChatEventHandlers): () => void {
   const unsubs: Array<() => void> = [];
+
+  if (handlers.onChatUpdated) {
+    unsubs.push(websocket.on('chatUpdated', (data) => {
+      const parsed = ChatUpdatedDataSchema.parse(data);
+      if (parsed.chat.id === chatId) {
+        handlers.onChatUpdated!(parsed);
+      }
+    }));
+  }
 
   if (handlers.onMessageAdded) {
     unsubs.push(websocket.on('messageAdded', (data) => {

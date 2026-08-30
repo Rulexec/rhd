@@ -220,6 +220,9 @@ export class ChatStore {
 
       // Register event listeners for regular messages
       this.#cleanupEvents = this.#chatApi.onChatEvents(chatId, {
+        onChatUpdated: ({ chat }) => {
+          this.#handleChatUpdated(chat);
+        },
         onMessageAdded: ({ message }) => {
           this.#handleMessageAdded(message);
         },
@@ -307,6 +310,16 @@ export class ChatStore {
     this.queueMessages = [];
     this.loading = false;
     this.error = null;
+  }
+
+  /**
+   * Handle chat updated event.
+   * Updates currentChat when the chat metadata (title, tags, etc.) changes.
+   */
+  #handleChatUpdated(chat: Chat): void {
+    if (this.currentChat && this.currentChat.id === chat.id) {
+      this.currentChat = chat;
+    }
   }
 
   /**
