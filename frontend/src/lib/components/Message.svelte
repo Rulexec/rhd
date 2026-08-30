@@ -20,6 +20,9 @@
   let showMarkdown: boolean = $state(true);
   let reasoningExpanded: boolean = $state(false);
   let reasoningContentEl: HTMLDivElement | null = $state(null);
+  let systemMessageExpanded: boolean = $state(false);
+
+  let isSystemRole: boolean = $derived(message.role === 'system');
 
   // Determine what content to display based on streaming state
   let displayContent: string = $derived(
@@ -82,6 +85,10 @@
 
   function toggleReasoning(): void {
     reasoningExpanded = !reasoningExpanded;
+  }
+
+  function toggleSystemMessage(): void {
+    systemMessageExpanded = !systemMessageExpanded;
   }
 
   function toggleMarkdown(): void {
@@ -152,15 +159,35 @@
     </div>
   {/if}
 
-  <div class="message-content">
-    {#if isStreaming && !displayContent && !displayReasoning}
-      <span class="streaming-placeholder">Generating response...</span>
-    {:else if showMarkdown}
-      {@html renderContent(displayContent)}
-    {:else}
-      <pre>{displayContent}</pre>
-    {/if}
-  </div>
+  {#if isSystemRole}
+    <div class="system-message-section">
+      <button class="system-message-toggle" onclick={toggleSystemMessage}>
+        <span class="system-message-icon">{systemMessageExpanded ? '▼' : '▶'}</span>
+        <span>System Message</span>
+      </button>
+      <div class="system-message-content" class:expanded={systemMessageExpanded}>
+        <div class="message-content">
+          {#if isStreaming && !displayContent && !displayReasoning}
+            <span class="streaming-placeholder">Generating response...</span>
+          {:else if showMarkdown}
+            {@html renderContent(displayContent)}
+          {:else}
+            <pre>{displayContent}</pre>
+          {/if}
+        </div>
+      </div>
+    </div>
+  {:else}
+    <div class="message-content">
+      {#if isStreaming && !displayContent && !displayReasoning}
+        <span class="streaming-placeholder">Generating response...</span>
+      {:else if showMarkdown}
+        {@html renderContent(displayContent)}
+      {:else}
+        <pre>{displayContent}</pre>
+      {/if}
+    </div>
+  {/if}
 
   <!-- Tool calls (shown during streaming) -->
   {#if streamContent && streamContent.toolCalls.length > 0}
@@ -363,6 +390,42 @@
     margin: 0;
     white-space: pre-wrap;
     word-wrap: break-word;
+  }
+
+  .system-message-section {
+    margin-bottom: var(--spacing-sm);
+  }
+
+  .system-message-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: var(--spacing-xs) 0;
+    border: none;
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    cursor: pointer;
+    width: 100%;
+    text-align: left;
+  }
+
+  .system-message-toggle:hover {
+    color: var(--color-text);
+  }
+
+  .system-message-icon {
+    font-size: var(--font-size-xs);
+  }
+
+  .system-message-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height var(--transition-normal);
+  }
+
+  .system-message-content.expanded {
+    max-height: none;
   }
 
   .message-content {
