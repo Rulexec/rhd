@@ -11,11 +11,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures::StreamExt;
-use rhd_ai_client::{AiClient, ChatCompletionRequest};
+use rhd_ai_client::{AiClient, ChatCompletionRequest, ToolDefinition as AiToolDefinition};
 use rhd_chat_api::{
-    AckCustomEventParams, AddMessageParams, GetChatParams, Message, SendCustomEventParams,
-    StreamFinishParams, StreamPushParams, StreamToolCallDelta, UpdateChatParams,
-    UpdateMessageParams,
+    AckCustomEventParams, AddMessageParams, GetChatParams, GetToolsParams, Message,
+    SendCustomEventParams, StreamFinishParams, StreamPushParams, StreamToolCallDelta,
+    UpdateChatParams, UpdateMessageParams,
 };
 use rhd_chat_client::{ChatClient, PluginsMonitor};
 
@@ -216,11 +216,46 @@ pub async fn handle_ai_request(
     let message_id = add_result.message_id;
     tracing::info!(chat_id = chat_id, message_id = message_id, "created streaming message");
 
+    // Fetch tools for this chat
+    let tools_result = client
+        .get_tools(GetToolsParams { chat_id })
+        .await
+        .map_err(|e| {
+            tracing::error!(chat_id = chat_id, error = %e, "failed to get tools");
+            AiRequestError::MessageAdd(e.to_string())
+        })?;
+
+    // Convert chat API tools to AI client tools
+    let ai_tools: Option<Vec<AiToolDefinition>> = if tools_result.tools.is_empty() {
+        None
+    } else {
+        Some(
+            tools_result
+                .tools
+                .iter()
+                .map(|tool_info| AiToolDefinition {
+                    tool_type: tool_info.tool.tool_type.clone(),
+                    function: rhd_ai_client::FunctionDefinition {
+                        name: tool_info.tool.function.name.clone(),
+                        description: tool_info.tool.function.description.clone(),
+                        parameters: tool_info.tool.function.parameters.clone(),
+                    },
+                })
+                .collect(),
+        )
+    };
+
+    tracing::info!(
+        chat_id = chat_id,
+        tools_count = ai_tools.as_ref().map_or(0, |t| t.len()),
+        "fetched tools for AI request"
+    );
+
     // Build streaming AI request
     let request = ChatCompletionRequest {
         model: model_config.model.clone().unwrap_or_else(|| "default".to_string()),
         messages: ai_messages,
-        tools: None, // TODO: Add tools support
+        tools: ai_tools,
         stream: true,
     };
 

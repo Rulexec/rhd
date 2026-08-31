@@ -65,6 +65,66 @@ impl MockAiResponse {
             }),
         })
     }
+
+    /// Create a streaming text response
+    pub fn stream_text(content: impl Into<String>) -> Self {
+        let (controller, receiver) = StreamController::new();
+        let content_str = content.into();
+        
+        tokio::spawn(async move {
+            // Send content in chunks
+            for chunk in content_str.chars().collect::<Vec<_>>().chunks(10) {
+                let chunk_str: String = chunk.iter().collect();
+                if controller.send_text(chunk_str).await.is_err() {
+                    break;
+                }
+            }
+            // Send finish reason
+            let _ = controller.send_chunk(StreamChunk {
+                reasoning_content: None,
+                content: None,
+                tool_calls: None,
+                finish_reason: Some("stop".to_string()),
+            }).await;
+        });
+        
+        MockAiResponse::Stream(receiver)
+    }
+
+    /// Create a streaming tool call response
+    pub fn stream_tool_call(name: impl Into<String>, arguments: impl Into<String>) -> Self {
+        let (controller, receiver) = StreamController::new();
+        let name_str = name.into();
+        let arguments_str = arguments.into();
+        
+        tokio::spawn(async move {
+            // Send tool call chunk
+            let _ = controller.send_chunk(StreamChunk {
+                reasoning_content: None,
+                content: None,
+                tool_calls: Some(vec![rhd_ai_client::ToolCallDelta {
+                    index: 0,
+                    id: Some("call_1".to_string()),
+                    call_type: Some("function".to_string()),
+                    function: Some(rhd_ai_client::FunctionCallDelta {
+                        name: Some(name_str),
+                        arguments: Some(arguments_str),
+                    }),
+                }]),
+                finish_reason: None,
+            }).await;
+            
+            // Send finish reason
+            let _ = controller.send_chunk(StreamChunk {
+                reasoning_content: None,
+                content: None,
+                tool_calls: None,
+                finish_reason: Some("tool_calls".to_string()),
+            }).await;
+        });
+        
+        MockAiResponse::Stream(receiver)
+    }
 }
 
 /// Controller for sending stream chunks from test code
