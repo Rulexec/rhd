@@ -521,8 +521,9 @@ impl ChatClient {
                     }
                     
                     // Dispatch to tool call subscribers with filtering
+                    // chat_id=0 in subscription means "all chats" (wildcard)
                     for sub in &subs.tool_call_subscriptions {
-                        if sub.chat_id == chat_id {
+                        if sub.chat_id == 0 || sub.chat_id == chat_id {
                             // Check if any of the tool names match the subscription filter
                             let matches = sub.tool_names.is_empty()
                                 || sub.tool_names.iter().any(|name| data.tool_names.contains(name));

@@ -1285,3 +1285,158 @@ async fn test_add_tool_message_requires_tool_call_id() {
         .expect("tool message present");
     assert_eq!(tool_msg.tool_call_id.as_deref(), Some("call_1"));
 }
+
+/// Test: on_tool_call with chat_id=0 (wildcard) receives tool call events from any chat.
+/// This reproduces the bug where the todo list plugin subscribes with chat_id=0
+/// expecting to receive events from all chats, but the dispatch logic only matched
+/// exact chat_id values.
+#[tokio::test]
+async fn test_on_tool_call_wildcard_chat_id() {
+    init_tracing();
+    let (port, _handle) = start_test_server().await;
+
+    // Client1 acts as the todo list plugin
+    let client1 = connect_client(port).await;
+    client1
+        .register_plugin(RegisterPluginParams {
+            plugin_id: "todo_list".to_string(),
+        })
+        .await
+        .unwrap();
+
+    // Client2 acts as the chat client
+    let client2 = connect_client(port).await;
+    let create_result = client2
+        .create_chat(CreateChatParams {
+            title: "Test Chat".to_string(),
+            tags: vec![],
+        })
+        .await
+        .unwrap();
+    let chat_id = create_result.chat_id;
+
+    // Client1 must subscribe to the chat on the server side to receive events
+    client1
+        .subscribe_chat(rhd_chat_api::SubscribeChatParams { chat_id })
+        .await
+        .unwrap();
+
+    // Client1 subscribes to chat events to verify the event is emitted
+    let chat_event_received = Arc::new(Notify::new());
+    let chat_event_received_clone = chat_event_received.clone();
+    let received_chat_event = Arc::new(Mutex::new(None));
+    let received_chat_event_clone = received_chat_event.clone();
+
+    let _cancel_token_chat = client1.on_chat_event(chat_id, move |event| {
+        let chat_event_received = chat_event_received_clone.clone();
+        let received_chat_event = received_chat_event_clone.clone();
+        async move {
+            if let ChatEvent::AssistantMessageWithToolCalls(data) = event {
+                *received_chat_event.lock().await = Some(data);
+                chat_event_received.notify_one();
+            }
+        }
+    });
+
+    // Client1 subscribes to tool calls with chat_id=0 (wildcard for all chats)
+    let tool_call_received = Arc::new(Notify::new());
+    let tool_call_received_clone = tool_call_received.clone();
+    let received_tool_call_data = Arc::new(Mutex::new(None));
+    let received_tool_call_data_clone = received_tool_call_data.clone();
+
+    let _cancel_token = client1.on_tool_call(
+        0, // chat_id=0 means all chats
+        vec!["rhd_set_todo_list".to_string()],
+        move |event| {
+            let tool_call_received = tool_call_received_clone.clone();
+            let received_tool_call_data = received_tool_call_data_clone.clone();
+            async move {
+                *received_tool_call_data.lock().await = Some(event);
+                tool_call_received.notify_one();
+            }
+        },
+    );
+
+    // Wait for subscriptions to be registered
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Client2 adds an assistant message (not finished yet)
+    let add_result = client2
+        .add_message(AddMessageParams {
+            chat_id,
+            role: "assistant".to_string(),
+            content: "I'll update the todo list".to_string(),
+            tool_call_id: None,
+            reasoning_content: None,
+            tags: vec![],
+            is_finished: false,
+            is_streaming: false,
+        })
+        .await
+        .unwrap();
+
+    // Update the message to add tool calls (this triggers assistantMessageWithToolCalls event)
+    // Note: is_finished must be Some(true) for the event to be emitted
+    client2
+        .update_message(UpdateMessageParams {
+            message_id: add_result.message_id,
+            content: None,
+            reasoning_content: None,
+            role: None,
+            add_tags: vec![],
+            remove_tags: vec![],
+            is_finished: Some(true),
+            is_streaming: None,
+            tool_calls: Some(
+                r#"[{"id":"call_abc123","type":"function","function":{"name":"rhd_set_todo_list","arguments":"{\"todos\": \"[ ] Task 1\\n[x] Task 2\"}"}}]"#
+                    .to_string(),
+            ),
+        })
+        .await
+        .unwrap();
+
+    // Client1 should receive the tool call event via wildcard subscription
+    let result = tokio::time::timeout(Duration::from_secs(5), tool_call_received.notified()).await;
+    assert!(result.is_ok(), "Did not receive tool call event with wildcard chat_id=0 subscription");
+
+    // Verify the event data
+    let event_data = received_tool_call_data.lock().await.take().unwrap();
+    assert_eq!(event_data.chat_id, chat_id);
+    assert_eq!(event_data.tool_names, vec!["rhd_set_todo_list"]);
+    assert_eq!(event_data.message.tool_calls.len(), 1);
+    assert_eq!(event_data.message.tool_calls[0].id, "call_abc123");
+    assert_eq!(event_data.message.tool_calls[0].function.name, "rhd_set_todo_list");
+
+    // Client1 (plugin) adds a tool result message
+    client1
+        .add_message(AddMessageParams {
+            chat_id,
+            role: "tool".to_string(),
+            content: "Todo list updated successfully.".to_string(),
+            tool_call_id: Some("call_abc123".to_string()),
+            reasoning_content: None,
+            tags: vec![],
+            is_finished: true,
+            is_streaming: false,
+        })
+        .await
+        .unwrap();
+
+    // Client2 verifies the tool result message exists in the chat
+    let chat_result = client2
+        .get_chat(GetChatParams {
+            chat_id,
+            if_version_higher_than: None,
+        })
+        .await
+        .unwrap();
+
+    let tool_result_msg = chat_result
+        .messages
+        .iter()
+        .find(|m| m.tool_call_id.as_deref() == Some("call_abc123"))
+        .expect("tool result message should exist");
+
+    assert_eq!(tool_result_msg.role, "tool");
+    assert_eq!(tool_result_msg.content, "Todo list updated successfully.");
+}
