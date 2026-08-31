@@ -125,6 +125,7 @@ impl ChatMonitor {
                                         ChatEvent::QueueMessageUpdated(data) => data.chat_version,
                                         ChatEvent::QueueMessageDeleted(data) => data.chat_version,
                                         ChatEvent::ToolsUpdated(data) => data.chat_version,
+                                        ChatEvent::AssistantMessageWithToolCalls(data) => data.chat_version,
                                         // Streaming events don't have chat_version, use 0 to skip version check
                                         ChatEvent::StreamChunk(_) => 0,
                                         ChatEvent::StreamFinished(_) => 0,
@@ -195,6 +196,7 @@ impl ChatMonitor {
                                         | ChatEvent::QueueMessageAdded(_)
                                         | ChatEvent::QueueMessageUpdated(_)
                                         | ChatEvent::QueueMessageDeleted(_)
+                                        | ChatEvent::AssistantMessageWithToolCalls(_)
                                         | ChatEvent::StreamChunk(_)
                                         | ChatEvent::StreamFinished(_) => {
                                             tracing::debug!(chat_id = chat_id, "updating chat state after event");
@@ -317,6 +319,7 @@ impl ChatMonitor {
                     ChatEvent::QueueMessageUpdated(data) => data.chat_version,
                     ChatEvent::QueueMessageDeleted(data) => data.chat_version,
                     ChatEvent::ToolsUpdated(data) => data.chat_version,
+                    ChatEvent::AssistantMessageWithToolCalls(data) => data.chat_version,
                     // Streaming events don't have chat_version, use 0 to skip version check
                     ChatEvent::StreamChunk(_) => 0,
                     ChatEvent::StreamFinished(_) => 0,
@@ -387,6 +390,7 @@ impl ChatMonitor {
                     | ChatEvent::QueueMessageAdded(_)
                     | ChatEvent::QueueMessageUpdated(_)
                     | ChatEvent::QueueMessageDeleted(_)
+                    | ChatEvent::AssistantMessageWithToolCalls(_)
                     | ChatEvent::StreamChunk(_)
                     | ChatEvent::StreamFinished(_) => {
                         if let Ok(chat_result) =

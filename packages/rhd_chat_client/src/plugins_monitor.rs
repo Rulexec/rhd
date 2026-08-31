@@ -126,7 +126,7 @@ impl PluginsMonitor {
     ///
     /// # Returns
     /// * `Ok(())` if all required plugins acknowledged
-    /// * `Err(ClientError::Timeout)` if timeout expired
+    /// * `Err(ClientError::Timeout)` if timeout expired, with list of plugins that didn't acknowledge
     pub async fn wait_for_acks_except(
         &self,
         event_id: &str,
@@ -137,27 +137,28 @@ impl PluginsMonitor {
 
         let result = timeout(timeout_duration, async {
             loop {
-                let all_acked = {
+                let (all_acked, pending_plugins) = {
                     let all_plugins = self.all_plugins.read().await;
                     let acks = self.acknowledgments.read().await;
                     let event_acks = acks.get(event_id).cloned().unwrap_or_default();
 
                     // Check if ALL registered plugins (except excluded ones) have acknowledged
-                    let all_acked = all_plugins.keys().all(|plugin_id| {
-                        except_set.contains(plugin_id) || event_acks.contains(plugin_id)
-                    });
+                    let pending: Vec<String> = all_plugins.keys()
+                        .filter(|id| !except_set.contains(*id) && !event_acks.contains(*id))
+                        .cloned()
+                        .collect();
+                    
+                    let all_acked = pending.is_empty();
 
                     if !all_acked {
                         tracing::debug!(
                             event_id = %event_id,
-                            pending_plugins = ?all_plugins.keys()
-                                .filter(|id| !except_set.contains(*id) && !event_acks.contains(*id))
-                                .collect::<Vec<_>>(),
+                            pending_plugins = ?pending,
                             "waiting for plugin acknowledgments"
                         );
                     }
 
-                    all_acked
+                    (all_acked, pending)
                 };
 
                 if all_acked {
@@ -174,9 +175,22 @@ impl PluginsMonitor {
         match result {
             Ok(Ok(())) => Ok(()),
             Ok(Err(e)) => Err(e),
-            Err(_) => Err(ClientError::Timeout(
-                "Timeout waiting for plugin acknowledgments".to_string(),
-            )),
+            Err(_) => {
+                // Get the list of plugins that didn't acknowledge
+                let all_plugins = self.all_plugins.read().await;
+                let acks = self.acknowledgments.read().await;
+                let event_acks = acks.get(event_id).cloned().unwrap_or_default();
+                
+                let pending_plugins: Vec<String> = all_plugins.keys()
+                    .filter(|id| !except_set.contains(*id) && !event_acks.contains(*id))
+                    .cloned()
+                    .collect();
+                
+                Err(ClientError::Timeout(format!(
+                    "Timeout waiting for plugin acknowledgments. Plugins that did not acknowledge: {:?}",
+                    pending_plugins
+                )))
+            }
         }
     }
 

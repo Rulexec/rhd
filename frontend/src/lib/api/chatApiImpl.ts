@@ -6,6 +6,7 @@ import {
   GetChatResultSchema,
   GetQueueMessagesResultSchema,
   GetPluginsResultSchema,
+  GetToolsResultSchema,
   UpdateChatResultSchema,
   ChatCreatedDataSchema,
   ChatUpdatedDataSchema,
@@ -22,11 +23,13 @@ import {
   StreamChunkDataSchema,
   StreamFinishedDataSchema,
   StreamSubscribeResultSchema,
+  ToolsUpdatedDataSchema,
   type ListChatsResult,
   type CreateChatResult,
   type GetChatResult,
   type GetQueueMessagesResult,
   type GetPluginsResult,
+  type GetToolsResult,
   type UpdateChatParams,
   type UpdateChatResult,
   type ChatCreatedData,
@@ -43,7 +46,8 @@ import {
   type PluginRemovedData,
   type StreamChunkData,
   type StreamFinishedData,
-  type StreamSubscribeResult
+  type StreamSubscribeResult,
+  type ToolsUpdatedData
 } from './schemas.js';
 
 /**
@@ -376,6 +380,46 @@ export function onPluginListEvents(handlers: PluginListEventHandlers): () => voi
     unsubs.push(websocket.on('pluginRemoved', (data) => {
       const parsed = PluginRemovedDataSchema.parse(data);
       handlers.onPluginRemoved!(parsed);
+    }));
+  }
+
+  return () => {
+    unsubs.forEach(unsub => unsub());
+  };
+}
+
+// ============================================================================
+// Tools API Methods
+// ============================================================================
+
+/**
+ * Get all tools registered for a chat.
+ * @param chatId - Chat ID to get tools for
+ */
+export async function getTools(chatId: number): Promise<GetToolsResult> {
+  const data = await websocket.request('getTools', { chatId });
+  return GetToolsResultSchema.parse(data);
+}
+
+export interface ToolsEventHandlers {
+  onToolsUpdated?: (data: ToolsUpdatedData) => void;
+}
+
+/**
+ * Register event listeners for tools events.
+ * @param chatId - Chat ID to listen for
+ * @param handlers - Event handlers
+ * @returns Cleanup function that removes all listeners
+ */
+export function onToolsEvents(chatId: number, handlers: ToolsEventHandlers): () => void {
+  const unsubs: Array<() => void> = [];
+
+  if (handlers.onToolsUpdated) {
+    unsubs.push(websocket.on('toolsUpdated', (data) => {
+      const parsed = ToolsUpdatedDataSchema.parse(data);
+      if (parsed.chatId === chatId) {
+        handlers.onToolsUpdated!(parsed);
+      }
     }));
   }
 

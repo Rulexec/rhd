@@ -141,6 +141,39 @@ The `rhd_plugin_ai_completions` plugin monitors chats and triggers AI completion
 - Other plugins execute the tools and add results as tool messages
 - Plugin detects when all tool calls are resolved and continues the loop
 
+### Todo List Plugin
+
+The `rhd_plugin_todo_list` plugin provides structured task tracking for multi-step operations in chat conversations.
+
+**Automatic Initialization:**
+- Detects new chats via chat state change events
+- Checks if contract system message already exists (tagged with `todo_list:contract`)
+- If not, adds a system message with the tool contract and registers the `rhd_set_todo_list` tool
+
+**Tool Call Handling:**
+- Subscribes to `assistantMessageWithToolCalls` events filtered by tool name `rhd_set_todo_list`
+- Parses the `todos` parameter as a markdown checklist
+- Validates format and stores the todo list per chat
+- Returns success message or error with format example
+
+**AI Context Injection:**
+- Subscribes to `ai_completions:preRequest` custom events
+- Retrieves current todo list for the chat
+- Injects a system message with the todo list (or empty template if no items)
+- Acknowledges the event to allow AI request to proceed
+
+**Todo List Format:**
+```markdown
+[ ] Pending task
+[-] In progress task
+[x] Completed task
+[!] Discarded task
+```
+
+**Error Handling:**
+- If todo list format is invalid, returns error message with correct format example
+- Checks for duplicate tool call results to avoid processing the same call twice
+
 ### Future Plugin Ideas
 
 - **Notification Plugin**: Send notifications when specific events occur

@@ -217,6 +217,79 @@ loop {
 
 This pattern doesn't scale and wastes resources checking chats that haven't changed.
 
+## Custom Event Handling
+
+### Acknowledging Unhandled Events
+
+When a plugin subscribes to custom events via `on_custom_event`, it **must acknowledge all events it receives**, even if it doesn't handle them. This is critical for the coordination system to work correctly.
+
+**Why this matters:**
+- The sender of a custom event waits for acknowledgments from all registered plugins
+- If a plugin doesn't acknowledge an event, the sender will timeout waiting
+- This can block the entire coordination flow
+
+**Correct pattern:**
+
+```rust
+client.on_custom_event(move |event| {
+    let client = Arc::clone(&client_for_events);
+    
+    async move {
+        let event_id = event.event_id.clone();
+        
+        // Only handle specific events
+        if event.event_name != "my_plugin:specificEvent" {
+            // IMPORTANT: Acknowledge events we don't handle
+            tracing::debug!(
+                event_id = %event_id,
+                event_name = %event.event_name,
+                "acknowledging unhandled event"
+            );
+            let _ = client
+                .ack_custom_event(AckCustomEventParams {
+                    event_id: event_id.clone(),
+                    is_rejected: None,
+                })
+                .await;
+            return;
+        }
+        
+        // Handle the event...
+        
+        // Acknowledge after processing
+        let _ = client
+            .ack_custom_event(AckCustomEventParams {
+                event_id: event_id.clone(),
+                is_rejected: None,
+            })
+            .await;
+    }
+});
+```
+
+**Incorrect pattern (DO NOT USE):**
+
+```rust
+client.on_custom_event(move |event| {
+    async move {
+        // WRONG: Returning without acknowledging unhandled events
+        if event.event_name != "my_plugin:specificEvent" {
+            return; // This will cause timeouts!
+        }
+        
+        // Handle the event...
+    }
+});
+```
+
+### Best Practices for Custom Events
+
+1. **Always acknowledge**: Every custom event must be acknowledged, whether handled or not
+2. **Acknowledge early for unhandled events**: Don't process unhandled events, just acknowledge and return
+3. **Acknowledge after processing**: For handled events, acknowledge after completing the work
+4. **Handle acknowledgment errors**: Log errors but don't fail the plugin if acknowledgment fails
+5. **Use event filtering**: Check event name early to avoid unnecessary processing
+
 ## Examples
 
 See `plugins/rhd_plugin_ai_completions/` for a complete example implementation.

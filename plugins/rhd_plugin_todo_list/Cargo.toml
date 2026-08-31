@@ -1,0 +1,25 @@
+[package]
+name = "rhd_plugin_todo_list"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "rhd_plugin_todo_list"
+path = "src/main.rs"
+
+[dependencies]
+rhd_chat_api = { path = "../../packages/rhd_chat_api" }
+rhd_chat_client = { path = "../../packages/rhd_chat_client" }
+tokio = { workspace = true, features = ["full"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true }
+regex = "1"
+include_dir = "0.7"
+clap = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3"

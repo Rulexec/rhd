@@ -34,6 +34,11 @@ All MCP tools are namespaced by their MCP ID when sent to the AI. Tool names use
 - `rhd_set_flag` — set a named flag with boolean value
 - Flags bound to `aiChat` step name: `ai1.flag_example`, `ai2.flag_example` are independent
 - Stored in execution context, accessible to all subsequent steps
+- `rhd_set_todo_list` — replace the entire TODO list with an updated markdown checklist
+  - Managed by `rhd_plugin_todo_list` plugin
+  - Automatically registered on new chats
+  - Supports checkbox states: `[ ]` (pending), `[-]` (in progress), `[x]` (completed), `[!]` (discarded)
+  - Todo list is injected as system message before AI requests
 
 ### Skip Conditions
 - `skip: <aiStepName>.flag_<flagName>` — if flag is `true`, skip step

@@ -2,6 +2,7 @@
 //!
 //! Each event type has its own file containing a `Data` struct.
 
+pub mod assistant_message_with_tool_calls;
 pub mod chat_created;
 pub mod chat_deleted;
 pub mod chat_updated;
@@ -20,6 +21,7 @@ pub mod stream_chunk;
 pub mod stream_finished;
 pub mod tools_updated;
 
+pub use assistant_message_with_tool_calls::*;
 pub use chat_created::*;
 pub use chat_deleted::*;
 pub use chat_updated::*;

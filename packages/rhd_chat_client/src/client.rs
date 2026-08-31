@@ -453,35 +453,88 @@ impl ChatClient {
             "pluginRegistered" => {
                 if let Ok(data) = serde_json::from_value::<rhd_chat_api::PluginRegisteredData>(event.data.clone()) {
                     for sub in &subs.plugins_list_subscriptions {
-                        (sub.callback)(PluginsListEvent::PluginRegistered(data.clone())).await;
+                        let callback = sub.callback.clone();
+                        let data_clone = data.clone();
+                        tokio::spawn(async move {
+                            (callback)(PluginsListEvent::PluginRegistered(data_clone)).await;
+                        });
                     }
                 }
             }
             "pluginUpdated" => {
                 if let Ok(data) = serde_json::from_value::<rhd_chat_api::PluginUpdatedData>(event.data.clone()) {
                     for sub in &subs.plugins_list_subscriptions {
-                        (sub.callback)(PluginsListEvent::PluginUpdated(data.clone())).await;
+                        let callback = sub.callback.clone();
+                        let data_clone = data.clone();
+                        tokio::spawn(async move {
+                            (callback)(PluginsListEvent::PluginUpdated(data_clone)).await;
+                        });
                     }
                 }
             }
             "pluginRemoved" => {
                 if let Ok(data) = serde_json::from_value::<rhd_chat_api::PluginRemovedData>(event.data.clone()) {
                     for sub in &subs.plugins_list_subscriptions {
-                        (sub.callback)(PluginsListEvent::PluginRemoved(data.clone())).await;
+                        let callback = sub.callback.clone();
+                        let data_clone = data.clone();
+                        tokio::spawn(async move {
+                            (callback)(PluginsListEvent::PluginRemoved(data_clone)).await;
+                        });
                     }
                 }
             }
             "customEvent" => {
                 if let Ok(data) = serde_json::from_value::<rhd_chat_api::CustomEventData>(event.data.clone()) {
                     for sub in &subs.custom_event_subscriptions {
-                        (sub.callback)(data.clone()).await;
+                        let callback = sub.callback.clone();
+                        let data_clone = data.clone();
+                        tokio::spawn(async move {
+                            (callback)(data_clone).await;
+                        });
                     }
                 }
             }
             "customEventAcknowledged" => {
                 if let Ok(data) = serde_json::from_value::<rhd_chat_api::CustomEventAcknowledgedData>(event.data.clone()) {
                     for sub in &subs.custom_event_acknowledged_subscriptions {
-                        (sub.callback)(data.clone()).await;
+                        let callback = sub.callback.clone();
+                        let data_clone = data.clone();
+                        tokio::spawn(async move {
+                            (callback)(data_clone).await;
+                        });
+                    }
+                }
+            }
+            "assistantMessageWithToolCalls" => {
+                if let Ok(data) = serde_json::from_value::<rhd_chat_api::AssistantMessageWithToolCallsData>(event.data.clone()) {
+                    let chat_id = data.chat_id;
+                    
+                    // Dispatch to chat subscribers
+                    for sub in &subs.chat_subscriptions {
+                        if sub.chat_id == chat_id {
+                            let callback = sub.callback.clone();
+                            let data_clone = data.clone();
+                            tokio::spawn(async move {
+                                (callback)(ChatEvent::AssistantMessageWithToolCalls(data_clone)).await;
+                            });
+                        }
+                    }
+                    
+                    // Dispatch to tool call subscribers with filtering
+                    for sub in &subs.tool_call_subscriptions {
+                        if sub.chat_id == chat_id {
+                            // Check if any of the tool names match the subscription filter
+                            let matches = sub.tool_names.is_empty()
+                                || sub.tool_names.iter().any(|name| data.tool_names.contains(name));
+                            
+                            if matches {
+                                let callback = sub.callback.clone();
+                                let data_clone = data.clone();
+                                tokio::spawn(async move {
+                                    (callback)(data_clone).await;
+                                });
+                            }
+                        }
                     }
                 }
             }
@@ -885,6 +938,37 @@ impl ChatClient {
         tokio::spawn(async move {
             let mut subs = subscriptions.lock().await;
             subs.custom_event_acknowledged_subscriptions.push(subscription);
+        });
+
+        token
+    }
+
+    /// Subscribe to assistant messages with tool calls.
+    ///
+    /// The callback will be invoked when an assistant message with tool calls is added.
+    /// If `tool_names` is empty, all tool calls will trigger the callback.
+    /// If `tool_names` is non-empty, only tool calls matching any of the names will trigger.
+    /// Returns a cancellation token that can be used to unsubscribe.
+    pub fn on_tool_call<F, Fut>(&self, chat_id: i64, tool_names: Vec<String>, callback: F) -> CancellationToken
+    where
+        F: Fn(rhd_chat_api::AssistantMessageWithToolCallsData) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        let (token, cancel_rx) = CancellationToken::new();
+        let boxed_callback: crate::event_stream::ToolCallCallback =
+            Arc::new(move |event| Box::pin(callback(event)));
+
+        let subscription = crate::event_stream::ToolCallSubscription {
+            chat_id,
+            tool_names,
+            callback: boxed_callback,
+            cancel_rx,
+        };
+
+        let subscriptions = Arc::clone(&self.subscriptions);
+        tokio::spawn(async move {
+            let mut subs = subscriptions.lock().await;
+            subs.tool_call_subscriptions.push(subscription);
         });
 
         token

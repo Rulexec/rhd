@@ -1,8 +1,8 @@
 import { makeAutoObservable, flowResult, reaction } from 'mobx';
 import { yieldPromise } from '../util/async.js';
 import type { ChatApi } from '../lib/api/ChatApi.js';
-import type { Chat, Message, StreamChunkData, StreamToolCallDelta } from '../lib/api/schemas.js';
-import { streamSubscribe, onStreamEvents } from '../lib/api/chatApiImpl.js';
+import type { Chat, Message, StreamChunkData, StreamToolCallDelta, ToolInfo } from '../lib/api/schemas.js';
+import { streamSubscribe, onStreamEvents, onToolsEvents } from '../lib/api/chatApiImpl.js';
 
 /**
  * Message with queue flag for display.
@@ -32,11 +32,13 @@ export class ChatStore {
   #cleanupEvents: (() => void) | null = null;
   #cleanupQueueEvents: (() => void) | null = null;
   #cleanupStreamEvents: (() => void) | null = null;
+  #cleanupToolsEvents: (() => void) | null = null;
 
   currentChatId: number | null = null;
   currentChat: Chat | null = null;
   messages: Message[] = [];
   queueMessages: Message[] = [];
+  tools: ToolInfo[] = [];
   loading: boolean = false;
   error: string | null = null;
 
@@ -247,6 +249,13 @@ export class ChatStore {
         }
       });
 
+      // Register event listeners for tools
+      this.#cleanupToolsEvents = onToolsEvents(chatId, {
+        onToolsUpdated: ({ tools }) => {
+          this.#handleToolsUpdated(tools);
+        }
+      });
+
       // Load chat data
       const result = yield* yieldPromise(this.#chatApi.getChat(chatId));
       this.currentChat = result.chat;
@@ -255,6 +264,10 @@ export class ChatStore {
       // Load queue messages
       const queueResult = yield* yieldPromise(this.#chatApi.getQueueMessages(chatId));
       this.queueMessages = queueResult.messages;
+
+      // Load tools
+      const toolsResult = yield* yieldPromise(this.#chatApi.getTools(chatId));
+      this.tools = toolsResult.tools;
     } catch (error) {
       this.error = error instanceof Error ? error.message : String(error);
     } finally {
@@ -294,6 +307,12 @@ export class ChatStore {
       this.#cleanupQueueEvents = null;
     }
 
+    // Cleanup tools event listeners
+    if (this.#cleanupToolsEvents) {
+      this.#cleanupToolsEvents();
+      this.#cleanupToolsEvents = null;
+    }
+
     // Unsubscribe from previous chat
     const prevChatId = this.currentChatId;
     if (prevChatId) {
@@ -308,6 +327,7 @@ export class ChatStore {
     this.currentChat = null;
     this.messages = [];
     this.queueMessages = [];
+    this.tools = [];
     this.loading = false;
     this.error = null;
   }
@@ -375,5 +395,12 @@ export class ChatStore {
    */
   #handleQueueMessageDeleted(messageId: number): void {
     this.queueMessages = this.queueMessages.filter(m => m.id !== messageId);
+  }
+
+  /**
+   * Handle tools updated event.
+   */
+  #handleToolsUpdated(tools: ToolInfo[]): void {
+    this.tools = tools;
   }
 }

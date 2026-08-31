@@ -33,10 +33,11 @@ pub mod tools;
 pub use common::{Chat, ChatSummary, Message, PendingEvent, PluginSummary};
 pub use error::{ErrorCode, ErrorResponse};
 pub use events::{
-    ChatCreatedData, ChatDeletedData, ChatUpdatedData, CustomEventAcknowledgedData, CustomEventData,
-    MessageAddedData, MessageDeletedData, MessageUpdatedData, PluginRegisteredData,
-    PluginRemovedData, PluginUpdatedData, QueueMessageAddedData, QueueMessageDeletedData,
-    QueueMessageUpdatedData, StreamChunkData, StreamFinishedData, ToolsUpdatedData,
+    AssistantMessageWithToolCallsData, ChatCreatedData, ChatDeletedData, ChatUpdatedData,
+    CustomEventAcknowledgedData, CustomEventData, MessageAddedData, MessageDeletedData,
+    MessageUpdatedData, PluginRegisteredData, PluginRemovedData, PluginUpdatedData,
+    QueueMessageAddedData, QueueMessageDeletedData, QueueMessageUpdatedData, StreamChunkData,
+    StreamFinishedData, ToolsUpdatedData,
 };
 pub use methods::{
     AckCustomEventParams, AckCustomEventResult, AddMessageParams, AddMessageResult,

@@ -6,6 +6,8 @@
   import Message from './Message.svelte';
   import MessageInput from './MessageInput.svelte';
   import TagInput from './TagInput.svelte';
+  import ChatTabNav from './ChatTabNav.svelte';
+  import ToolsList from './ToolsList.svelte';
 
   const appStore = getAppStore();
   const chatStore = appStore.chat;
@@ -19,6 +21,7 @@
   const chatErrorGetter = mobxObservable(() => chatStore.error);
   const streamContentGetter = mobxObservable(() => chatStore.streamContent);
   const allTagsGetter = mobxObservable(() => chatsListStore.allTags);
+  const toolsGetter = mobxObservable(() => chatStore.tools);
 
   let currentChat = $derived(currentChatGetter());
   let allMessages = $derived(allMessagesGetter());
@@ -26,6 +29,10 @@
   let chatError = $derived(chatErrorGetter());
   let streamContent = $derived(streamContentGetter());
   let allTags = $derived(allTagsGetter());
+  let tools = $derived(toolsGetter());
+
+  // Tab state
+  let activeTab: 'messages' | 'tools' = $state('messages');
 
   let disposeChatStore: (() => void) | null = null;
 
@@ -147,25 +154,34 @@
       />
     </div>
 
-    <div
-      class="messages-container"
-      bind:this={messagesContainer}
-      onscroll={handleScroll}
-    >
-      {#if allMessages.length === 0}
-        <div class="messages-empty">
-          <span class="text-muted">No messages yet</span>
-        </div>
-      {:else}
-        <div class="messages-list">
-          {#each allMessages as message (message.id)}
-            <Message {message} isQueue={message.isQueue} streamContent={message.isStreaming ? streamContent : null} />
-          {/each}
-        </div>
-      {/if}
-    </div>
+    <ChatTabNav
+      bind:activeTab
+      toolsCount={tools.length}
+    />
 
-    <MessageInput onMessageSent={handleMessageSent} />
+    {#if activeTab === 'messages'}
+      <div
+        class="messages-container"
+        bind:this={messagesContainer}
+        onscroll={handleScroll}
+      >
+        {#if allMessages.length === 0}
+          <div class="messages-empty">
+            <span class="text-muted">No messages yet</span>
+          </div>
+        {:else}
+          <div class="messages-list">
+            {#each allMessages as message (message.id)}
+              <Message {message} isQueue={message.isQueue} streamContent={message.isStreaming ? streamContent : null} />
+            {/each}
+          </div>
+        {/if}
+      </div>
+
+      <MessageInput onMessageSent={handleMessageSent} />
+    {:else if activeTab === 'tools'}
+      <ToolsList {tools} />
+    {/if}
   {/if}
 </div>
 

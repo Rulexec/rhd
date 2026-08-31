@@ -283,6 +283,55 @@ export const UpdateChatParamsSchema = z.object({
 export const UpdateChatResultSchema = z.object({});
 
 // ============================================================================
+// Tool Schemas
+// ============================================================================
+
+/**
+ * Function definition schema.
+ * Used within tool definitions.
+ */
+export const FunctionDefinitionSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+  parameters: z.any()
+});
+
+/**
+ * Tool definition schema.
+ * Matches the OpenAI-style tool format.
+ */
+export const ToolDefinitionSchema = z.object({
+  type: z.string(),
+  function: FunctionDefinitionSchema
+});
+
+/**
+ * Tool info schema.
+ * Includes the tool definition and the plugin that registered it.
+ */
+export const ToolInfoSchema = z.object({
+  pluginId: z.string(),
+  tool: ToolDefinitionSchema
+});
+
+/**
+ * Get tools result schema.
+ */
+export const GetToolsResultSchema = z.object({
+  tools: z.array(ToolInfoSchema)
+});
+
+/**
+ * Tools updated event data schema.
+ * Emitted when tools are added or removed from a chat.
+ */
+export const ToolsUpdatedDataSchema = z.object({
+  chatId: z.number(),
+  tools: z.array(ToolInfoSchema),
+  chatVersion: z.number()
+});
+
+// ============================================================================
 // Type Exports
 // ============================================================================
 
@@ -317,3 +366,9 @@ export type StreamChunkData = z.infer<typeof StreamChunkDataSchema>;
 export type StreamFinishedData = z.infer<typeof StreamFinishedDataSchema>;
 export type StreamToolCallDelta = z.infer<typeof StreamToolCallDeltaSchema>;
 export type StreamSubscribeResult = z.infer<typeof StreamSubscribeResultSchema>;
+
+export type FunctionDefinition = z.infer<typeof FunctionDefinitionSchema>;
+export type ToolDefinition = z.infer<typeof ToolDefinitionSchema>;
+export type ToolInfo = z.infer<typeof ToolInfoSchema>;
+export type GetToolsResult = z.infer<typeof GetToolsResultSchema>;
+export type ToolsUpdatedData = z.infer<typeof ToolsUpdatedDataSchema>;

@@ -7,10 +7,11 @@ use std::sync::Arc;
 use tokio::sync::oneshot;
 
 use rhd_chat_api::{
-    ChatCreatedData, ChatDeletedData, ChatUpdatedData, CustomEventAcknowledgedData, CustomEventData,
-    MessageAddedData, MessageDeletedData, MessageUpdatedData, PluginRegisteredData,
-    PluginRemovedData, PluginUpdatedData, QueueMessageAddedData, QueueMessageDeletedData,
-    QueueMessageUpdatedData, StreamChunkData, StreamFinishedData, ToolsUpdatedData,
+    AssistantMessageWithToolCallsData, ChatCreatedData, ChatDeletedData, ChatUpdatedData,
+    CustomEventAcknowledgedData, CustomEventData, MessageAddedData, MessageDeletedData,
+    MessageUpdatedData, PluginRegisteredData, PluginRemovedData, PluginUpdatedData,
+    QueueMessageAddedData, QueueMessageDeletedData, QueueMessageUpdatedData, StreamChunkData,
+    StreamFinishedData, ToolsUpdatedData,
 };
 
 /// Events that can occur on a subscribed chat.
@@ -34,6 +35,8 @@ pub enum ChatEvent {
     StreamChunk(StreamChunkData),
     /// A stream finished.
     StreamFinished(StreamFinishedData),
+    /// An assistant message with tool calls was added.
+    AssistantMessageWithToolCalls(AssistantMessageWithToolCallsData),
 }
 
 /// Events that can occur on the chats list.
@@ -78,6 +81,13 @@ pub type CustomEventCallback =
 pub type CustomEventAcknowledgedCallback =
     Arc<dyn Fn(CustomEventAcknowledgedData) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
 
+/// Type alias for async tool call callbacks.
+pub type ToolCallCallback = Arc<
+    dyn Fn(AssistantMessageWithToolCallsData) -> Pin<Box<dyn Future<Output = ()> + Send>>
+        + Send
+        + Sync,
+>;
+
 /// A subscription to chat events for a specific chat.
 pub(crate) struct ChatSubscription {
     /// The chat ID this subscription is for.
@@ -120,6 +130,18 @@ pub(crate) struct CustomEventAcknowledgedSubscription {
     pub cancel_rx: oneshot::Receiver<()>,
 }
 
+/// A subscription to tool call events with optional filtering.
+pub(crate) struct ToolCallSubscription {
+    /// The chat ID this subscription is for.
+    pub chat_id: i64,
+    /// Tool names to filter by. Empty means all tools.
+    pub tool_names: Vec<String>,
+    /// The callback to invoke when a matching tool call event occurs.
+    pub callback: ToolCallCallback,
+    /// Channel to signal cancellation.
+    pub cancel_rx: oneshot::Receiver<()>,
+}
+
 /// A token that can be used to cancel an event subscription.
 pub struct CancellationToken {
     cancel_tx: Option<oneshot::Sender<()>>,
@@ -156,6 +178,7 @@ pub(crate) struct EventSubscriptions {
     pub plugins_list_subscriptions: Vec<PluginsListSubscription>,
     pub custom_event_subscriptions: Vec<CustomEventSubscription>,
     pub custom_event_acknowledged_subscriptions: Vec<CustomEventAcknowledgedSubscription>,
+    pub tool_call_subscriptions: Vec<ToolCallSubscription>,
 }
 
 impl EventSubscriptions {
@@ -167,6 +190,7 @@ impl EventSubscriptions {
             plugins_list_subscriptions: Vec::new(),
             custom_event_subscriptions: Vec::new(),
             custom_event_acknowledged_subscriptions: Vec::new(),
+            tool_call_subscriptions: Vec::new(),
         }
     }
 
@@ -181,6 +205,8 @@ impl EventSubscriptions {
         self.custom_event_subscriptions
             .retain(|s| !s.cancel_rx.is_terminated());
         self.custom_event_acknowledged_subscriptions
+            .retain(|s| !s.cancel_rx.is_terminated());
+        self.tool_call_subscriptions
             .retain(|s| !s.cancel_rx.is_terminated());
     }
 }

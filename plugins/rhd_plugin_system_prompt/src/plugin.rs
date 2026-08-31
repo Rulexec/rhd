@@ -95,12 +95,24 @@ pub async fn run_plugin(
         let _plugin_id = plugin_id_for_events.clone();
 
         async move {
+            let event_id = event.event_id.clone();
+
             // Only handle ai_completions:preRequest events
             if event.event_name != "ai_completions:preRequest" {
+                // Acknowledge events we don't handle to avoid blocking the system
+                tracing::debug!(
+                    event_id = %event_id,
+                    event_name = %event.event_name,
+                    "acknowledging unhandled event"
+                );
+                let _ = client
+                    .ack_custom_event(rhd_chat_api::AckCustomEventParams {
+                        event_id: event_id.clone(),
+                        is_rejected: None,
+                    })
+                    .await;
                 return;
             }
-
-            let event_id = event.event_id.clone();
 
             tracing::info!(
                 event_id = %event_id,

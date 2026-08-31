@@ -2,9 +2,9 @@
 
 use rhd_chat_api::common::{ChatSummary, Message};
 use rhd_chat_api::events::{
-    ChatCreatedData, ChatDeletedData, ChatUpdatedData, MessageAddedData, MessageDeletedData,
-    MessageUpdatedData, QueueMessageAddedData, QueueMessageDeletedData, QueueMessageUpdatedData,
-    ToolsUpdatedData,
+    AssistantMessageWithToolCallsData, ChatCreatedData, ChatDeletedData, ChatUpdatedData,
+    MessageAddedData, MessageDeletedData, MessageUpdatedData, QueueMessageAddedData,
+    QueueMessageDeletedData, QueueMessageUpdatedData, ToolsUpdatedData,
 };
 use rhd_chat_api::protocol::Event;
 use rhd_chat_api::tools::ToolInfo;
@@ -67,4 +67,26 @@ pub fn queue_message_deleted_event(chat_id: i64, message_id: i64, chat_version: 
 pub fn tools_updated_event(chat_id: i64, tools: Vec<ToolInfo>, chat_version: i64) -> Event {
     let data = ToolsUpdatedData { chat_id, tools, chat_version };
     Event::new("toolsUpdated", serde_json::to_value(data).unwrap())
+}
+
+/// Create an `assistantMessageWithToolCalls` event.
+///
+/// Emitted when an assistant message with tool calls is added to a chat.
+/// The `tool_names` parameter contains extracted tool names for efficient filtering.
+pub fn assistant_message_with_tool_calls_event(
+    chat_id: i64,
+    message: Message,
+    chat_version: i64,
+    tool_names: Vec<String>,
+) -> Event {
+    let data = AssistantMessageWithToolCallsData {
+        chat_id,
+        message,
+        chat_version,
+        tool_names,
+    };
+    Event::new(
+        "assistantMessageWithToolCalls",
+        serde_json::to_value(data).unwrap(),
+    )
 }

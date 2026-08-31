@@ -14,7 +14,10 @@ use rhd_chat_api::ErrorResponse;
 use rhd_db::{ChatDb, DbError};
 
 use crate::error::ServerError;
-use crate::events::{message_added_event, message_deleted_event, message_updated_event};
+use crate::events::{
+    assistant_message_with_tool_calls_event, message_added_event, message_deleted_event,
+    message_updated_event,
+};
 use crate::subscriptions::SharedSubscriptionManager;
 
 /// Convert rhd_db::Message to rhd_chat_api::Message.
@@ -163,11 +166,30 @@ pub async fn update_message(
     // Broadcast messageUpdated event
     let msg_tags = db.get_message_tags(params.message_id)?;
     let db_message = db.get_message(params.message_id)?.unwrap();
-    let api_message = convert_message_to_api(db_message, msg_tags)?;
+    let api_message = convert_message_to_api(db_message, msg_tags.clone())?;
     let chat_id = api_message.chat_id;
-    let event = message_updated_event(chat_id, api_message, current_version);
+    let event = message_updated_event(chat_id, api_message.clone(), current_version);
     let manager = subscription_manager.read().await;
     manager.broadcast_to_chat(chat_id, event);
+
+    // If this is an assistant message with tool calls being finalized, emit special event
+    if api_message.role == "assistant"
+        && !api_message.tool_calls.is_empty()
+        && params.is_finished == Some(true)
+    {
+        let tool_names: Vec<String> = api_message
+            .tool_calls
+            .iter()
+            .map(|tc| tc.function.name.clone())
+            .collect();
+        let tool_calls_event = assistant_message_with_tool_calls_event(
+            chat_id,
+            api_message,
+            current_version,
+            tool_names,
+        );
+        manager.broadcast_to_chat(chat_id, tool_calls_event);
+    }
 
     let result = UpdateMessageResult {};
     Ok(serde_json::to_value(Response::success(request_id, serde_json::to_value(result)?))?)
