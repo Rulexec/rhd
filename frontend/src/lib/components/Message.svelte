@@ -1,6 +1,7 @@
 <script lang="ts">
   import { marked } from 'marked';
-  import type { Message as MessageType, StreamToolCallDelta } from '../api/schemas.js';
+  import type { Message as MessageType, StreamToolCallDelta, ToolCall } from '../api/schemas.js';
+  import ToolCallMessage from './ToolCallMessage.svelte';
 
   interface StreamContent {
     reasoningContent: string;
@@ -13,9 +14,10 @@
     message: MessageType;
     isQueue?: boolean;
     streamContent?: StreamContent | null;
+    toolResults?: Map<string, string>;
   }
 
-  let { message, isQueue = false, streamContent = null }: Props = $props();
+  let { message, isQueue = false, streamContent = null, toolResults = new Map() }: Props = $props();
 
   let showMarkdown: boolean = $state(true);
   let reasoningExpanded: boolean = $state(false);
@@ -44,6 +46,17 @@
   let hasReasoning: boolean = $derived(
     displayReasoning != null && displayReasoning.length > 0
   );
+
+  // Check if this is a tool result message
+  let isToolResultMessage: boolean = $derived(message.role === 'tool');
+
+  // Determine which tool calls to display (streaming or persisted)
+  let displayToolCalls: Array<ToolCall | StreamToolCallDelta> = $derived.by(() => {
+    if (isStreaming && streamContent && streamContent.toolCalls.length > 0) {
+      return streamContent.toolCalls;
+    }
+    return message.toolCalls ?? [];
+  });
 
   /**
    * Render content as Markdown or plain text.
@@ -189,14 +202,21 @@
     </div>
   {/if}
 
-  <!-- Tool calls (shown during streaming) -->
-  {#if streamContent && streamContent.toolCalls.length > 0}
+  <!-- Tool calls -->
+  {#if isToolResultMessage}
+    <!-- Tool result message: show the result content -->
+    <div class="tool-result">
+      <div class="tool-result-label">Tool Result</div>
+      <pre class="tool-result-content">{displayContent}</pre>
+    </div>
+  {:else if displayToolCalls.length > 0}
+    <!-- Assistant message with tool calls -->
     <div class="tool-calls">
-      {#each streamContent.toolCalls as toolCall}
-        <div class="tool-call">
-          <span class="tool-name">{toolCall.name}</span>
-          <pre class="tool-arguments">{toolCall.arguments}</pre>
-        </div>
+      {#each displayToolCalls as toolCall}
+        <ToolCallMessage
+          {toolCall}
+          result={toolResults.get(toolCall.id) ?? null}
+        />
       {/each}
     </div>
   {/if}
@@ -460,5 +480,34 @@
 
   .text-muted {
     color: var(--color-text-muted);
+  }
+
+  .tool-result {
+    margin-top: var(--spacing-sm);
+    padding: var(--spacing-sm);
+    background: var(--color-bg-tertiary);
+    border-radius: var(--radius-sm);
+    border-left: 3px solid var(--color-success);
+  }
+
+  .tool-result-label {
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    margin-bottom: var(--spacing-xs);
+  }
+
+  .tool-result-content {
+    margin: 0;
+    padding: var(--spacing-sm);
+    background: var(--color-bg-secondary);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-xs);
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    max-height: 300px;
+    overflow-y: auto;
   }
 </style>

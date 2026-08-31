@@ -90,6 +90,20 @@ export class ChatStore {
   }
 
   /**
+   * Get a map of tool call IDs to their results.
+   * Tool results are stored in messages with role="tool" and a toolCallId.
+   */
+  get toolResults(): Map<string, string> {
+    const results = new Map<string, string>();
+    for (const message of this.messages) {
+      if (message.role === 'tool' && message.toolCallId) {
+        results.set(message.toolCallId, message.content);
+      }
+    }
+    return results;
+  }
+
+  /**
    * Initialize streaming subscription system.
    * Sets up a MobX reaction to watch for streaming messages and automatically
    * subscribe/unsubscribe from streaming events.

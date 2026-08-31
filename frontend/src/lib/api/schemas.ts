@@ -18,6 +18,26 @@ export const ChatSchema = z.object({
 });
 
 /**
+ * Function call schema.
+ * Represents a function call within a tool call.
+ */
+export const FunctionCallSchema = z.object({
+  name: z.string(),
+  arguments: z.string()
+});
+
+/**
+ * Tool call schema.
+ * Represents a tool call made by the assistant.
+ */
+export const ToolCallSchema = z.object({
+  id: z.string(),
+  type: z.string(),
+  function: FunctionCallSchema,
+  tags: z.array(z.string()).default([])
+});
+
+/**
  * Message schema.
  * Used for both regular messages and queue messages.
  */
@@ -30,7 +50,9 @@ export const MessageSchema = z.object({
   reasoningContent: z.string().optional(),
   tags: z.array(z.string()).default([]),
   isFinished: z.boolean().default(true),
-  isStreaming: z.boolean().default(false)
+  isStreaming: z.boolean().default(false),
+  toolCallId: z.string().optional(),
+  toolCalls: z.array(ToolCallSchema).default([])
 });
 
 /**
@@ -337,6 +359,8 @@ export const ToolsUpdatedDataSchema = z.object({
 
 export type Chat = z.infer<typeof ChatSchema>;
 export type Message = z.infer<typeof MessageSchema>;
+export type FunctionCall = z.infer<typeof FunctionCallSchema>;
+export type ToolCall = z.infer<typeof ToolCallSchema>;
 export type PluginSummary = z.infer<typeof PluginSummarySchema>;
 export type Request = z.infer<typeof RequestSchema>;
 export type Response = z.infer<typeof ResponseSchema>;

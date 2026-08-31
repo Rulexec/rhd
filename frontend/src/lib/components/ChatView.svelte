@@ -22,6 +22,7 @@
   const streamContentGetter = mobxObservable(() => chatStore.streamContent);
   const allTagsGetter = mobxObservable(() => chatsListStore.allTags);
   const toolsGetter = mobxObservable(() => chatStore.tools);
+  const toolResultsGetter = mobxObservable(() => chatStore.toolResults);
 
   let currentChat = $derived(currentChatGetter());
   let allMessages = $derived(allMessagesGetter());
@@ -30,6 +31,7 @@
   let streamContent = $derived(streamContentGetter());
   let allTags = $derived(allTagsGetter());
   let tools = $derived(toolsGetter());
+  let toolResults = $derived(toolResultsGetter());
 
   // Tab state
   let activeTab: 'messages' | 'tools' = $state('messages');
@@ -172,7 +174,7 @@
         {:else}
           <div class="messages-list">
             {#each allMessages as message (message.id)}
-              <Message {message} isQueue={message.isQueue} streamContent={message.isStreaming ? streamContent : null} />
+              <Message {message} isQueue={message.isQueue} streamContent={message.isStreaming ? streamContent : null} {toolResults} />
             {/each}
           </div>
         {/if}

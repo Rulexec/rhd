@@ -38,7 +38,8 @@ describe('ChatStore', () => {
     createdAt: '2024-01-01T00:00:00Z',
     tags: [],
     isFinished: true,
-    isStreaming: false
+    isStreaming: false,
+    toolCalls: []
   };
 
   beforeEach(() => {
@@ -47,6 +48,7 @@ describe('ChatStore', () => {
       unsubscribeChat: vi.fn().mockResolvedValue(undefined),
       getChat: vi.fn().mockResolvedValue({ chat: mockChat, messages: [mockMessage] }),
       getQueueMessages: vi.fn().mockResolvedValue({ messages: [] }),
+      getTools: vi.fn().mockResolvedValue({ tools: [] }),
       onChatEvents: vi.fn().mockReturnValue(() => {}),
       onQueueMessageEvents: vi.fn().mockReturnValue(() => {}),
       // Other ChatApi members are not exercised by these tests.
@@ -294,7 +296,8 @@ describe('ChatStore', () => {
       createdAt: '2024-01-01T00:00:00Z',
       tags: [],
       isFinished: false,
-      isStreaming: false
+      isStreaming: false,
+      toolCalls: []
     };
   
     const streamingMessage: Message = {
