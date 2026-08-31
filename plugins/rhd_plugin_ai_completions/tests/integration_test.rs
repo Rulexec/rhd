@@ -41,6 +41,7 @@ impl TestEnv {
             host: "127.0.0.1".to_string(),
             port: 0,
             db_path: ":memory:".to_string(),
+            clear_pending_acks: false,
         };
         let (chat_server_port, _server_handle) = rhd_chat_server::server::start(chat_config)
             .await
@@ -346,6 +347,7 @@ async fn test_plugin_handles_ai_error() {
             host: "127.0.0.1".to_string(),
             port: 0,
             db_path: ":memory:".to_string(),
+            clear_pending_acks: false,
         };
         let (chat_server_port, _server_handle) = rhd_chat_server::server::start(chat_config)
             .await

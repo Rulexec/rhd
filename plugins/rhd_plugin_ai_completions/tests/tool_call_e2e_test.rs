@@ -368,3 +368,200 @@ async fn test_tool_call_complete_flow() {
     .await
     .expect("Test timed out");
 }
+
+/// Test: Tool call with chunked streaming (simulates real OpenAI behavior).
+///
+/// This test verifies that tool calls sent in multiple chunks (as real OpenAI API does)
+/// are correctly merged into a single tool call with:
+/// - Non-empty id (from first chunk)
+/// - Non-empty name (from first chunk)
+/// - Complete arguments (concatenated from all chunks)
+///
+/// Real OpenAI streaming format:
+/// 1. First chunk: index=0, id="call_123", name="function_name", arguments=""
+/// 2. Subsequent chunks: index=0, id=None, name=None, arguments="{\"partial\": ...}"
+#[tokio::test]
+async fn test_tool_call_chunked_streaming() {
+    init_tracing();
+    timeout(Duration::from_secs(30), async {
+        let env = TestEnv::new().await;
+
+        // Configure mock responses:
+        // First response: streaming tool call with chunked arguments (simulates real OpenAI)
+        env.listener.push_response(MockAiResponse::stream_tool_call_chunked(
+            "rhd_set_todo_list",
+            r#"{"todos": "[ ] Task 1: First todo item\n[ ] Task 2: Second todo item"}"#,
+        ));
+        // Second response: streaming final text after tool result
+        env.listener.push_response(MockAiResponse::stream_text("I've set up the todo list with 2 tasks."));
+
+        // Start plugin in background
+        let plugin_handle = tokio::spawn({
+            let url = env.chat_server_url();
+            let config = env.config.clone();
+            async move {
+                plugin::run_plugin(&url, "test_plugin", config).await
+            }
+        });
+
+        // Wait for plugin to initialize
+        sleep(Duration::from_millis(500)).await;
+
+        // Connect client
+        let client = ChatClient::connect(&env.chat_server_url())
+            .await
+            .expect("Failed to connect");
+
+        // Create a chat
+        let create_result = client
+            .create_chat(CreateChatParams {
+                title: "Chunked Tool Call Test".to_string(),
+                tags: vec![],
+            })
+            .await
+            .expect("Failed to create chat");
+
+        let chat_id = create_result.chat_id;
+
+        // Register client as a plugin (required to add tools)
+        client
+            .register_plugin(rhd_chat_api::RegisterPluginParams {
+                plugin_id: "test_client_plugin".to_string(),
+            })
+            .await
+            .expect("Failed to register client as plugin");
+
+        // Start background task to acknowledge custom events
+        let ack_client = client.clone();
+        let event_ack_token = ack_client.clone().on_custom_event(move |event| {
+            let ack_client = ack_client.clone();
+            async move {
+                if let Err(e) = ack_client
+                    .ack_custom_event(AckCustomEventParams {
+                        event_id: event.event_id,
+                        is_rejected: None,
+                    })
+                    .await
+                {
+                    tracing::error!(error = %e, "Failed to acknowledge event");
+                }
+            }
+        });
+
+        // Register a tool
+        client
+            .add_tools(AddToolsParams {
+                chat_id,
+                tools: vec![rhd_chat_api::ToolDefinition {
+                    tool_type: "function".to_string(),
+                    function: rhd_chat_api::FunctionDefinition {
+                        name: "rhd_set_todo_list".to_string(),
+                        description: "Set the todo list".to_string(),
+                        parameters: serde_json::json!({
+                            "type": "object",
+                            "properties": {
+                                "todos": {
+                                    "type": "string",
+                                    "description": "The todo list content"
+                                }
+                            },
+                            "required": ["todos"]
+                        }),
+                    },
+                }],
+            })
+            .await
+            .expect("Failed to add tools");
+
+        // Add a queued message to trigger AI request
+        client
+            .add_queue_message(AddQueueMessageParams {
+                chat_id,
+                role: "user".to_string(),
+                content: "Create a todo list with 2 tasks".to_string(),
+                tool_call_id: None,
+                reasoning_content: None,
+                tags: vec![],
+            })
+            .await
+            .expect("Failed to add queue message");
+
+        // Wait for plugin to process and get tool call
+        let mut tool_call_found = false;
+        let mut tool_call_id = String::new();
+        let mut tool_call_name = String::new();
+        let mut tool_call_arguments = String::new();
+        let mut tool_call_count = 0;
+        for _ in 0..20 {
+            sleep(Duration::from_millis(500)).await;
+
+            let chat_result = client
+                .get_chat(GetChatParams {
+                    chat_id,
+                    if_version_higher_than: None,
+                })
+                .await
+                .expect("Failed to get chat");
+
+            // Look for assistant message with tool calls
+            for msg in &chat_result.messages {
+                if msg.role == "assistant" && !msg.tool_calls.is_empty() {
+                    tool_call_count = msg.tool_calls.len();
+                    tool_call_found = true;
+                    tool_call_id = msg.tool_calls[0].id.clone();
+                    tool_call_name = msg.tool_calls[0].function.name.clone();
+                    tool_call_arguments = msg.tool_calls[0].function.arguments.clone();
+                    tracing::info!(
+                        "Found tool call: id={}, name={}, arguments={}, count={}",
+                        tool_call_id,
+                        tool_call_name,
+                        tool_call_arguments,
+                        tool_call_count
+                    );
+                    break;
+                }
+            }
+
+            if tool_call_found {
+                break;
+            }
+        }
+
+        assert!(
+            tool_call_found,
+            "Plugin should create assistant message with tool call"
+        );
+
+        // CRITICAL: Verify that chunked streaming was correctly merged
+        assert_eq!(
+            tool_call_count, 1,
+            "Should have exactly ONE tool call (not multiple due to chunking bug)"
+        );
+        assert!(
+            !tool_call_id.is_empty(),
+            "Tool call should have non-empty id (from first chunk)"
+        );
+        assert!(
+            !tool_call_name.is_empty(),
+            "Tool call should have non-empty name (from first chunk)"
+        );
+        assert_eq!(
+            tool_call_name, "rhd_set_todo_list",
+            "Tool call name should match"
+        );
+        assert!(
+            tool_call_arguments.contains("Task 1"),
+            "Tool call arguments should contain complete data from all chunks"
+        );
+        assert!(
+            tool_call_arguments.contains("Task 2"),
+            "Tool call arguments should contain complete data from all chunks"
+        );
+
+        // Cleanup
+        event_ack_token.cancel();
+        plugin_handle.abort();
+    })
+    .await
+    .expect("Test timed out");
+}

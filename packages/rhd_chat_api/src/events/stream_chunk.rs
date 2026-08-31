@@ -60,6 +60,7 @@ mod tests {
             chunk_type: "toolCallDelta".to_string(),
             content: None,
             tool_calls: Some(vec![StreamToolCallDelta {
+                index: 0,
                 id: "call_1".to_string(),
                 name: "read_file".to_string(),
                 arguments: "{\"path\":\"/tmp\"}".to_string(),

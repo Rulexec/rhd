@@ -322,15 +322,26 @@ pub async fn handle_ai_request(
                         if let Some(tool_calls) = &chunk.tool_calls {
                             let mut tool_deltas = Vec::new();
                             for tc in tool_calls {
+                                let index = tc.index;
                                 let id = tc.id.clone().unwrap_or_default();
                                 let name = tc.function.as_ref().and_then(|f| f.name.clone()).unwrap_or_default();
                                 let arguments = tc.function.as_ref().and_then(|f| f.arguments.clone()).unwrap_or_default();
 
-                                // Merge with existing tool call by ID
-                                if let Some(existing) = final_tool_calls.iter_mut().find(|t| t.id == id) {
+                                // Merge with existing tool call by INDEX (not ID).
+                                // OpenAI streaming format: first chunk has id+name, subsequent chunks have id=None.
+                                // The index field identifies which tool call a delta belongs to.
+                                if let Some(existing) = final_tool_calls.iter_mut().find(|t| t.index == index) {
                                     existing.arguments.push_str(&arguments);
+                                    // Update id and name if they were empty (first chunk had them)
+                                    if existing.id.is_empty() && !id.is_empty() {
+                                        existing.id = id.clone();
+                                    }
+                                    if existing.name.is_empty() && !name.is_empty() {
+                                        existing.name = name.clone();
+                                    }
                                 } else {
                                     final_tool_calls.push(StreamToolCallDelta {
+                                        index,
                                         id: id.clone(),
                                         name,
                                         arguments,
@@ -338,6 +349,7 @@ pub async fn handle_ai_request(
                                 }
 
                                 tool_deltas.push(StreamToolCallDelta {
+                                    index,
                                     id,
                                     name: tc.function.as_ref().and_then(|f| f.name.clone()).unwrap_or_default(),
                                     arguments: tc.function.as_ref().and_then(|f| f.arguments.clone()).unwrap_or_default(),

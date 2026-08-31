@@ -27,6 +27,7 @@ async fn start_test_server() -> (u16, tokio::task::JoinHandle<()>) {
         host: "127.0.0.1".to_string(),
         port,
         db_path: ":memory:".to_string(),
+        clear_pending_acks: false,
     };
 
     // Initialize database

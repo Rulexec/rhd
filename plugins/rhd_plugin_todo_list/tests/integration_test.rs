@@ -61,8 +61,8 @@ fn test_tool_definition_valid_json() {
     assert!(json.is_ok(), "Tool definition is not valid JSON: {:?}", json.err());
     
     let json = json.unwrap();
-    assert_eq!(json["name"], "rhd_set_todo_list");
-    assert!(json["parameters"]["properties"]["todos"].is_object());
+    assert_eq!(json["function"]["name"], "rhd_set_todo_list");
+    assert!(json["function"]["parameters"]["properties"]["todos"].is_object());
 }
 
 /// Test that the todo store correctly stores and retrieves items.

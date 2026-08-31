@@ -8,6 +8,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct StreamToolCallDelta {
+    /// Index for merging deltas (from OpenAI streaming format).
+    /// Tool calls are identified by index, not id, during streaming.
+    pub index: usize,
     /// Unique identifier for the tool call.
     pub id: String,
     /// Tool/function name.

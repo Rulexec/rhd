@@ -125,6 +125,66 @@ impl MockAiResponse {
         
         MockAiResponse::Stream(receiver)
     }
+
+    /// Create a streaming tool call response that simulates real OpenAI behavior.
+    ///
+    /// Real OpenAI API sends tool calls in multiple chunks:
+    /// 1. First chunk: index=0, id="call_123", name="function_name", arguments=""
+    /// 2. Subsequent chunks: index=0, id=None, name=None, arguments="{\"partial\": ...}"
+    ///
+    /// This method splits the arguments into multiple chunks to simulate this behavior.
+    pub fn stream_tool_call_chunked(name: impl Into<String>, arguments: impl Into<String>) -> Self {
+        let (controller, receiver) = StreamController::new();
+        let name_str = name.into();
+        let arguments_str = arguments.into();
+
+        tokio::spawn(async move {
+            // First chunk: id and name, empty arguments
+            let _ = controller.send_chunk(StreamChunk {
+                reasoning_content: None,
+                content: None,
+                tool_calls: Some(vec![rhd_ai_client::ToolCallDelta {
+                    index: 0,
+                    id: Some("call_chunked_1".to_string()),
+                    call_type: Some("function".to_string()),
+                    function: Some(rhd_ai_client::FunctionCallDelta {
+                        name: Some(name_str),
+                        arguments: Some(String::new()),
+                    }),
+                }]),
+                finish_reason: None,
+            }).await;
+
+            // Subsequent chunks: no id/name, only arguments fragments
+            for chunk in arguments_str.chars().collect::<Vec<_>>().chunks(5) {
+                let chunk_str: String = chunk.iter().collect();
+                let _ = controller.send_chunk(StreamChunk {
+                    reasoning_content: None,
+                    content: None,
+                    tool_calls: Some(vec![rhd_ai_client::ToolCallDelta {
+                        index: 0,
+                        id: None,
+                        call_type: None,
+                        function: Some(rhd_ai_client::FunctionCallDelta {
+                            name: None,
+                            arguments: Some(chunk_str),
+                        }),
+                    }]),
+                    finish_reason: None,
+                }).await;
+            }
+
+            // Send finish reason
+            let _ = controller.send_chunk(StreamChunk {
+                reasoning_content: None,
+                content: None,
+                tool_calls: None,
+                finish_reason: Some("tool_calls".to_string()),
+            }).await;
+        });
+
+        MockAiResponse::Stream(receiver)
+    }
 }
 
 /// Controller for sending stream chunks from test code

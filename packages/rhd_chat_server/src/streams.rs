@@ -97,10 +97,17 @@ impl StreamManager {
             state.content.push_str(delta);
         }
         if let Some(delta) = &tool_calls_delta {
-            // Merge tool calls by ID, or add new ones
+            // Merge tool calls by index, or add new ones
             for new_call in delta {
-                if let Some(existing) = state.tool_calls.iter_mut().find(|c| c.id == new_call.id) {
+                if let Some(existing) = state.tool_calls.iter_mut().find(|c| c.index == new_call.index) {
                     existing.arguments.push_str(&new_call.arguments);
+                    // Update id and name if they were empty (first chunk had them)
+                    if existing.id.is_empty() && !new_call.id.is_empty() {
+                        existing.id = new_call.id.clone();
+                    }
+                    if existing.name.is_empty() && !new_call.name.is_empty() {
+                        existing.name = new_call.name.clone();
+                    }
                 } else {
                     state.tool_calls.push(new_call.clone());
                 }
@@ -368,6 +375,7 @@ mod tests {
 
         // Push initial tool call
         let tool_call1 = StreamToolCallDelta {
+            index: 0,
             id: "tool1".to_string(),
             name: "search".to_string(),
             arguments: "{\"query\":".to_string(),
@@ -376,8 +384,9 @@ mod tests {
             .push(chat_id, None, None, Some(vec![tool_call1]))
             .await;
 
-        // Push more arguments to same tool call
+        // Push more arguments to same tool call (same index)
         let tool_call2 = StreamToolCallDelta {
+            index: 0,
             id: "tool1".to_string(),
             name: "search".to_string(),
             arguments: "\"test\"}".to_string(),
