@@ -23,8 +23,11 @@ rhd/
 │   ├── rhd_chat_api/       # Chat API types and protocol definitions
 │   ├── rhd_chat_server/    # WebSocket server for chat management
 │   ├── rhd_chat_client/    # WebSocket client for chat server
-│   ├── rhd_app/            # CLI tool for chat server interaction
-│   └── rhd_plugin_ai_completions/ # AI completions plugin
+│   └── rhd_app/            # CLI tool for chat server interaction
+├── plugins/
+│   ├── rhd_plugin_ai_completions/  # AI completions plugin
+│   ├── rhd_plugin_system_prompt/   # System prompt injection plugin
+│   └── rhd_plugin_todo_list/       # Todo list tool-tracking plugin
 ```
 
 ## Documentation Structure
@@ -125,10 +128,10 @@ Product-scoped feature documentation (what the feature does, not how it's implem
 
 | File | When to read |
 |------|-------------|
-| [features/chat.md](features/chat.md) | Understanding chat feature, streaming, model selection, message editing, delete all chats, auto-scroll, queue messages, tools management |
+| [features/chat.md](features/chat.md) | Understanding chat feature, streaming, model selection, message editing, delete all chats, auto-scroll, queue messages, tools management, chat tag UI, messages/tools tabs |
 | [features/mcp-tools.md](features/mcp-tools.md) | Understanding MCP tool integration, built-in tools, flags, skip conditions, tool call error UI |
 | [features/configuration.md](features/configuration.md) | Understanding config files, credentials, model aliases, CLI arguments |
 | [features/testing.md](features/testing.md) | Understanding E2E test infrastructure, mock server, test utilities |
 | [features/cli.md](features/cli.md) | Understanding CLI usage details, commands, and arguments |
 | [features/templates.md](features/templates.md) | Understanding template registry, template loading, and rendering |
-| [features/plugins.md](features/plugins.md) | Understanding plugin system, plugin lifecycle, custom event coordination, plugin monitoring, AI completions plugin |
+| [features/plugins.md](features/plugins.md) | Understanding plugin system, plugin lifecycle, custom event coordination (rejection, context fields), plugin monitoring, event-driven plugin design, AI completions plugin (tags, request fidelity), system prompt plugin, todo list plugin, tool call tags |

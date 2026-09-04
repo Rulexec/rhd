@@ -90,6 +90,28 @@ See [backend-e2e.md](backend-e2e.md)
 
 ## Plugin Development
 
+### Pattern: Event Callbacks Must Not Block the WebSocket Read Task
+
+**Context:** Writing or modifying event dispatch in `rhd_chat_client` (`client.rs`), or any plugin event handler that makes a client request (`add_message`, `ack_custom_event`, etc.)
+**Rule:** Never `await` an event subscription callback inline in the WebSocket read task. Spawn the callback with `tokio::spawn` so the read task keeps processing incoming frames.
+**Why:** An inline-awaited callback that issues its own request deadlocks: the request's response arrives at the WebSocket, but the read task is blocked waiting for the callback to finish, so the response is never processed. This was the root cause of the `rhd_plugin_todo_list` hang during `ai_completions:preRequest` handling (the plugin's `add_message` never completed and the AI request timed out waiting for acks).
+**Example:**
+```rust
+// BAD: blocks the read task
+(sub.callback)(data.clone()).await;
+
+// GOOD: matches the pattern used for messageAdded, chatCreated, etc.
+let callback = sub.callback.clone();
+tokio::spawn(async move { (callback)(data).await; });
+```
+
+### Pattern: Plugins Are Event-Driven, Not Polling
+
+**Context:** Implementing or modifying any plugin in `plugins/`
+**Rule:** React to chat state changes via `ChatMonitor` callbacks; do not add polling loops that re-check all chats on a timer. Keep a one-time startup reconciliation pass for crash/pre-startup state.
+**Why:** Polling is O(n) per tick and adds up to a second of latency; it does not scale with chat count. Canonical guidelines with code examples live in [`plugins/README.md`](../plugins/README.md).
+**Example:** See "Event-Driven Plugin Design" in [features/plugins.md](features/plugins.md).
+
 ### Pattern: Plugin README Maintenance
 
 **Context:** When implementing or modifying any plugin in the `plugins/` directory

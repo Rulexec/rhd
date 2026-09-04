@@ -39,9 +39,12 @@ The chat server uses CLI arguments (no config file):
 --host <HOST>          # Host to bind to (default: 127.0.0.1)
 --port <PORT>          # Port to listen on (default: 8080)
 --db-path <PATH>       # Path to folder for SQLite database (default: ./rhd_db)
+--clear-pending-acks   # Clear all pending custom event acknowledgments before starting, then start normally
 ```
 
 The server creates `chats.db` inside the specified `db-path` directory.
+
+`--clear-pending-acks` is a recovery utility: if unacknowledged custom events have accumulated (e.g., after a plugin crash left corrupted state), this flag deletes all pending events and their acknowledgments so plugins don't wait on stale events, then the server starts normally.
 
 ### `rhd_plugin_ai_completions` Config
 The AI completions plugin uses a YAML config file:
@@ -70,6 +73,20 @@ ai_completions:
 - Models can use `alias` to reference another model
 - `apiKey.cred` references a key in the credentials file
 - `baseUrl` and `model` are optional if using an alias
+- `sendReasoningContent` (optional bool, default `true`): whether assistant `reasoning_content` is replayed to the provider. Set `false` for providers that reject or ignore it (e.g., DeepSeek-R1)
+
+### `rhd_plugin_system_prompt` Config
+The system prompt plugin uses a YAML config file mapping prompt names to files:
+
+```yaml
+systemPrompts:
+  warhammer: prompts/warhammer.md      # prompt name -> file path
+  coding: /abs/path/coding.md          # absolute paths used as-is
+```
+
+- Relative paths resolve against the config file's directory
+- Prompt files are read and cached once at startup; a missing/unreadable file fails startup with a clear error
+- A chat tagged `systemPrompt:<name>` receives the corresponding prompt as a system message (see [features/plugins.md](plugins.md))
 
 ### `credentials.yaml` — Secrets
 Separates API keys from shareable config files. Used by the AI completions plugin.
@@ -100,8 +117,11 @@ Shows queued messages for a chat.
 ### `rhd queue add <chat_id> <content>`
 Adds a message to the chat's processing queue.
 
-### `rhd create-chat <title>`
-Creates a new chat with the specified title.
+### `rhd create-chat <title> [--tags <tag1> ...]`
+Creates a new chat with the specified title and optional initial tags.
+
+### `rhd chats add-tag <chat_id> <tag1> [...]` / `rhd chats remove-tag <chat_id> <tag1> [...]`
+Add or remove tags on an existing chat.
 
 ### `rhd plugins list`
 Lists all registered plugins.
@@ -120,3 +140,6 @@ Removes a plugin by ID.
 - Resolves model aliases at startup
 - Validates credentials file exists and is readable
 - Validates all referenced credentials exist in the credentials file
+
+### System Prompt Plugin
+- Validates every configured prompt file exists and is readable (fails fast with a clear error)

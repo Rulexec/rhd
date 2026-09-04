@@ -22,10 +22,23 @@ Persistent conversational interface for direct AI interaction. Users create chat
 
 ### Chat View
 - Displays messages for selected chat in chronological order
-- Chat header shows title and tags
+- Chat header shows title and tags; header tags update reactively when plugins add tags to the current chat
 - Loading state while fetching chat data
 - Empty state when no messages or no chat selected
 - Error state with dismissible error message
+
+### Chat Tag Additions
+- "+" button next to the tags in the chat header opens a tag input dropdown
+- Dropdown contains a text input and tag suggestions aggregated from all existing chats (unique, sorted)
+- Typing filters the suggestions; already-applied tags are excluded from the list
+- Clicking a suggestion adds that tag; pressing Enter creates a new tag from the typed text; Escape closes the dropdown
+- Added tags appear immediately in the chat header and the chat list (via `chatUpdated` events)
+
+### Chat View Tabs
+- The chat view has two tabs: "Messages" and "Tools"
+- Messages tab shows the conversation (default)
+- Tools tab lists the tools registered for the current chat: tool name, description, and the plugin ID that registered it
+- Tools list updates in real time via `toolsUpdated` events (e.g., when a plugin registers or removes a tool)
 
 ### Message Display
 - Messages show role badge (user/assistant/system), timestamp, and tags
@@ -155,6 +168,10 @@ AI responses are streamed through the chat server via a plugin-driven streaming 
 - `isFinished: false` — Message content is not yet final.
 - Default values: `isStreaming: false, isFinished: true` (backward compatible with non-streaming messages).
 
+**Frontend Behavior**:
+- The frontend automatically subscribes to the active stream as soon as a streaming message appears and unsubscribes when it disappears (reactive, store-driven; works across chat switches and mid-stream reopen)
+- The "Generating response..." placeholder is shown only while both content and reasoning content are empty
+
 ### Smart Auto-Scrolling
 - Message list auto-scrolls to bottom when new content arrives **only if user is at bottom**
 - Tracks "at bottom" state with 30px threshold from bottom
@@ -170,7 +187,8 @@ AI responses are streamed through the chat server via a plugin-driven streaming 
 - Visible in message history for assistant messages
 
 ### System Prompts
-- System prompts displayed in collapsible "System Prompt" section (collapsed by default)
+- System-role messages are collapsed by default behind a "System Message" toggle (▼/▶), following the same pattern as the reasoning section
+- Non-system messages (user, assistant) are unaffected
 - Sent before user message in conversations
 
 ### MCP Tool Calls

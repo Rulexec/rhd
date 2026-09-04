@@ -12,9 +12,18 @@ The RHD CLI provides command-line access to the chat server for manual testing a
   - Returns all chats in JSON format
   - Each chat includes: id, title, created_at, tags
 
-- **Create chat**: `rhd create-chat <title>`
+- **Create chat**: `rhd create-chat <title> [--tags <tag1> <tag2> ...]`
   - Creates a new chat with the specified title
+  - Optional `--tags` sets initial tags on the new chat (space-separated)
   - Returns the created chat object
+
+- **Add tags**: `rhd chats add-tag <chat_id> <tag1> [<tag2> ...]`
+  - Adds one or more tags to an existing chat
+  - Prints a success message; backend validates gracefully (adding an existing tag is a no-op)
+
+- **Remove tags**: `rhd chats remove-tag <chat_id> <tag1> [<tag2> ...]`
+  - Removes one or more tags from a chat
+  - Prints a success message; removing a non-existent tag is handled gracefully
 
 ### Message Operations
 
