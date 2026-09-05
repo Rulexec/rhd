@@ -59,9 +59,7 @@ impl StdioTransport {
 
     pub async fn send_request(&self, request: &JsonRpcRequest) -> McpResult<JsonRpcResponse> {
         let request_json = serde_json::to_string(request)?;
-        if crate::DEBUG.load(std::sync::atomic::Ordering::Relaxed) {
-            eprintln!("[MCP] writing to stdin: {}", request_json);
-        }
+        tracing::debug!(request = %request_json, "MCP request → stdin");
         let mut stdin = self.stdin.lock().await;
         stdin.write_all(request_json.as_bytes()).await.map_err(|e| {
             McpError::Transport(format!("Failed to write to stdin: {}", e))
@@ -79,9 +77,7 @@ impl StdioTransport {
         reader.read_line(&mut response_line).await.map_err(|e| {
             McpError::Transport(format!("Failed to read from stdout: {}", e))
         })?;
-        if crate::DEBUG.load(std::sync::atomic::Ordering::Relaxed) {
-            eprintln!("[MCP] read from stdout: {}", response_line.trim());
-        }
+        tracing::debug!(response = %response_line.trim(), "MCP response ← stdout");
 
         if response_line.trim().is_empty() {
             return Err(McpError::Transport("Empty response from MCP server".to_string()));

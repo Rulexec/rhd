@@ -5,9 +5,6 @@ pub mod builtin;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::atomic::AtomicBool;
-
-pub static DEBUG: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolDefinition {
