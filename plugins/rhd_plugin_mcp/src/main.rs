@@ -6,8 +6,7 @@
 use clap::Parser;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
-mod config;
-mod plugin;
+use rhd_plugin_mcp::{config, plugin};
 
 #[derive(Parser, Debug)]
 #[command(name = "rhd_plugin_mcp")]
