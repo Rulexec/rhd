@@ -11,6 +11,7 @@ use tokio::sync::RwLock;
 use crate::config::PluginConfig;
 use crate::gating::eligible_server_ids;
 use crate::mcp_pool::McpPool;
+use crate::tool_handler;
 
 /// Per-chat set of server ids whose tools this plugin instance has already
 /// registered (idempotency guard, AD-3).
@@ -136,8 +137,28 @@ pub async fn run_plugin(
         }
     });
 
-    // 8. Phase 5 inserts the tool-call subscription here:
-    //    client.on_tool_call(0, pool.all_tool_names(), handler)
+    // 8. Execute tool calls for the prefixed names we registered.
+    //    `_tool_call_token` must stay alive until the keep-alive loop:
+    //    CancellationToken::drop cancels the subscription (Phase 4 note 7).
+    let client_for_tools = Arc::clone(&client);
+    let pool_for_tools = Arc::clone(&pool);
+    let regs_for_tools = Arc::clone(&registrations);
+
+    let _tool_call_token = client.on_tool_call(0, pool.all_tool_names(), move |event| {
+        let client = Arc::clone(&client_for_tools);
+        let pool = Arc::clone(&pool_for_tools);
+        let regs = Arc::clone(&regs_for_tools);
+
+        async move {
+            tracing::debug!(
+                chat_id = event.chat_id,
+                tool_count = event.message.tool_calls.len(),
+                "received MCP tool call event"
+            );
+            tool_handler::handle_tool_calls(client, pool, regs, event).await;
+        }
+    });
+    tracing::info!("Subscribed to MCP tool calls");
 
     // 9. Keep the plugin running.
     tracing::info!("Plugin running in event-driven mode");
