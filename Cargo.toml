@@ -11,6 +11,7 @@ members = [
     "plugins/rhd_plugin_ai_completions",
     "plugins/rhd_plugin_system_prompt",
     "plugins/rhd_plugin_todo_list",
+    "plugins/rhd_plugin_mcp",
 ]
 resolver = "2"
 

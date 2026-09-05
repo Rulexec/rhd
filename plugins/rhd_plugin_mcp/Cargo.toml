@@ -1,0 +1,24 @@
+[package]
+name = "rhd_plugin_mcp"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "rhd_plugin_mcp"
+path = "src/main.rs"
+
+[dependencies]
+rhd_chat_api = { path = "../../packages/rhd_chat_api" }
+rhd_chat_client = { path = "../../packages/rhd_chat_client" }
+rhd_mcp_client = { path = "../../packages/rhd_mcp_client" }
+tokio = { workspace = true, features = ["full"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+thiserror = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3"
