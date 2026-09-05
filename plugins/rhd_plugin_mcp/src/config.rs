@@ -141,3 +141,140 @@ pub enum ConfigError {
     #[error("config validation error: {0}")]
     Validation(String),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    fn write_config(body: &str) -> NamedTempFile {
+        let mut f = NamedTempFile::new().unwrap();
+        write!(f, "{}", body).unwrap();
+        f
+    }
+
+    #[test]
+    fn parses_full_example_with_defaults() {
+        std::env::set_var("MCP_TEST_ROOT_1", "/tmp/available");
+        let f = write_config(
+            r#"
+mcp:
+  - id: fs1
+    name: filesystem
+    cmd: npx
+    args:
+      - '-y'
+      - '@modelcontextprotocol/server-filesystem'
+      - env: MCP_TEST_ROOT_1
+    cwd: /work/dir
+    env:
+      SOME_VAR: some-value
+    registerOnTag: 'mcp:common'
+  - name: search
+    cmd: search-cmd
+"#,
+        );
+        let cfg = load_config(f.path().to_str().unwrap()).unwrap();
+        assert_eq!(cfg.servers.len(), 2);
+
+        let fs = &cfg.servers[0];
+        assert_eq!(fs.id, "fs1");
+        assert_eq!(fs.name, "filesystem");
+        assert_eq!(
+            fs.args,
+            vec!["-y", "@modelcontextprotocol/server-filesystem", "/tmp/available"]
+        );
+        assert_eq!(fs.cwd.as_deref(), Some("/work/dir"));
+        assert_eq!(
+            fs.env.get("SOME_VAR").map(String::as_str),
+            Some("some-value")
+        );
+        assert_eq!(fs.register_on_tag.as_deref(), Some("mcp:common"));
+
+        // id defaults to name; args/cwd/env/registerOnTag optional
+        let s = &cfg.servers[1];
+        assert_eq!(s.id, "search");
+        assert!(s.args.is_empty());
+        assert!(s.cwd.is_none());
+        assert!(s.env.is_empty());
+        assert!(s.register_on_tag.is_none());
+    }
+
+    #[test]
+    fn missing_env_var_fails_startup() {
+        let f = write_config(
+            r#"
+mcp:
+  - name: fs
+    cmd: npx
+    args:
+      - env: MCP_TEST_DEFINITELY_UNSET_VAR
+"#,
+        );
+        let err = load_config(f.path().to_str().unwrap()).unwrap_err();
+        assert!(matches!(err, ConfigError::EnvVarMissing { .. }));
+        assert!(err.to_string().contains("MCP_TEST_DEFINITELY_UNSET_VAR"));
+    }
+
+    #[test]
+    fn rejects_duplicate_names() {
+        let f = write_config(
+            r#"
+mcp:
+  - name: fs
+    cmd: a
+  - name: fs
+    cmd: b
+"#,
+        );
+        assert!(matches!(
+            load_config(f.path().to_str().unwrap()).unwrap_err(),
+            ConfigError::DuplicateName(_)
+        ));
+    }
+
+    #[test]
+    fn rejects_duplicate_ids() {
+        let f = write_config(
+            r#"
+mcp:
+  - id: x
+    name: a
+    cmd: c
+  - id: x
+    name: b
+    cmd: c
+"#,
+        );
+        assert!(matches!(
+            load_config(f.path().to_str().unwrap()).unwrap_err(),
+            ConfigError::DuplicateId(_)
+        ));
+    }
+
+    #[test]
+    fn rejects_unknown_fields() {
+        let f = write_config(
+            r#"
+mcp:
+  - name: fs
+    cmd: a
+    bogus: 1
+"#,
+        );
+        assert!(matches!(
+            load_config(f.path().to_str().unwrap()).unwrap_err(),
+            ConfigError::Parse(_)
+        ));
+    }
+
+    #[test]
+    fn rejects_empty_server_list() {
+        let f = write_config("mcp: []\n");
+        assert!(matches!(
+            load_config(f.path().to_str().unwrap()).unwrap_err(),
+            ConfigError::Validation(_)
+        ));
+    }
+}

@@ -184,3 +184,34 @@ pub enum PoolError {
         details: String,
     },
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn splits_prefixed_names() {
+        assert_eq!(split_prefixed("fs:read_file"), Some(("fs", "read_file")));
+        assert_eq!(split_prefixed("fs:a:b"), Some(("fs", "a:b"))); // first colon
+        assert_eq!(split_prefixed("noprefix"), None);
+        assert_eq!(split_prefixed(":x"), None);
+        assert_eq!(split_prefixed("x:"), None);
+    }
+
+    #[test]
+    fn maps_mcp_tool_to_prefixed_chat_tool() {
+        let mcp = McpToolDefinition {
+            name: "read_file".to_string(),
+            description: "Read".to_string(),
+            input_schema: serde_json::json!({ "type": "object" }),
+        };
+        let chat = to_chat_tool("filesystem", &mcp);
+        assert_eq!(chat.tool_type, "function");
+        assert_eq!(chat.function.name, "filesystem:read_file");
+        assert_eq!(chat.function.description, "Read");
+        assert_eq!(
+            chat.function.parameters,
+            serde_json::json!({ "type": "object" })
+        );
+    }
+}

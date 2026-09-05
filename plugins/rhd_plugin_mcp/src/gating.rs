@@ -47,3 +47,89 @@ pub fn eligible_server_ids(
         .map(|s| s.id.clone())
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::ResolvedServer;
+    use std::collections::HashMap;
+
+    fn server(id: &str, register_on_tag: Option<&str>) -> ResolvedServer {
+        ResolvedServer {
+            id: id.to_string(),
+            name: id.to_string(),
+            cmd: "x".to_string(),
+            args: vec![],
+            cwd: None,
+            env: HashMap::new(),
+            register_on_tag: register_on_tag.map(|s| s.to_string()),
+        }
+    }
+
+    fn tags(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn worktree_gate_without_flag_rejects_any_worktree_tag() {
+        assert!(worktree_gate(&tags(&[]), None));
+        assert!(worktree_gate(&tags(&["mcp:common"]), None));
+        assert!(!worktree_gate(&tags(&["worktree:W1"]), None));
+    }
+
+    #[test]
+    fn worktree_gate_with_flag_requires_exact_tag() {
+        assert!(worktree_gate(&tags(&["worktree:W1"]), Some("W1")));
+        assert!(!worktree_gate(&tags(&["worktree:W2"]), Some("W1")));
+        assert!(!worktree_gate(&tags(&[]), Some("W1")));
+        assert!(!worktree_gate(&tags(&["worktree:W1x"]), Some("W1")));
+    }
+
+    #[test]
+    fn server_gate_exact_tag() {
+        assert!(server_gate(&tags(&["mcp:common"]), Some("mcp:common")));
+        assert!(!server_gate(&tags(&["mcp:other"]), Some("mcp:common")));
+        assert!(!server_gate(&tags(&[]), Some("mcp:common")));
+        assert!(server_gate(&tags(&[]), None));
+    }
+
+    #[test]
+    fn eligible_ids_compose_both_gates() {
+        let plain = server("plain", None);
+        let tagged = server("tagged", Some("mcp:common"));
+        let servers = vec![&plain, &tagged];
+
+        // No worktree filter: plain eligible everywhere except worktree-tagged chats;
+        // tagged only with its tag.
+        assert_eq!(
+            eligible_server_ids(&servers, &tags(&[]), None),
+            vec!["plain"]
+        );
+        assert_eq!(
+            eligible_server_ids(&servers, &tags(&["mcp:common"]), None),
+            vec!["plain", "tagged"]
+        );
+        assert_eq!(
+            eligible_server_ids(&servers, &tags(&["worktree:W1"]), None),
+            Vec::<String>::new()
+        );
+
+        // With worktree filter: only exact worktree tag passes, and then per-server gate applies.
+        assert_eq!(
+            eligible_server_ids(&servers, &tags(&["worktree:W1"]), Some("W1")),
+            vec!["plain"]
+        );
+        assert_eq!(
+            eligible_server_ids(
+                &servers,
+                &tags(&["worktree:W1", "mcp:common"]),
+                Some("W1")
+            ),
+            vec!["plain", "tagged"]
+        );
+        assert_eq!(
+            eligible_server_ids(&servers, &tags(&["worktree:W2"]), Some("W1")),
+            Vec::<String>::new()
+        );
+    }
+}
