@@ -244,6 +244,29 @@ The `rhd_plugin_todo_list` plugin provides structured task tracking for multi-st
 - If todo list format is invalid, returns error message with correct format example
 - Checks for duplicate tool call results to avoid processing the same call twice
 
+### MCP Plugin
+
+The `rhd_plugin_mcp` plugin exposes external MCP servers as chat tools.
+
+**Configuration:**
+- YAML `mcp:` list: `id` (defaults to `name`), `name`, `cmd`, `args`
+  (literals or `env: VAR` resolved from the plugin environment), `cwd`
+  (default: plugin's working directory), `env` map for the server process,
+  optional `registerOnTag`.
+
+**Behavior:**
+- Spawns all configured servers at startup (fail-fast).
+- Registers tools on eligible chats prefixed `<name>:` (e.g. `filesystem:read_file`).
+- Gating: with `--worktree W`, only chats tagged `worktree:W`; without it,
+  only chats with no `worktree:*` tag. `registerOnTag` additionally requires
+  that exact chat tag. Registration is additive per (chat, server).
+- Subscribes to its tool calls, executes them on the owning server
+  (serialized per server), and answers with `tool`-role messages carrying
+  `toolCallId`; duplicate calls are skipped; MCP errors become tool content.
+- Acknowledges all custom events (handles none).
+
+See [mcp-plugin.md](mcp-plugin.md) for the product view.
+
 ### Future Plugin Ideas
 
 - **Notification Plugin**: Send notifications when specific events occur

@@ -30,6 +30,9 @@ actions:
 
 ## aiChat with MCP Tools
 
+> **Note:** Scenario-level MCP integration was removed; MCP tools are now
+> provided by the `rhd_plugin_mcp` plugin (see features/mcp-plugin.md).
+
 ```yaml
 - type: aiChat
   name: ai_step

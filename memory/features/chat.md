@@ -192,11 +192,11 @@ AI responses are streamed through the chat server via a plugin-driven streaming 
 - Sent before user message in conversations
 
 ### MCP Tool Calls
-- Tool calls displayed in `ToolCallMessage` component with MCP ID
-- Collapsed by default, showing header with status icon, MCP ID, tool name
+- Tool calls displayed in `ToolCallMessage` component
+- Collapsed by default, showing header with status icon and tool name
 - Expanded view shows arguments and result sections
-- Tool names are namespaced: `{mcp_id}/{tool_name}` format (e.g., `fs1/read_file`)
-- Built-in tools (e.g., `rhd_set_flag`, `rhd_set_todo_list`) are not namespaced
+- Tools from the MCP plugin carry their server prefix: `<name>:<tool>` format (e.g., `filesystem:read_file`) — see [mcp-plugin.md](mcp-plugin.md)
+- Built-in plugin tools (e.g., `rhd_set_todo_list`) are not namespaced
 - Failed tool calls show red X icon and red border styling
 
 ### Todo List
