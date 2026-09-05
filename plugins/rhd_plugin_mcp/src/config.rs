@@ -55,8 +55,10 @@ pub struct PluginConfig {
     pub servers: Vec<ResolvedServer>,
 }
 
+/// Top-level shape of the (shared) config file. Unknown top-level keys —
+/// sections belonging to other plugins or the launcher — are ignored;
+/// strictness is enforced per server entry via [`McpServerEntry`].
 #[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct RawConfig {
     mcp: Vec<McpServerEntry>,
 }
@@ -64,7 +66,8 @@ struct RawConfig {
 /// Load, resolve, and validate the config file.
 ///
 /// Steps:
-/// 1. Read + parse YAML (strict: unknown fields rejected).
+/// 1. Read + parse YAML (unknown top-level keys ignored; unknown fields
+///    inside an `mcp:` entry are rejected).
 /// 2. Require at least one server.
 /// 3. Default `id` to `name`.
 /// 4. Resolve `env: VAR` args against the plugin's environment (missing → error).
@@ -276,5 +279,31 @@ mcp:
             load_config(f.path().to_str().unwrap()).unwrap_err(),
             ConfigError::Validation(_)
         ));
+    }
+
+    #[test]
+    fn ignores_unknown_top_level_keys() {
+        // The shared rhd.yaml carries sections for other plugins/tools;
+        // only `mcp:` is ours, the rest must be skipped.
+        let f = write_config(
+            r#"
+credentialsConfig: ../credentials.yaml
+ai_completions:
+  models:
+    default:
+      alias: qwen
+systemPrompts:
+  warhammer: ./systemPrompts/warhammer.md
+children:
+  - name: chat_server
+    cmd: rhd_chat_server
+mcp:
+  - name: fs
+    cmd: npx
+"#,
+        );
+        let cfg = load_config(f.path().to_str().unwrap()).unwrap();
+        assert_eq!(cfg.servers.len(), 1);
+        assert_eq!(cfg.servers[0].name, "fs");
     }
 }
