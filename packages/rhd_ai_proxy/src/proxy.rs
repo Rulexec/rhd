@@ -40,6 +40,7 @@ pub fn build_router(state: Arc<ProxyState>) -> Router {
 
 async fn handle_proxy(State(state): State<Arc<ProxyState>>, request: Request) -> Response {
     let (parts, body) = request.into_parts();
+    tracing::info!(method = %parts.method, path = %parts.uri.path(), "incoming request");
     let normalized_path = normalize_path(parts.uri.path());
     let target_url =
         match build_target_url(&state.target_base, &normalized_path, parts.uri.query()) {
@@ -57,7 +58,11 @@ async fn handle_proxy(State(state): State<Arc<ProxyState>>, request: Request) ->
                 .into_response()
         }
     };
-    let forward_body = inject_extra_body(&normalized_path, &raw_body, &state.models);
+    let outcome = inject_extra_body(&normalized_path, &raw_body, &state.models);
+    match &outcome.injected_model {
+        Some(model) => tracing::info!(%model, %target_url, "applied model extraBody override"),
+        None => tracing::debug!(path = %normalized_path, "no extraBody override applied"),
+    }
 
     let mut builder = state.client.request(parts.method, target_url.clone());
     for (name, value) in parts.headers {
@@ -67,8 +72,11 @@ async fn handle_proxy(State(state): State<Arc<ProxyState>>, request: Request) ->
         }
     }
 
-    match builder.body(forward_body).send().await {
-        Ok(upstream) => pipe_upstream_response(upstream).await,
+    match builder.body(outcome.body).send().await {
+        Ok(upstream) => {
+            tracing::info!(status = %upstream.status(), "upstream responded");
+            pipe_upstream_response(upstream).await
+        }
         Err(err) => {
             tracing::error!(%err, %target_url, "upstream request failed");
             (

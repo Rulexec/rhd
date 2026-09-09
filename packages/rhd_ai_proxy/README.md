@@ -70,6 +70,15 @@ curl -N http://127.0.0.1:1234/v1/chat/completions \
   -d '{"model": "z-ai/glm-5.3", "messages": [{"role": "user", "content": "Hello"}], "stream": true}'
 ```
 
+## Logging
+
+Per request (via `tracing`, level controlled by `RUST_LOG`, default `info`):
+
+- `incoming request` — method and path.
+- `applied model extraBody override` — model name and target URL, when an override was merged
+  (`debug`-level `no extraBody override applied` otherwise).
+- `upstream responded` — upstream status code; `upstream request failed` (error) on connect failures.
+
 ## Development
 
 ```sh
