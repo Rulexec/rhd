@@ -27,7 +27,10 @@ mod tests {
 
     #[test]
     fn test_chat_deleted_data_serialization() {
-        let data = ChatDeletedData { chat_id: 123, chat_version: 5 };
+        let data = ChatDeletedData {
+            chat_id: 123,
+            chat_version: 5,
+        };
 
         let json = serde_json::to_string(&data).unwrap();
         assert!(json.contains("\"chatId\":123"));

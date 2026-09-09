@@ -87,7 +87,7 @@ mod tests {
     fn test_get_messages_params_defaults() {
         let json = r#"{"chatId":123}"#;
         let params: GetMessagesParams = serde_json::from_str(json).unwrap();
-        
+
         assert_eq!(params.chat_id, 123);
         assert!(!params.with_unresolved_tool_calls);
         assert!(params.with_all_tags.is_empty());

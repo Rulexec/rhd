@@ -36,8 +36,8 @@ pub struct MessageUpdatedData {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
     use crate::tools::{FunctionCall, ToolCall};
+    use chrono::Utc;
 
     #[test]
     fn test_message_updated_data_serialization() {

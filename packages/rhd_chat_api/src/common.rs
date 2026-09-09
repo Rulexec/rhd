@@ -145,6 +145,55 @@ pub struct PluginSummary {
     pub is_active: bool,
 }
 
+/// Format of a plugin state's `content`.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum StateFormat {
+    Markdown,
+    Json,
+}
+
+/// A single named state exposed by a plugin.
+///
+/// Identified by `(plugin_id, key)`; `version` is server-managed and strictly
+/// monotonic per pair across updates and removes (tombstones).
+///
+/// # Example JSON
+/// ```json
+/// {
+///   "pluginId": "mcp",
+///   "key": "status",
+///   "content": "{\"mcp\":[]}",
+///   "format": "json",
+///   "schema": "mcpStatus:1",
+///   "version": 1,
+///   "updatedAt": "2026-09-05 22:41:07"
+/// }
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginState {
+    pub plugin_id: String,
+    pub key: String,
+    pub content: String,
+    pub format: StateFormat,
+    pub schema: String,
+    pub version: i64,
+    pub updated_at: String,
+}
+
+/// One `(pluginId, key, version)` entry of `subscribePluginStates` params:
+/// the version the client already holds. The server returns the current state
+/// for every ref whose stored version is greater (catch-up), or nothing newer.
+/// `version: 0` means "I hold nothing — send the latest".
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct StateVersionRef {
+    pub plugin_id: String,
+    pub key: String,
+    pub version: i64,
+}
+
 /// A pending custom event that has not been acknowledged.
 ///
 /// # Example JSON
@@ -391,5 +440,44 @@ mod tests {
 
         let deserialized: PendingEvent = serde_json::from_str(&json).unwrap();
         assert_eq!(event, deserialized);
+    }
+
+    #[test]
+    fn test_plugin_state_serialization() {
+        let state = PluginState {
+            plugin_id: "mcp".to_string(),
+            key: "status".to_string(),
+            content: "{\"mcp\":[]}".to_string(),
+            format: StateFormat::Json,
+            schema: "mcpStatus:1".to_string(),
+            version: 3,
+            updated_at: "2026-09-05 22:41:07".to_string(),
+        };
+
+        let json = serde_json::to_string(&state).unwrap();
+        assert!(json.contains("\"pluginId\":\"mcp\""));
+        assert!(json.contains("\"format\":\"json\""));
+        assert!(json.contains("\"version\":3"));
+        assert!(json.contains("\"updatedAt\":\"2026-09-05 22:41:07\""));
+
+        let deserialized: PluginState = serde_json::from_str(&json).unwrap();
+        assert_eq!(state, deserialized);
+    }
+
+    #[test]
+    fn test_state_format_serialization() {
+        assert_eq!(
+            serde_json::to_string(&StateFormat::Json).unwrap(),
+            "\"json\""
+        );
+        assert_eq!(
+            serde_json::to_string(&StateFormat::Markdown).unwrap(),
+            "\"markdown\""
+        );
+    }
+
+    #[test]
+    fn test_state_format_rejects_unknown_value() {
+        assert!(serde_json::from_str::<StateFormat>("\"yaml\"").is_err());
     }
 }

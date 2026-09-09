@@ -6,7 +6,8 @@
 //!
 //! # Architecture
 //!
-//! - **Shared types** in [`common`] — `Chat`, `Message`, `ChatSummary`, `PluginSummary`, `PendingEvent`
+//! - **Shared types** in [`common`] — `Chat`, `Message`, `ChatSummary`, `PluginSummary`,
+//!   `PluginState`, `PendingEvent`
 //! - **Error types** in [`error`] — `ErrorCode`, `ErrorResponse`
 //! - **Protocol envelope** in [`protocol`] — `Request`, `Response`, `Event`, `Message`
 //! - **Method types** in [`methods`] — One file per method with `Params` and `Result` structs
@@ -30,33 +31,39 @@ pub mod protocol;
 pub mod tools;
 
 // Re-export commonly used types at the crate root for convenience
-pub use common::{Chat, ChatSummary, Message, PendingEvent, PluginSummary};
+pub use common::{
+    Chat, ChatSummary, Message, PendingEvent, PluginState, PluginSummary, StateFormat,
+    StateVersionRef,
+};
 pub use error::{ErrorCode, ErrorResponse};
 pub use events::{
     AssistantMessageWithToolCallsData, ChatCreatedData, ChatDeletedData, ChatUpdatedData,
     CustomEventAcknowledgedData, CustomEventData, MessageAddedData, MessageDeletedData,
-    MessageUpdatedData, PluginRegisteredData, PluginRemovedData, PluginUpdatedData,
-    QueueMessageAddedData, QueueMessageDeletedData, QueueMessageUpdatedData, StreamChunkData,
-    StreamFinishedData, ToolsUpdatedData,
+    MessageUpdatedData, PluginRegisteredData, PluginRemovedData, PluginStateChangedData,
+    PluginStateRemovedData, PluginUpdatedData, QueueMessageAddedData, QueueMessageDeletedData,
+    QueueMessageUpdatedData, StreamChunkData, StreamFinishedData, ToolsUpdatedData,
 };
 pub use methods::{
     AckCustomEventParams, AckCustomEventResult, AddMessageParams, AddMessageResult,
-    AddQueueMessageParams, AddQueueMessageResult, AddToolsParams, AddToolsResult,
-    CreateChatParams, CreateChatResult, DeleteChatParams, DeleteChatResult, DeleteMessageParams,
-    DeleteMessageResult, DeleteQueueMessageParams, DeleteQueueMessageResult, GetChatParams,
-    GetChatResult, GetMessagesParams, GetMessagesResult, GetPendingAcksParams, GetPendingAcksResult,
-    GetPluginsParams, GetPluginsResult, GetQueueMessagesParams, GetQueueMessagesResult,
-    GetToolsParams, GetToolsResult, ListChatsParams, ListChatsResult, RegisterPluginParams,
-    RegisterPluginResult, RemovePluginParams, RemovePluginResult, RemoveToolsParams,
-    RemoveToolsResult, SendCustomEventParams, SendCustomEventResult, StreamFinishParams,
-    StreamFinishResult, StreamPushParams, StreamPushResult, StreamSubscribeParams,
-    StreamSubscribeResult, StreamToolCallDelta, SubscribeChatParams, SubscribeChatResult,
-    SubscribeChatsListParams, SubscribeChatsListResult, SubscribePluginsListParams,
+    AddQueueMessageParams, AddQueueMessageResult, AddToolsParams, AddToolsResult, CreateChatParams,
+    CreateChatResult, DeleteChatParams, DeleteChatResult, DeleteMessageParams, DeleteMessageResult,
+    DeleteQueueMessageParams, DeleteQueueMessageResult, GetChatParams, GetChatResult,
+    GetMessagesParams, GetMessagesResult, GetPendingAcksParams, GetPendingAcksResult,
+    GetPluginStatesParams, GetPluginStatesResult, GetPluginsParams, GetPluginsResult,
+    GetQueueMessagesParams, GetQueueMessagesResult, GetToolsParams, GetToolsResult,
+    ListChatsParams, ListChatsResult, RegisterPluginParams, RegisterPluginResult,
+    RemovePluginParams, RemovePluginResult, RemovePluginStateParams, RemovePluginStateResult,
+    RemoveToolsParams, RemoveToolsResult, SendCustomEventParams, SendCustomEventResult,
+    StreamFinishParams, StreamFinishResult, StreamPushParams, StreamPushResult,
+    StreamSubscribeParams, StreamSubscribeResult, StreamToolCallDelta, SubscribeChatParams,
+    SubscribeChatResult, SubscribeChatsListParams, SubscribeChatsListResult,
+    SubscribePluginStatesParams, SubscribePluginStatesResult, SubscribePluginsListParams,
     SubscribePluginsListResult, UnsubscribeChatParams, UnsubscribeChatResult,
-    UnsubscribeChatsListParams, UnsubscribeChatsListResult, UnsubscribePluginsListParams,
-    UnsubscribePluginsListResult, UpdateChatParams, UpdateChatResult, UpdateMessageParams,
-    UpdateMessageResult, UpdateQueueMessageParams, UpdateQueueMessageResult,
-    UpdateToolCallTagsParams, UpdateToolCallTagsResult,
+    UnsubscribeChatsListParams, UnsubscribeChatsListResult, UnsubscribePluginStatesParams,
+    UnsubscribePluginStatesResult, UnsubscribePluginsListParams, UnsubscribePluginsListResult,
+    UpdateChatParams, UpdateChatResult, UpdateMessageParams, UpdateMessageResult,
+    UpdatePluginStateParams, UpdatePluginStateResult, UpdateQueueMessageParams,
+    UpdateQueueMessageResult, UpdateToolCallTagsParams, UpdateToolCallTagsResult,
 };
 pub use protocol::{Event, Request, Response};
 pub use tools::{FunctionCall, FunctionDefinition, ToolCall, ToolDefinition, ToolInfo};
