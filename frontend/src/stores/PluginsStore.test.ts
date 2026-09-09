@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PluginsStore } from './PluginsStore.js';
 import type { ChatApi } from '../lib/api/ChatApi.js';
-import type { PluginSummary } from '../lib/api/schemas.js';
-import type { PluginListEventHandlers } from '../lib/api/chatApiImpl.js';
+import type { PluginSummary, PluginState } from '../lib/api/schemas.js';
+import type { PluginListEventHandlers, PluginStateEventHandlers } from '../lib/api/chatApiImpl.js';
 
 /**
  * Unit tests for PluginsStore.
@@ -25,11 +25,25 @@ describe('PluginsStore', () => {
     isActive: true
   };
 
+  const mcpState: PluginState = {
+    pluginId: 'mcp',
+    key: 'status',
+    content: '{"mcp":[]}',
+    format: 'json',
+    schema: 'mcpStatus:1',
+    version: 1,
+    updatedAt: '2026-09-05 22:41:07'
+  };
+
   beforeEach(() => {
     mockChatApi = {
       subscribePluginsList: vi.fn().mockResolvedValue(undefined),
       getPlugins: vi.fn().mockResolvedValue({ plugins: [mockPlugin] }),
       onPluginListEvents: vi.fn().mockReturnValue(() => {}),
+      getPluginStates: vi.fn().mockResolvedValue({ states: [] }),
+      subscribePluginStates: vi.fn().mockResolvedValue({ states: [] }),
+      unsubscribePluginStates: vi.fn().mockResolvedValue(undefined),
+      onPluginStateEvents: vi.fn().mockReturnValue(() => {}),
       // Other ChatApi members are not exercised by these tests.
       subscribeChatsList: vi.fn(),
       unsubscribeChatsList: vi.fn(),
@@ -169,5 +183,144 @@ describe('PluginsStore', () => {
 
     expect(cleanup).toHaveBeenCalled();
     expect(store.plugins).toEqual([]);
+  });
+
+  describe('plugin states', () => {
+    /** Capture the state event handlers registered during init(). */
+    function captureStateHandlers(): () => PluginStateEventHandlers {
+      let handlers: PluginStateEventHandlers = {};
+      vi.mocked(mockChatApi.onPluginStateEvents).mockImplementation((h) => {
+        handlers = h;
+        return () => {};
+      });
+      return () => handlers;
+    }
+
+    it('should load states on init', async () => {
+      vi.mocked(mockChatApi.getPluginStates).mockResolvedValueOnce({ states: [mcpState] });
+
+      await store.init();
+
+      expect(mockChatApi.getPluginStates).toHaveBeenCalled();
+      expect(store.statesFor('mcp')).toEqual([mcpState]);
+      expect(store.hasMcpStatus).toBe(true);
+    });
+
+    it('should subscribe with held versions', async () => {
+      vi.mocked(mockChatApi.getPluginStates).mockResolvedValueOnce({ states: [mcpState] });
+
+      await store.init();
+
+      expect(mockChatApi.subscribePluginStates).toHaveBeenCalledWith([
+        { pluginId: 'mcp', key: 'status', version: 1 }
+      ]);
+    });
+
+    it('should apply catch-up response from subscribe', async () => {
+      const v2State: PluginState = { ...mcpState, version: 2 };
+      vi.mocked(mockChatApi.getPluginStates).mockResolvedValueOnce({ states: [mcpState] });
+      vi.mocked(mockChatApi.subscribePluginStates).mockResolvedValueOnce({ states: [v2State] });
+
+      await store.init();
+
+      expect(store.statesFor('mcp')).toEqual([v2State]);
+    });
+
+    it('should apply live change event', async () => {
+      const getHandlers = captureStateHandlers();
+      await store.init();
+
+      const v2State: PluginState = { ...mcpState, version: 2 };
+      getHandlers().onPluginStateChanged!({ state: v2State });
+
+      expect(store.statesFor('mcp')).toEqual([v2State]);
+    });
+
+    it('should ignore stale events', async () => {
+      const v2State: PluginState = { ...mcpState, version: 2 };
+      const getHandlers = captureStateHandlers();
+      vi.mocked(mockChatApi.getPluginStates).mockResolvedValueOnce({ states: [v2State] });
+      await store.init();
+
+      getHandlers().onPluginStateChanged!({ state: mcpState }); // v1 — stale
+
+      expect(store.statesFor('mcp')).toEqual([v2State]);
+    });
+
+    it('should apply removal event', async () => {
+      vi.mocked(mockChatApi.getPluginStates).mockResolvedValueOnce({ states: [mcpState] });
+      const getHandlers = captureStateHandlers();
+      await store.init();
+
+      getHandlers().onPluginStateRemoved!({ pluginId: 'mcp', key: 'status', version: 3 });
+
+      expect(store.statesFor('mcp')).toEqual([]);
+      expect(store.hasMcpStatus).toBe(false);
+    });
+
+    it('should ignore stale removal', async () => {
+      const v5State: PluginState = { ...mcpState, version: 5 };
+      vi.mocked(mockChatApi.getPluginStates).mockResolvedValueOnce({ states: [v5State] });
+      const getHandlers = captureStateHandlers();
+      await store.init();
+
+      getHandlers().onPluginStateRemoved!({ pluginId: 'mcp', key: 'status', version: 4 });
+
+      expect(store.statesFor('mcp')).toEqual([v5State]);
+    });
+
+    it('should drop states when plugin removed', async () => {
+      let onPluginRemovedHandler: PluginListEventHandlers['onPluginRemoved'];
+      vi.mocked(mockChatApi.onPluginListEvents).mockImplementation((handlers) => {
+        onPluginRemovedHandler = handlers.onPluginRemoved;
+        return () => {};
+      });
+      vi.mocked(mockChatApi.getPluginStates).mockResolvedValueOnce({ states: [mcpState] });
+      await store.init();
+      expect(store.statesFor('mcp')).toHaveLength(1);
+
+      onPluginRemovedHandler!({ pluginId: 'mcp' });
+
+      expect(store.statesFor('mcp')).toEqual([]);
+    });
+
+    it('should reset states and unsubscribe state events on clear', async () => {
+      const stateCleanup = vi.fn();
+      vi.mocked(mockChatApi.onPluginStateEvents).mockReturnValue(stateCleanup);
+      vi.mocked(mockChatApi.getPluginStates).mockResolvedValueOnce({ states: [mcpState] });
+      await store.init();
+
+      store.clear();
+
+      expect(stateCleanup).toHaveBeenCalled();
+      expect(store._states).toEqual([]);
+      expect(store.hasMcpStatus).toBe(false);
+    });
+
+    it('should set store.error when loading states fails', async () => {
+      vi.mocked(mockChatApi.getPluginStates).mockRejectedValueOnce(new Error('States load failed'));
+
+      await store.init();
+
+      expect(store.error).toBe('States load failed');
+    });
+
+    it('should filter states by schema via statesWithSchema', async () => {
+      const errorState: PluginState = {
+        ...mcpState,
+        key: 'errors',
+        schema: 'errors:1',
+        version: 1
+      };
+      vi.mocked(mockChatApi.getPluginStates).mockResolvedValueOnce({
+        states: [mcpState, errorState]
+      });
+
+      await store.init();
+
+      expect(store.statesWithSchema('mcpStatus:1')).toEqual([mcpState]);
+      expect(store.statesWithSchema('errors:1')).toEqual([errorState]);
+      expect(store.statesFor('mcp').map(s => s.key)).toEqual(['errors', 'status']);
+    });
   });
 });
