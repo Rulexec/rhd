@@ -49,7 +49,8 @@ pub mod chat_monitor;
 pub use client::ChatClient;
 pub use error::ClientError;
 pub use event_stream::{
-    ChatEvent, ChatsListEvent, CancellationToken, PluginsListEvent,
+    ChatEvent, ChatsListEvent, CancellationToken, PluginStateEvent, PluginStateEventCallback,
+    PluginsListEvent,
 };
 pub use plugins_monitor::PluginsMonitor;
 pub use chat_monitor::{ChatMonitor, ChatState};

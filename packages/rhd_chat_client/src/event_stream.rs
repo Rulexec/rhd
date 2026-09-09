@@ -9,9 +9,9 @@ use tokio::sync::oneshot;
 use rhd_chat_api::{
     AssistantMessageWithToolCallsData, ChatCreatedData, ChatDeletedData, ChatUpdatedData,
     CustomEventAcknowledgedData, CustomEventData, MessageAddedData, MessageDeletedData,
-    MessageUpdatedData, PluginRegisteredData, PluginRemovedData, PluginUpdatedData,
-    QueueMessageAddedData, QueueMessageDeletedData, QueueMessageUpdatedData, StreamChunkData,
-    StreamFinishedData, ToolsUpdatedData,
+    MessageUpdatedData, PluginRegisteredData, PluginRemovedData, PluginStateChangedData,
+    PluginStateRemovedData, PluginUpdatedData, QueueMessageAddedData, QueueMessageDeletedData,
+    QueueMessageUpdatedData, StreamChunkData, StreamFinishedData, ToolsUpdatedData,
 };
 
 /// Events that can occur on a subscribed chat.
@@ -61,6 +61,16 @@ pub enum PluginsListEvent {
     PluginRemoved(PluginRemovedData),
 }
 
+/// Events on plugin states (broadcast to all state subscribers; consumers
+/// filter by pluginId/schema/version client-side).
+#[derive(Debug, Clone)]
+pub enum PluginStateEvent {
+    /// A state was created or updated (full stored state incl. new version).
+    Changed(PluginStateChangedData),
+    /// A state was removed (tombstoned); version is the bumped version.
+    Removed(PluginStateRemovedData),
+}
+
 /// Type alias for async event callbacks.
 pub type ChatEventCallback =
     Arc<dyn Fn(ChatEvent) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
@@ -72,6 +82,10 @@ pub type ChatsListEventCallback =
 /// Type alias for async plugins list event callbacks.
 pub type PluginsListEventCallback =
     Arc<dyn Fn(PluginsListEvent) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
+
+/// Type alias for async plugin state event callbacks.
+pub type PluginStateEventCallback =
+    Arc<dyn Fn(PluginStateEvent) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
 
 /// Type alias for async custom event callbacks.
 pub type CustomEventCallback =
@@ -110,6 +124,14 @@ pub(crate) struct ChatsListSubscription {
 pub(crate) struct PluginsListSubscription {
     /// The callback to invoke when an event occurs.
     pub callback: PluginsListEventCallback,
+    /// Channel to signal cancellation.
+    pub cancel_rx: oneshot::Receiver<()>,
+}
+
+/// A subscription to plugin state events.
+pub(crate) struct PluginStateSubscription {
+    /// The callback to invoke when an event occurs.
+    pub callback: PluginStateEventCallback,
     /// Channel to signal cancellation.
     pub cancel_rx: oneshot::Receiver<()>,
 }
@@ -176,6 +198,7 @@ pub(crate) struct EventSubscriptions {
     pub chat_subscriptions: Vec<ChatSubscription>,
     pub chats_list_subscriptions: Vec<ChatsListSubscription>,
     pub plugins_list_subscriptions: Vec<PluginsListSubscription>,
+    pub plugin_state_subscriptions: Vec<PluginStateSubscription>,
     pub custom_event_subscriptions: Vec<CustomEventSubscription>,
     pub custom_event_acknowledged_subscriptions: Vec<CustomEventAcknowledgedSubscription>,
     pub tool_call_subscriptions: Vec<ToolCallSubscription>,
@@ -188,6 +211,7 @@ impl EventSubscriptions {
             chat_subscriptions: Vec::new(),
             chats_list_subscriptions: Vec::new(),
             plugins_list_subscriptions: Vec::new(),
+            plugin_state_subscriptions: Vec::new(),
             custom_event_subscriptions: Vec::new(),
             custom_event_acknowledged_subscriptions: Vec::new(),
             tool_call_subscriptions: Vec::new(),
@@ -201,6 +225,8 @@ impl EventSubscriptions {
         self.chats_list_subscriptions
             .retain(|s| !s.cancel_rx.is_terminated());
         self.plugins_list_subscriptions
+            .retain(|s| !s.cancel_rx.is_terminated());
+        self.plugin_state_subscriptions
             .retain(|s| !s.cancel_rx.is_terminated());
         self.custom_event_subscriptions
             .retain(|s| !s.cancel_rx.is_terminated());

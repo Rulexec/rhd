@@ -23,17 +23,22 @@ use rhd_chat_api::{
     CreateChatParams, CreateChatResult, DeleteChatParams, DeleteChatResult, DeleteMessageParams,
     DeleteMessageResult, DeleteQueueMessageParams, DeleteQueueMessageResult, GetChatParams,
     GetChatResult, GetMessagesParams, GetMessagesResult, GetPendingAcksParams, GetPendingAcksResult,
-    GetPluginsParams, GetPluginsResult, GetQueueMessagesParams, GetQueueMessagesResult,
+    GetPluginsParams, GetPluginsResult, GetPluginStatesParams, GetPluginStatesResult,
+    GetQueueMessagesParams, GetQueueMessagesResult,
     GetToolsParams, GetToolsResult, ListChatsParams, ListChatsResult, RegisterPluginParams,
-    RegisterPluginResult, RemovePluginParams, RemovePluginResult, RemoveToolsParams,
+    RegisterPluginResult, RemovePluginParams, RemovePluginResult, RemovePluginStateParams,
+    RemovePluginStateResult, RemoveToolsParams,
     RemoveToolsResult, SendCustomEventParams, SendCustomEventResult, StreamFinishParams,
     StreamFinishResult, StreamPushParams, StreamPushResult, StreamSubscribeParams,
     StreamSubscribeResult, SubscribeChatParams, SubscribeChatResult, SubscribeChatsListParams,
-    SubscribeChatsListResult, SubscribePluginsListParams, SubscribePluginsListResult,
+    SubscribeChatsListResult, SubscribePluginStatesParams, SubscribePluginStatesResult,
+    SubscribePluginsListParams, SubscribePluginsListResult,
     UnsubscribeChatParams, UnsubscribeChatResult, UnsubscribeChatsListParams,
-    UnsubscribeChatsListResult, UnsubscribePluginsListParams, UnsubscribePluginsListResult,
+    UnsubscribeChatsListResult, UnsubscribePluginStatesParams, UnsubscribePluginStatesResult,
+    UnsubscribePluginsListParams, UnsubscribePluginsListResult,
     UpdateChatParams, UpdateChatResult, UpdateMessageParams, UpdateMessageResult,
-    UpdateQueueMessageParams, UpdateQueueMessageResult, UpdateToolCallTagsParams,
+    UpdatePluginStateParams, UpdatePluginStateResult, UpdateQueueMessageParams,
+    UpdateQueueMessageResult, UpdateToolCallTagsParams,
     UpdateToolCallTagsResult,
 };
 
@@ -42,7 +47,8 @@ use crate::event_stream::{
     ChatEvent, ChatEventCallback, ChatSubscription, ChatsListEvent, ChatsListEventCallback,
     ChatsListSubscription, CancellationToken, CustomEventAcknowledgedCallback,
     CustomEventAcknowledgedSubscription, CustomEventCallback, CustomEventSubscription,
-    EventSubscriptions, PluginsListEvent, PluginsListEventCallback, PluginsListSubscription,
+    EventSubscriptions, PluginStateEvent, PluginStateEventCallback, PluginStateSubscription,
+    PluginsListEvent, PluginsListEventCallback, PluginsListSubscription,
 };
 
 /// Type alias for pending request senders.
@@ -483,6 +489,28 @@ impl ChatClient {
                     }
                 }
             }
+            "pluginStateChanged" => {
+                if let Ok(data) = serde_json::from_value::<rhd_chat_api::PluginStateChangedData>(event.data.clone()) {
+                    for sub in &subs.plugin_state_subscriptions {
+                        let callback = sub.callback.clone();
+                        let evt = PluginStateEvent::Changed(data.clone());
+                        tokio::spawn(async move {
+                            (callback)(evt).await;
+                        });
+                    }
+                }
+            }
+            "pluginStateRemoved" => {
+                if let Ok(data) = serde_json::from_value::<rhd_chat_api::PluginStateRemovedData>(event.data.clone()) {
+                    for sub in &subs.plugin_state_subscriptions {
+                        let callback = sub.callback.clone();
+                        let evt = PluginStateEvent::Removed(data.clone());
+                        tokio::spawn(async move {
+                            (callback)(evt).await;
+                        });
+                    }
+                }
+            }
             "customEvent" => {
                 if let Ok(data) = serde_json::from_value::<rhd_chat_api::CustomEventData>(event.data.clone()) {
                     for sub in &subs.custom_event_subscriptions {
@@ -772,6 +800,37 @@ impl ChatClient {
     }
 
     // ========================================================================
+    // Plugin State Methods
+    // ========================================================================
+
+    /// Upsert a state owned by this connection's registered plugin.
+    /// The result carries the stored state including the server-assigned version.
+    pub async fn update_plugin_state(&self, params: UpdatePluginStateParams) -> Result<UpdatePluginStateResult, ClientError> {
+        self.send_request("updatePluginState", params).await
+    }
+
+    /// Remove (tombstone) one of this plugin's states by key.
+    pub async fn remove_plugin_state(&self, params: RemovePluginStateParams) -> Result<RemovePluginStateResult, ClientError> {
+        self.send_request("removePluginState", params).await
+    }
+
+    /// Query live states, optionally filtered by plugin id and/or schema.
+    pub async fn get_plugin_states(&self, params: GetPluginStatesParams) -> Result<GetPluginStatesResult, ClientError> {
+        self.send_request("getPluginStates", params).await
+    }
+
+    /// Subscribe to plugin state events and atomically catch up on states
+    /// newer than the passed versions (pass version 0 to receive the latest).
+    pub async fn subscribe_plugin_states(&self, params: SubscribePluginStatesParams) -> Result<SubscribePluginStatesResult, ClientError> {
+        self.send_request("subscribePluginStates", params).await
+    }
+
+    /// Unsubscribe from plugin state events.
+    pub async fn unsubscribe_plugin_states(&self, params: UnsubscribePluginStatesParams) -> Result<UnsubscribePluginStatesResult, ClientError> {
+        self.send_request("unsubscribePluginStates", params).await
+    }
+
+    // ========================================================================
     // Custom Event Methods
     // ========================================================================
 
@@ -891,6 +950,34 @@ impl ChatClient {
         token
     }
 
+    /// Subscribe to plugin state events (pluginStateChanged, pluginStateRemoved).
+    ///
+    /// All state changes are broadcast to every subscriber; filter by
+    /// `state.pluginId` / `state.schema` / version inside the callback.
+    /// Returns a cancellation token — dropping or cancelling it unsubscribes.
+    pub fn on_plugin_state_event<F, Fut>(&self, callback: F) -> CancellationToken
+    where
+        F: Fn(PluginStateEvent) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        let (token, cancel_rx) = CancellationToken::new();
+        let boxed_callback: PluginStateEventCallback =
+            Arc::new(move |event| Box::pin(callback(event)));
+
+        let subscription = PluginStateSubscription {
+            callback: boxed_callback,
+            cancel_rx,
+        };
+
+        let subscriptions = Arc::clone(&self.subscriptions);
+        tokio::spawn(async move {
+            let mut subs = subscriptions.lock().await;
+            subs.plugin_state_subscriptions.push(subscription);
+        });
+
+        token
+    }
+
     /// Subscribe to custom events.
     ///
     /// The callback will be invoked when a custom event is received.
@@ -994,5 +1081,68 @@ impl ChatClient {
     /// It maintains the current state of all chats including messages, queue count, and tags.
     pub async fn create_chat_monitor(&self) -> Result<crate::chat_monitor::ChatMonitor, ClientError> {
         crate::chat_monitor::ChatMonitor::new(Arc::new(self.clone())).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    async fn register_plugin_state_callback(
+        subscriptions: &Arc<Mutex<EventSubscriptions>>,
+        tx: mpsc::UnboundedSender<PluginStateEvent>,
+    ) -> CancellationToken {
+        let (token, cancel_rx) = CancellationToken::new();
+        let callback: PluginStateEventCallback = Arc::new(move |event| {
+            let tx = tx.clone();
+            Box::pin(async move {
+                let _ = tx.send(event);
+            })
+        });
+        let mut subs = subscriptions.lock().await;
+        subs.plugin_state_subscriptions.push(PluginStateSubscription { callback, cancel_rx });
+        token
+    }
+
+    #[tokio::test]
+    async fn dispatch_plugin_state_changed_reaches_callback() {
+        let subscriptions = Arc::new(Mutex::new(EventSubscriptions::new()));
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let token = register_plugin_state_callback(&subscriptions, tx).await;
+
+        let event = Event::new(
+            "pluginStateChanged",
+            serde_json::json!({ "state": {
+                "pluginId": "p1", "key": "status", "content": "{}",
+                "format": "json", "schema": "mcpStatus:1", "version": 1,
+                "updatedAt": "2026-09-05 22:41:07"
+            }}),
+        );
+        ChatClient::dispatch_event(&event, &subscriptions).await;
+
+        let received = tokio::time::timeout(Duration::from_secs(1), rx.recv())
+            .await
+            .expect("timed out waiting for pluginStateChanged dispatch");
+        assert!(matches!(received, Some(PluginStateEvent::Changed(d)) if d.state.version == 1));
+        token.cancel();
+    }
+
+    #[tokio::test]
+    async fn dispatch_plugin_state_removed_reaches_callback() {
+        let subscriptions = Arc::new(Mutex::new(EventSubscriptions::new()));
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let token = register_plugin_state_callback(&subscriptions, tx).await;
+
+        let event = Event::new(
+            "pluginStateRemoved",
+            serde_json::json!({ "pluginId": "p1", "key": "status", "version": 4 }),
+        );
+        ChatClient::dispatch_event(&event, &subscriptions).await;
+
+        let received = tokio::time::timeout(Duration::from_secs(1), rx.recv())
+            .await
+            .expect("timed out waiting for pluginStateRemoved dispatch");
+        assert!(matches!(received, Some(PluginStateEvent::Removed(d)) if d.version == 4));
+        token.cancel();
     }
 }
