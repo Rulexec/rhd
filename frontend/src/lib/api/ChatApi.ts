@@ -26,6 +26,10 @@ export interface ChatApi {
   subscribePluginsList: typeof chatApi.subscribePluginsList;
   getPlugins: typeof chatApi.getPlugins;
   onPluginListEvents: typeof chatApi.onPluginListEvents;
+  getPluginStates: typeof chatApi.getPluginStates;
+  subscribePluginStates: typeof chatApi.subscribePluginStates;
+  unsubscribePluginStates: typeof chatApi.unsubscribePluginStates;
+  onPluginStateEvents: typeof chatApi.onPluginStateEvents;
   getTools: typeof chatApi.getTools;
 }
 
@@ -51,5 +55,9 @@ export const defaultChatApi: ChatApi = {
   subscribePluginsList: chatApi.subscribePluginsList,
   getPlugins: chatApi.getPlugins,
   onPluginListEvents: chatApi.onPluginListEvents,
+  getPluginStates: chatApi.getPluginStates,
+  subscribePluginStates: chatApi.subscribePluginStates,
+  unsubscribePluginStates: chatApi.unsubscribePluginStates,
+  onPluginStateEvents: chatApi.onPluginStateEvents,
   getTools: chatApi.getTools,
 };

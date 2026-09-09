@@ -64,6 +64,36 @@ export const PluginSummarySchema = z.object({
   isActive: z.boolean()
 });
 
+/**
+ * Plugin state format discriminator (lowercase on the wire).
+ */
+export const PluginStateFormatSchema = z.enum(['markdown', 'json']);
+
+/**
+ * A single named state exposed by a plugin.
+ * `version` is server-assigned and monotonic per (pluginId, key) —
+ * consumers apply only strictly-newer versions.
+ * `updatedAt` is an opaque SQLite datetime string ("YYYY-MM-DD HH:MM:SS" UTC).
+ */
+export const PluginStateSchema = z.object({
+  pluginId: z.string(),
+  key: z.string(),
+  content: z.string(),
+  format: PluginStateFormatSchema,
+  schema: z.string(),
+  version: z.number(),
+  updatedAt: z.string()
+});
+
+/**
+ * One entry of subscribePluginStates params: the version the client holds.
+ */
+export const StateVersionRefSchema = z.object({
+  pluginId: z.string(),
+  key: z.string(),
+  version: z.number()
+});
+
 // ============================================================================
 // WebSocket Protocol Schemas
 // ============================================================================
@@ -209,6 +239,22 @@ export const PluginRemovedDataSchema = z.object({
   pluginId: z.string()
 });
 
+/**
+ * Plugin state created/updated event data.
+ */
+export const PluginStateChangedDataSchema = z.object({
+  state: PluginStateSchema
+});
+
+/**
+ * Plugin state removed (tombstoned) event data.
+ */
+export const PluginStateRemovedDataSchema = z.object({
+  pluginId: z.string(),
+  key: z.string(),
+  version: z.number()
+});
+
 // ============================================================================
 // Stream Event Data Schemas
 // ============================================================================
@@ -290,6 +336,20 @@ export const GetPluginsResultSchema = z.object({
 });
 
 /**
+ * Get plugin states result.
+ */
+export const GetPluginStatesResultSchema = z.object({
+  states: z.array(PluginStateSchema)
+});
+
+/**
+ * Subscribe plugin states result — catch-up states newer than requested.
+ */
+export const SubscribePluginStatesResultSchema = z.object({
+  states: z.array(PluginStateSchema)
+});
+
+/**
  * Update chat params schema.
  */
 export const UpdateChatParamsSchema = z.object({
@@ -354,6 +414,30 @@ export const ToolsUpdatedDataSchema = z.object({
 });
 
 // ============================================================================
+// Well-Known State Schemas
+// ============================================================================
+
+/** Schema id published by rhd_plugin_mcp. */
+export const MCP_STATUS_SCHEMA = 'mcpStatus:1';
+
+/**
+ * One MCP server entry inside an mcpStatus:1 state's content.
+ */
+export const McpStatusEntrySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  status: z.enum(['ok', 'error']),
+  error: z.string().optional()
+});
+
+/**
+ * Parsed content of an mcpStatus:1 state.
+ */
+export const McpStatusPayloadSchema = z.object({
+  mcp: z.array(McpStatusEntrySchema)
+});
+
+// ============================================================================
 // Type Exports
 // ============================================================================
 
@@ -396,3 +480,13 @@ export type ToolDefinition = z.infer<typeof ToolDefinitionSchema>;
 export type ToolInfo = z.infer<typeof ToolInfoSchema>;
 export type GetToolsResult = z.infer<typeof GetToolsResultSchema>;
 export type ToolsUpdatedData = z.infer<typeof ToolsUpdatedDataSchema>;
+
+export type PluginStateFormat = z.infer<typeof PluginStateFormatSchema>;
+export type PluginState = z.infer<typeof PluginStateSchema>;
+export type StateVersionRef = z.infer<typeof StateVersionRefSchema>;
+export type GetPluginStatesResult = z.infer<typeof GetPluginStatesResultSchema>;
+export type SubscribePluginStatesResult = z.infer<typeof SubscribePluginStatesResultSchema>;
+export type PluginStateChangedData = z.infer<typeof PluginStateChangedDataSchema>;
+export type PluginStateRemovedData = z.infer<typeof PluginStateRemovedDataSchema>;
+export type McpStatusEntry = z.infer<typeof McpStatusEntrySchema>;
+export type McpStatusPayload = z.infer<typeof McpStatusPayloadSchema>;

@@ -20,6 +20,10 @@ import {
   PluginRegisteredDataSchema,
   PluginUpdatedDataSchema,
   PluginRemovedDataSchema,
+  GetPluginStatesResultSchema,
+  SubscribePluginStatesResultSchema,
+  PluginStateChangedDataSchema,
+  PluginStateRemovedDataSchema,
   StreamChunkDataSchema,
   StreamFinishedDataSchema,
   StreamSubscribeResultSchema,
@@ -44,6 +48,11 @@ import {
   type PluginRegisteredData,
   type PluginUpdatedData,
   type PluginRemovedData,
+  type GetPluginStatesResult,
+  type SubscribePluginStatesResult,
+  type PluginStateChangedData,
+  type PluginStateRemovedData,
+  type StateVersionRef,
   type StreamChunkData,
   type StreamFinishedData,
   type StreamSubscribeResult,
@@ -380,6 +389,77 @@ export function onPluginListEvents(handlers: PluginListEventHandlers): () => voi
     unsubs.push(websocket.on('pluginRemoved', (data) => {
       const parsed = PluginRemovedDataSchema.parse(data);
       handlers.onPluginRemoved!(parsed);
+    }));
+  }
+
+  return () => {
+    unsubs.forEach(unsub => unsub());
+  };
+}
+
+// ============================================================================
+// Plugin State API Methods
+// ============================================================================
+
+/**
+ * Get plugin states, optionally filtered by pluginId and/or schema.
+ * @param filters - Optional pluginId and schema filters
+ */
+export async function getPluginStates(filters?: {
+  pluginId?: string;
+  schema?: string;
+}): Promise<GetPluginStatesResult> {
+  const data = await websocket.request('getPluginStates', filters ?? {});
+  return GetPluginStatesResultSchema.parse(data);
+}
+
+/**
+ * Subscribe to plugin state events and atomically catch up on states newer
+ * than the passed versions. Pass `[]` to subscribe without catch-up.
+ * The server registers the subscription before snapshotting, so no update
+ * can be lost between getPluginStates and this call (duplicates are handled
+ * by version-gating in the store).
+ * @param refs - Versions the client currently holds per (pluginId, key)
+ */
+export async function subscribePluginStates(
+  refs: StateVersionRef[]
+): Promise<SubscribePluginStatesResult> {
+  const data = await websocket.request('subscribePluginStates', { states: refs });
+  return SubscribePluginStatesResultSchema.parse(data);
+}
+
+/**
+ * Unsubscribe from plugin state events.
+ */
+export async function unsubscribePluginStates(): Promise<void> {
+  await websocket.request('unsubscribePluginStates', {});
+}
+
+export interface PluginStateEventHandlers {
+  onPluginStateChanged?: (data: PluginStateChangedData) => void;
+  onPluginStateRemoved?: (data: PluginStateRemovedData) => void;
+}
+
+/**
+ * Register event listeners for plugin state events.
+ * Returns cleanup function.
+ * @param handlers - Event handlers
+ * @returns Cleanup function that removes all listeners
+ */
+export function onPluginStateEvents(handlers: PluginStateEventHandlers): () => void {
+  const unsubs: Array<() => void> = [];
+
+  if (handlers.onPluginStateChanged) {
+    unsubs.push(websocket.on('pluginStateChanged', (data) => {
+      const parsed = PluginStateChangedDataSchema.parse(data);
+      handlers.onPluginStateChanged!(parsed);
+    }));
+  }
+
+  if (handlers.onPluginStateRemoved) {
+    unsubs.push(websocket.on('pluginStateRemoved', (data) => {
+      const parsed = PluginStateRemovedDataSchema.parse(data);
+      handlers.onPluginStateRemoved!(parsed);
     }));
   }
 
