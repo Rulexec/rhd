@@ -11,6 +11,7 @@ use tokio::sync::RwLock;
 use crate::config::PluginConfig;
 use crate::gating::eligible_server_ids;
 use crate::mcp_pool::McpPool;
+use crate::status::McpStatusTracker;
 use crate::tool_handler;
 
 /// Per-chat set of server ids whose tools this plugin instance has already
@@ -24,15 +25,8 @@ pub async fn run_plugin(
     worktree: Option<&str>,
     config: PluginConfig,
 ) -> Result<(), PluginError> {
-    // 1. Spawn all MCP servers first (fail-fast, AD-4).
-    let pool = Arc::new(
-        McpPool::startup(&config)
-            .await
-            .map_err(|e| PluginError::Pool(e.to_string()))?,
-    );
-    tracing::info!("MCP pool ready ({} servers)", pool.server_configs().len());
-
-    // 2. Connect + register as plugin.
+    // 1. Connect + register as plugin FIRST — state must be pushable even if
+    //    every MCP server fails to start.
     let client = Arc::new(
         ChatClient::connect_with_retry(server_url)
             .await
@@ -45,6 +39,23 @@ pub async fn run_plugin(
         .await
         .map_err(|e| PluginError::Registration(e.to_string()))?;
     tracing::info!("Registered as plugin: {}", plugin_id);
+
+    // 2. Best-effort pool startup; build tracker; push initial state.
+    let (pool, reports) = McpPool::startup(&config).await;
+    let pool = Arc::new(pool);
+    tracing::info!(
+        "MCP pool ready ({} healthy of {} configured servers)",
+        pool.server_configs().len(),
+        reports.len()
+    );
+
+    let tracker = Arc::new(McpStatusTracker::new(pool.server_ids()));
+    tracker.record_startup(&reports).await;
+    tracker
+        .push_if_changed(&client)
+        .await
+        .map_err(|e| PluginError::StatusReport(e.to_string()))?;
+    tracing::info!("MCP status state pushed ({} servers)", reports.len());
 
     // 3. Drain pending acks (missed while disconnected).
     let pending_acks = client
@@ -143,11 +154,13 @@ pub async fn run_plugin(
     let client_for_tools = Arc::clone(&client);
     let pool_for_tools = Arc::clone(&pool);
     let regs_for_tools = Arc::clone(&registrations);
+    let tracker_for_tools = Arc::clone(&tracker);
 
     let _tool_call_token = client.on_tool_call(0, pool.all_tool_names(), move |event| {
         let client = Arc::clone(&client_for_tools);
         let pool = Arc::clone(&pool_for_tools);
         let regs = Arc::clone(&regs_for_tools);
+        let tracker = Arc::clone(&tracker_for_tools);
 
         async move {
             tracing::debug!(
@@ -155,7 +168,7 @@ pub async fn run_plugin(
                 tool_count = event.message.tool_calls.len(),
                 "received MCP tool call event"
             );
-            tool_handler::handle_tool_calls(client, pool, regs, event).await;
+            tool_handler::handle_tool_calls(client, pool, regs, tracker, event).await;
         }
     });
     tracing::info!("Subscribed to MCP tool calls");
@@ -225,8 +238,8 @@ pub async fn register_missing_tools(
 
 #[derive(Debug, thiserror::Error)]
 pub enum PluginError {
-    #[error("failed to start MCP pool: {0}")]
-    Pool(String),
+    #[error("status reporting failed: {0}")]
+    StatusReport(String),
     #[error("failed to connect to server: {0}")]
     Connection(String),
     #[error("failed to register plugin: {0}")]

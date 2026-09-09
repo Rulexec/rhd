@@ -28,6 +28,7 @@ use tokio::sync::RwLock;
 use rhd_plugin_mcp::config::{PluginConfig, ResolvedServer};
 use rhd_plugin_mcp::mcp_pool::McpPool;
 use rhd_plugin_mcp::plugin::{register_missing_tools, ChatRegistrations};
+use rhd_plugin_mcp::status::McpStatusTracker;
 
 pub fn stub_cmd() -> String {
     env!("CARGO_BIN_EXE_mcp_stub_server").to_string()
@@ -44,6 +45,24 @@ pub fn config_with(server_name: &str, register_on_tag: Option<&str>) -> PluginCo
             env: HashMap::new(),
             register_on_tag: register_on_tag.map(|s| s.to_string()),
         }],
+    }
+}
+
+/// Multi-server config: one entry per `(name, cmd)`, id defaults to name.
+pub fn config_multi(servers: &[(&str, &str)]) -> PluginConfig {
+    PluginConfig {
+        servers: servers
+            .iter()
+            .map(|(name, cmd)| ResolvedServer {
+                id: name.to_string(),
+                name: name.to_string(),
+                cmd: cmd.to_string(),
+                args: vec![],
+                cwd: None,
+                env: HashMap::new(),
+                register_on_tag: None,
+            })
+            .collect(),
     }
 }
 
@@ -190,6 +209,7 @@ pub struct TestEnv {
     pub client: Arc<ChatClient>,
     pub pool: Arc<McpPool>,
     pub regs: ChatRegistrations,
+    pub tracker: Arc<McpStatusTracker>,
     pub chat_id: i64,
     pub _server: tokio::task::JoinHandle<()>,
 }
@@ -208,11 +228,10 @@ pub async fn setup_registered_chat(
         })
         .await
         .unwrap();
-    let pool = Arc::new(
-        McpPool::startup(&config_with("stub", register_on_tag))
-            .await
-            .unwrap(),
-    );
+    let (pool, reports) = McpPool::startup(&config_with("stub", register_on_tag)).await;
+    let pool = Arc::new(pool);
+    let tracker = Arc::new(McpStatusTracker::new(pool.server_ids()));
+    tracker.record_startup(&reports).await;
     let regs = new_regs();
     let chat_id = client
         .create_chat(CreateChatParams {
@@ -229,6 +248,7 @@ pub async fn setup_registered_chat(
         client,
         pool,
         regs,
+        tracker,
         chat_id,
         _server: server,
     }

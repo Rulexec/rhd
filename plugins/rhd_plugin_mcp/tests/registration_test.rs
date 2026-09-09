@@ -20,11 +20,8 @@ async fn registers_tools_only_on_eligible_chats() {
         })
         .await
         .unwrap();
-    let pool = Arc::new(
-        McpPool::startup(&config_with("stub", Some("mcp:common")))
-            .await
-            .unwrap(),
-    );
+    let (pool, _reports) = McpPool::startup(&config_with("stub", Some("mcp:common"))).await;
+    let pool = Arc::new(pool);
     let regs = new_regs();
 
     // Ineligible chat (no tag): nothing registered.
@@ -109,7 +106,8 @@ async fn worktree_filter_blocks_and_admits_chats() {
         })
         .await
         .unwrap();
-    let pool = Arc::new(McpPool::startup(&config_with("stub", None)).await.unwrap());
+    let (pool, _reports) = McpPool::startup(&config_with("stub", None)).await;
+    let pool = Arc::new(pool);
     let regs = new_regs();
 
     let chat = client

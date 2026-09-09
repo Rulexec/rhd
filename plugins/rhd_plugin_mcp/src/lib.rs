@@ -6,4 +6,5 @@ pub mod config;
 pub mod gating;
 pub mod mcp_pool;
 pub mod plugin;
+pub mod status;
 pub mod tool_handler;

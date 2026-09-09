@@ -7,7 +7,9 @@ use rhd_plugin_mcp::mcp_pool::McpPool;
 
 #[tokio::test]
 async fn pool_startup_lists_and_routes_stub_tools() {
-    let pool = McpPool::startup(&config_with("stub", None)).await.unwrap();
+    let (pool, reports) = McpPool::startup(&config_with("stub", None)).await;
+    assert_eq!(reports.len(), 1);
+    assert_eq!(reports[0].error, None);
 
     let mut names = pool.all_tool_names();
     names.sort();
@@ -28,8 +30,21 @@ async fn pool_startup_lists_and_routes_stub_tools() {
 }
 
 #[tokio::test]
-async fn pool_startup_fails_fast_on_bad_cmd() {
+async fn pool_startup_reports_bad_cmd_without_failing() {
     let mut cfg = config_with("bad", None);
     cfg.servers[0].cmd = "/nonexistent/mcp-binary".to_string();
-    assert!(McpPool::startup(&cfg).await.is_err());
+    let (pool, reports) = McpPool::startup(&cfg).await;
+
+    assert_eq!(reports.len(), 1);
+    assert_eq!(reports[0].id, "bad");
+    let error = reports[0].error.as_deref().unwrap();
+    assert!(
+        error.starts_with("spawn/initialize failed:"),
+        "unexpected startup error: {error}"
+    );
+
+    // The failed server is excluded from routing but still listed in config order.
+    assert!(pool.route("bad:echo").is_none());
+    assert!(pool.all_tool_names().is_empty());
+    assert_eq!(pool.server_ids(), vec![("bad".to_string(), "bad".to_string())]);
 }

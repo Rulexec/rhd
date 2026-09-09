@@ -9,6 +9,7 @@ use rhd_chat_client::ChatClient;
 
 use crate::mcp_pool::McpPool;
 use crate::plugin::ChatRegistrations;
+use crate::status::McpStatusTracker;
 
 /// Handle an `assistantMessageWithToolCalls` event for all calls this plugin owns.
 ///
@@ -16,20 +17,29 @@ use crate::plugin::ChatRegistrations;
 /// 1. Skip names this plugin cannot route (not our prefix).
 /// 2. Skip servers not registered on this chat (AD-3; defensive).
 /// 3. Skip calls already answered (duplicate guard).
-/// 4. Route `{name}:{tool}` → owning server, execute via the pool.
+/// 4. Route `{name}:{tool}` → owning server, execute via the pool; report
+///    transport failures (and recoveries) through the status tracker.
 /// 5. Add a `tool`-role message with `toolCallId` and the result content.
 ///    Errors become content too — the model decides how to react.
 pub async fn handle_tool_calls(
     client: Arc<ChatClient>,
     pool: Arc<McpPool>,
     registrations: ChatRegistrations,
+    tracker: Arc<McpStatusTracker>,
     event: AssistantMessageWithToolCallsData,
 ) {
     let chat_id = event.chat_id;
 
     for tool_call in &event.message.tool_calls {
-        if let Err(e) =
-            handle_single_call(&client, &pool, &registrations, chat_id, tool_call).await
+        if let Err(e) = handle_single_call(
+            &client,
+            &pool,
+            &registrations,
+            &tracker,
+            chat_id,
+            tool_call,
+        )
+        .await
         {
             // A failed call must still be answered so the AI tool loop can proceed.
             tracing::error!(
@@ -47,6 +57,7 @@ async fn handle_single_call(
     client: &ChatClient,
     pool: &McpPool,
     registrations: &ChatRegistrations,
+    tracker: &McpStatusTracker,
     chat_id: i64,
     tool_call: &ToolCall,
 ) -> Result<(), HandlerError> {
@@ -104,6 +115,8 @@ async fn handle_single_call(
         .await
     {
         Ok(result) => {
+            // Tool-level `is_error` is a legitimate MCP response, NOT a
+            // server failure — only transport/protocol errors flip status.
             if result.is_error.unwrap_or(false) {
                 tracing::warn!(
                     chat_id,
@@ -111,11 +124,20 @@ async fn handle_single_call(
                     "MCP server reported tool error"
                 );
             }
+            // A completed round-trip recovers a previously failed server.
+            // Push failures are non-fatal in steady state; dedup skips no-ops.
+            tracker.mark_ok(&route.server_id).await;
+            let _ = tracker.push_if_changed(client).await;
             result.content
         }
         Err(e) => {
-            // 5a. Error path: surface as tool content, keep the loop alive.
+            // 5a. Transport/protocol failure: record it, report, then surface
+            // as tool content so the AI loop can still proceed.
             tracing::error!(chat_id, tool = %prefixed_name, error = %e, "MCP call failed");
+            tracker
+                .mark_error(&route.server_id, format!("tool call failed: {e}"))
+                .await;
+            let _ = tracker.push_if_changed(client).await;
             format!("MCP tool call failed: {}", e)
         }
     };

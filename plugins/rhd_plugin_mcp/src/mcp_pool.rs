@@ -24,6 +24,15 @@ struct PoolServer {
     chat_tools: Vec<ChatToolDefinition>,
 }
 
+/// Outcome of spawning one configured server.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServerStartupReport {
+    pub id: String,
+    pub name: String,
+    /// None = healthy; Some(message) = spawn or list_tools failure.
+    pub error: Option<String>,
+}
+
 /// All configured MCP servers, spawned and ready.
 ///
 /// Dropping the pool kills the child processes (`StdioTransport::Drop`
@@ -31,6 +40,9 @@ struct PoolServer {
 pub struct McpPool {
     servers: HashMap<String, PoolServer>, // key: server id
     routes: HashMap<String, Route>,       // key: prefixed tool name
+    /// `(id, name)` of every configured server in config order — including
+    /// servers that failed to start (they still belong in the status payload).
+    config_order: Vec<(String, String)>,
 }
 
 /// Split `{name}:{tool}` at the first colon. Returns `None` when the name
@@ -57,63 +69,104 @@ pub fn to_chat_tool(server_name: &str, mcp_tool: &McpToolDefinition) -> ChatTool
 }
 
 impl McpPool {
-    /// Spawn and initialize every configured server (fail-fast, AD-4).
-    pub async fn startup(config: &PluginConfig) -> Result<Self, PoolError> {
+    /// Spawn and initialize every configured server. A failing server is
+    /// reported in `Vec<ServerStartupReport>` and excluded from routing —
+    /// the rest of the pool still starts (best-effort, replaces AD-4).
+    pub async fn startup(config: &PluginConfig) -> (Self, Vec<ServerStartupReport>) {
         let mut servers = HashMap::new();
         let mut routes = HashMap::new();
+        let mut reports = Vec::new();
 
         for entry in &config.servers {
-            let client = McpClient::connect(
-                &entry.cmd,
-                &entry.args,
-                entry.cwd.as_deref(), // None → child inherits plugin cwd
-                &entry.env,
-            )
-            .await
-            .map_err(|e| PoolError::Spawn {
-                server: entry.name.clone(),
-                details: e.to_string(),
-            })?;
-
-            let mcp_tools = client
-                .list_tools()
+            let outcome = async {
+                let client = McpClient::connect(
+                    &entry.cmd,
+                    &entry.args,
+                    entry.cwd.as_deref(), // None → child inherits plugin cwd
+                    &entry.env,
+                )
                 .await
-                .map_err(|e| PoolError::ListTools {
-                    server: entry.name.clone(),
-                    details: e.to_string(),
-                })?;
-
-            let mut chat_tools = Vec::with_capacity(mcp_tools.len());
-            for mcp_tool in &mcp_tools {
-                let def = to_chat_tool(&entry.name, mcp_tool);
-                routes.insert(
-                    def.function.name.clone(),
-                    Route {
-                        server_id: entry.id.clone(),
-                        tool_name: mcp_tool.name.clone(),
-                    },
-                );
-                chat_tools.push(def);
+                .map_err(|e| format!("spawn/initialize failed: {e}"))?;
+                let mcp_tools = client
+                    .list_tools()
+                    .await
+                    .map_err(|e| format!("tools/list failed: {e}"))?;
+                Ok::<_, String>((client, mcp_tools))
             }
+            .await;
 
-            tracing::info!(
-                server = %entry.name,
-                id = %entry.id,
-                tool_count = chat_tools.len(),
-                "MCP server started"
-            );
+            match outcome {
+                Ok((client, mcp_tools)) => {
+                    let mut chat_tools = Vec::with_capacity(mcp_tools.len());
+                    for mcp_tool in &mcp_tools {
+                        let def = to_chat_tool(&entry.name, mcp_tool);
+                        routes.insert(
+                            def.function.name.clone(),
+                            Route {
+                                server_id: entry.id.clone(),
+                                tool_name: mcp_tool.name.clone(),
+                            },
+                        );
+                        chat_tools.push(def);
+                    }
 
-            servers.insert(
-                entry.id.clone(),
-                PoolServer {
-                    config: entry.clone(),
-                    client: Mutex::new(client),
-                    chat_tools,
-                },
-            );
+                    tracing::info!(
+                        server = %entry.name,
+                        id = %entry.id,
+                        tool_count = chat_tools.len(),
+                        "MCP server started"
+                    );
+
+                    servers.insert(
+                        entry.id.clone(),
+                        PoolServer {
+                            config: entry.clone(),
+                            client: Mutex::new(client),
+                            chat_tools,
+                        },
+                    );
+                    reports.push(ServerStartupReport {
+                        id: entry.id.clone(),
+                        name: entry.name.clone(),
+                        error: None,
+                    });
+                }
+                Err(message) => {
+                    tracing::error!(
+                        server = %entry.name,
+                        id = %entry.id,
+                        error = %message,
+                        "MCP server failed to start"
+                    );
+                    reports.push(ServerStartupReport {
+                        id: entry.id.clone(),
+                        name: entry.name.clone(),
+                        error: Some(message),
+                    });
+                }
+            }
         }
 
-        Ok(Self { servers, routes })
+        let config_order = config
+            .servers
+            .iter()
+            .map(|s| (s.id.clone(), s.name.clone()))
+            .collect();
+
+        (
+            Self {
+                servers,
+                routes,
+                config_order,
+            },
+            reports,
+        )
+    }
+
+    /// `(id, name)` of every configured server in config order (stable
+    /// payload ordering for the status tracker), including failed ones.
+    pub fn server_ids(&self) -> Vec<(String, String)> {
+        self.config_order.clone()
     }
 
     /// All prefixed tool names across all servers (for `on_tool_call` filtering).
@@ -171,10 +224,6 @@ impl McpPool {
 
 #[derive(Debug, thiserror::Error)]
 pub enum PoolError {
-    #[error("failed to spawn MCP server '{server}': {details}")]
-    Spawn { server: String, details: String },
-    #[error("failed to list tools from MCP server '{server}': {details}")]
-    ListTools { server: String, details: String },
     #[error("unknown MCP server id '{0}'")]
     UnknownServer(String),
     #[error("MCP call failed on server '{server}' tool '{tool}': {details}")]

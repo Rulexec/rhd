@@ -16,6 +16,7 @@ async fn tool_call_roundtrip_pushes_result_and_dedups() {
         Arc::clone(&env.client),
         Arc::clone(&env.pool),
         Arc::clone(&env.regs),
+        Arc::clone(&env.tracker),
         tool_call_event(env.chat_id, "stub:echo", r#"{"input":"hello"}"#, "call_1"),
     )
     .await;
@@ -30,6 +31,7 @@ async fn tool_call_roundtrip_pushes_result_and_dedups() {
         Arc::clone(&env.client),
         Arc::clone(&env.pool),
         Arc::clone(&env.regs),
+        Arc::clone(&env.tracker),
         tool_call_event(env.chat_id, "stub:echo", r#"{"input":"hello"}"#, "call_1"),
     )
     .await;
@@ -43,6 +45,7 @@ async fn mcp_error_becomes_tool_content() {
         Arc::clone(&env.client),
         Arc::clone(&env.pool),
         Arc::clone(&env.regs),
+        Arc::clone(&env.tracker),
         tool_call_event(env.chat_id, "stub:fail", "{}", "call_err"),
     )
     .await;
@@ -54,6 +57,42 @@ async fn mcp_error_becomes_tool_content() {
 }
 
 #[tokio::test]
+async fn failed_call_marks_server_error_and_recovery_flips_it_back() {
+    let env = setup_registered_chat(None, vec![]).await;
+
+    tool_handler::handle_tool_calls(
+        Arc::clone(&env.client),
+        Arc::clone(&env.pool),
+        Arc::clone(&env.regs),
+        Arc::clone(&env.tracker),
+        tool_call_event(env.chat_id, "stub:fail", "{}", "call_flip_err"),
+    )
+    .await;
+    let payload: serde_json::Value =
+        serde_json::from_str(&env.tracker.payload_json().await).unwrap();
+    assert_eq!(payload["mcp"][0]["id"], "stub");
+    assert_eq!(payload["mcp"][0]["status"], "error");
+    assert!(payload["mcp"][0]["error"]
+        .as_str()
+        .unwrap()
+        .contains("tool call failed:"));
+
+    // A later successful call recovers the server.
+    tool_handler::handle_tool_calls(
+        Arc::clone(&env.client),
+        Arc::clone(&env.pool),
+        Arc::clone(&env.regs),
+        Arc::clone(&env.tracker),
+        tool_call_event(env.chat_id, "stub:echo", r#"{"input":"x"}"#, "call_flip_ok"),
+    )
+    .await;
+    let payload: serde_json::Value =
+        serde_json::from_str(&env.tracker.payload_json().await).unwrap();
+    assert_eq!(payload["mcp"][0]["status"], "ok");
+    assert!(payload["mcp"][0].get("error").is_none());
+}
+
+#[tokio::test]
 async fn unregistered_server_and_foreign_tools_are_skipped() {
     let env = setup_registered_chat(None, vec![]).await;
 
@@ -62,6 +101,7 @@ async fn unregistered_server_and_foreign_tools_are_skipped() {
         Arc::clone(&env.client),
         Arc::clone(&env.pool),
         new_regs(),
+        Arc::clone(&env.tracker),
         tool_call_event(env.chat_id, "stub:echo", r#"{"input":"x"}"#, "call_skip"),
     )
     .await;
@@ -71,6 +111,7 @@ async fn unregistered_server_and_foreign_tools_are_skipped() {
         Arc::clone(&env.client),
         Arc::clone(&env.pool),
         Arc::clone(&env.regs),
+        Arc::clone(&env.tracker),
         tool_call_event(env.chat_id, "other:tool", "{}", "call_foreign"),
     )
     .await;
