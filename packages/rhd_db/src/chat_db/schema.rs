@@ -148,6 +148,24 @@ pub(crate) fn init(conn: &Connection) -> DbResult<()> {
         CREATE INDEX IF NOT EXISTS idx_chat_tools_plugin_id ON chat_tools(plugin_id);",
     )?;
 
+    // Create plugin_states table
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS plugin_states (
+            plugin_id TEXT NOT NULL,
+            key TEXT NOT NULL,
+            content TEXT NOT NULL DEFAULT '',
+            format TEXT NOT NULL DEFAULT 'json' CHECK (format IN ('markdown','json')),
+            schema TEXT NOT NULL DEFAULT '',
+            version INTEGER NOT NULL DEFAULT 1,
+            is_removed INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (plugin_id, key),
+            FOREIGN KEY (plugin_id) REFERENCES plugins(plugin_id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_plugin_states_schema ON plugin_states(schema);",
+    )?;
+
     // Migrate existing tables to add new columns
     migrate(conn)?;
 

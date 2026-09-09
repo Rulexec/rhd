@@ -4,7 +4,7 @@ use rusqlite::{Connection, params};
 use std::sync::Mutex;
 use thiserror::Error;
 
-pub use chat_db::{ChatDb, ChatInfo, FunctionCall, Message, ToolCall, ToolDefinition, FunctionDefinition};
+pub use chat_db::{ChatDb, ChatInfo, FunctionCall, Message, PluginStateRow, ToolCall, ToolDefinition, FunctionDefinition};
 
 #[derive(Error, Debug)]
 pub enum DbError {

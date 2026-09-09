@@ -2,6 +2,7 @@ mod chats;
 mod custom_events;
 mod messages;
 mod messages_queue;
+mod plugin_states;
 mod plugins;
 mod schema;
 mod tags;
@@ -11,6 +12,7 @@ mod tools;
 mod tests;
 
 pub use custom_events::CustomEventInfo;
+pub use plugin_states::PluginStateRow;
 pub use plugins::PluginInfo;
 pub use tools::{ToolDefinition, FunctionDefinition};
 
@@ -213,6 +215,34 @@ impl ChatDb {
 
     pub fn get_plugins(&self) -> DbResult<Vec<PluginInfo>> {
         plugins::get_plugins(&self.conn)
+    }
+
+    // Plugin state operations
+    pub fn upsert_plugin_state(
+        &self,
+        plugin_id: &str,
+        key: &str,
+        content: &str,
+        format: &str,
+        schema: &str,
+    ) -> DbResult<PluginStateRow> {
+        plugin_states::upsert_plugin_state(&self.conn, plugin_id, key, content, format, schema)
+    }
+
+    pub fn remove_plugin_state(&self, plugin_id: &str, key: &str) -> DbResult<Option<i64>> {
+        plugin_states::remove_plugin_state(&self.conn, plugin_id, key)
+    }
+
+    pub fn get_plugin_states(
+        &self,
+        plugin_id: Option<&str>,
+        schema: Option<&str>,
+    ) -> DbResult<Vec<PluginStateRow>> {
+        plugin_states::get_plugin_states(&self.conn, plugin_id, schema)
+    }
+
+    pub fn get_plugin_state(&self, plugin_id: &str, key: &str) -> DbResult<Option<PluginStateRow>> {
+        plugin_states::get_plugin_state(&self.conn, plugin_id, key)
     }
 
     // Custom event operations
