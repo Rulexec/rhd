@@ -53,6 +53,16 @@ A plugin that executed tools posts results as regular messages:
 
 Per-call `tags` on assistant `tool_calls` (see "Tool Call Tags") are RHD-internal orchestration metadata: they are **never** sent to the AI provider.
 
+## Plugin State
+
+Plugins expose structured state to each other and to the UI via `updatePluginState` / `removePluginState`; consumers read it with `getPluginStates` and keep it fresh with `subscribePluginStates` / `unsubscribePluginStates`. This is the cross-plugin data-exposure mechanism — prefer it over custom events for "here is my current situation" data (custom events stay for coordination handshakes).
+
+- **Identity**: a state is keyed by `(pluginId, key)` — the key is namespaced by the owning plugin, so keys never collide across plugins.
+- **Content**: `content` plus `format` (`markdown` | `json`) and a `schema` string declaring a well-known content format and its version, named `<format>:<version>` (e.g. `mcpStatus:1`, `errors:1`). Consumers switch on `schema` and ignore unknown schemas/versions.
+- **Versions**: assigned by the server — start at 1, bump on every update **and** on removal, monotonic across delete/re-create. Apply only strictly newer versions; ignore older/equal `pluginStateChanged` / `pluginStateRemoved` events.
+- **Race-free consumption recipe**: `getPluginStates` → `subscribePluginStates` with the versions held (`0` = send latest) → apply the catch-up response → handle live events version-gated.
+- **Lifetime**: states survive plugin disconnects (visible as "last known" while the plugin is inactive) and are deleted with the plugin (`removePlugin`).
+
 ## Plugin Responsibilities
 
 Each plugin should document:

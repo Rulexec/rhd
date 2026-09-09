@@ -112,6 +112,13 @@ tokio::spawn(async move { (callback)(data).await; });
 **Why:** Polling is O(n) per tick and adds up to a second of latency; it does not scale with chat count. Canonical guidelines with code examples live in [`plugins/README.md`](../plugins/README.md).
 **Example:** See "Event-Driven Plugin Design" in [features/plugins.md](features/plugins.md).
 
+### Pattern: Consume Plugin State With Version Gating
+
+**Context:** Subscribing to any well-known plugin state schema (`mcpStatus:1`, `errors:1`, …) from a plugin or the frontend.
+**Rule:** `getPluginStates` → `subscribePluginStates` with the versions held (`0` = send latest) → apply only strictly newer versions; ignore older/equal events. Removals (`pluginStateRemoved`) are gated the same way.
+**Why:** The server broadcasts all state changes unfiltered; catch-up responses and live events can overlap. Version gating makes duplicates and out-of-order delivery harmless.
+**Example:** See "Plugin State" in [features/plugins.md](features/plugins.md) and "Plugin State" in [`plugins/README.md`](../plugins/README.md).
+
 ### Pattern: Plugin README Maintenance
 
 **Context:** When implementing or modifying any plugin in the `plugins/` directory

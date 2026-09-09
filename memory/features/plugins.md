@@ -59,6 +59,32 @@ This mechanism ensures plugins can coordinate their actions and avoid conflicts.
 
 **Context fields:** custom events can carry optional `chat_id`, `message_id`, and `tool_call_id` context fields identifying where the event originated. These fields are broadcast to subscribers, stored, and returned by `getPendingAcks` so plugins can reconstruct full event context after reconnection. Senders should use the dedicated top-level `chat_id` field rather than embedding the id in the `additional` JSON payload.
 
+### Plugin State
+
+Plugins can expose structured state so other plugins and the UI can see "here is my current situation" without asking:
+
+- A state is a named value keyed by `(pluginId, key)` — the key is namespaced by the owning plugin, so two plugins can both publish `status` without colliding.
+- Each state carries `content` in a declared `format` (`markdown` or `json`) plus a `schema` string naming a well-known content format and its version (e.g. `mcpStatus:1`, `errors:1`). Consumers recognize states by `schema` and ignore unknown schemas/versions.
+
+**Lifecycle:**
+
+- Plugins create or replace states with `updatePluginState` and delete them with `removePluginState`.
+- States **persist across plugin disconnects**: an inactive plugin's states remain visible as "last known" until the plugin reconnects and updates them.
+- States are deleted together with the plugin (`removePlugin`).
+
+**Versioning contract** (consumer-facing): each state has a server-assigned version that starts at `1` and bumps on **every** update **and** on removal. Re-creating a removed state continues from the tombstone, so versions are monotonic per `(pluginId, key)` over its whole lifetime. Consumers must ignore any event whose version is not strictly newer than what they already hold.
+
+**Race-free consumption recipe** (a naive get→subscribe can miss or duplicate updates):
+
+1. `getPluginStates` — fetch the current states of interest.
+2. `subscribePluginStates` passing the versions held from step 1 (or `0` for "send me the latest") — the server registers the subscription before snapshotting, so nothing slips through the gap.
+3. Apply the catch-up response, then handle `pluginStateChanged` / `pluginStateRemoved` events version-gated (apply only strictly newer versions).
+
+**UI behavior:**
+
+- The Plugins tab lists each plugin's states in a collapsed "State (n)" section.
+- The MCPs tab is shown only while some plugin publishes an `mcpStatus:1` state, and renders the per-server status from those states.
+
 ### Event Model
 
 Plugins interact with the system through events:
@@ -255,7 +281,8 @@ The `rhd_plugin_mcp` plugin exposes external MCP servers as chat tools.
   optional `registerOnTag`.
 
 **Behavior:**
-- Spawns all configured servers at startup (fail-fast).
+- Spawns configured servers at startup best-effort: a server that fails to start is reported as `error` in the plugin's `mcpStatus:1` state while the healthy servers keep working; config parse errors remain fatal.
+- Reports per-server run status via the `mcpStatus:1` plugin state (see [mcp-plugin.md](mcp-plugin.md)).
 - Registers tools on eligible chats prefixed `<name>:` (e.g. `filesystem:read_file`).
 - Gating: with `--worktree W`, only chats tagged `worktree:W`; without it,
   only chats with no `worktree:*` tag. `registerOnTag` additionally requires

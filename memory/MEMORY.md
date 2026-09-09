@@ -130,9 +130,9 @@ Product-scoped feature documentation (what the feature does, not how it's implem
 | File | When to read |
 |------|-------------|
 | [features/chat.md](features/chat.md) | Understanding chat feature, streaming, model selection, message editing, delete all chats, auto-scroll, queue messages, tools management, chat tag UI, messages/tools tabs |
-| [features/mcp-plugin.md](features/mcp-plugin.md) | Understanding the MCP plugin: spawning MCP servers, `<name>:` tool prefixes, worktree/`registerOnTag` chat gating, tool-call execution and result push |
+| [features/mcp-plugin.md](features/mcp-plugin.md) | Understanding the MCP plugin: spawning MCP servers, `<name>:` tool prefixes, worktree/`registerOnTag` chat gating, tool-call execution and result push, per-server status reporting |
 | [features/configuration.md](features/configuration.md) | Understanding config files, credentials, model aliases, CLI arguments |
 | [features/testing.md](features/testing.md) | Understanding E2E test infrastructure, mock server, test utilities |
 | [features/cli.md](features/cli.md) | Understanding CLI usage details, commands, and arguments |
 | [features/templates.md](features/templates.md) | Understanding template registry, template loading, and rendering |
-| [features/plugins.md](features/plugins.md) | Understanding plugin system, plugin lifecycle, custom event coordination (rejection, context fields), plugin monitoring, event-driven plugin design, AI completions plugin (tags, request fidelity), system prompt plugin, todo list plugin, tool call tags, mcp plugin (MCP servers as chat tools) |
+| [features/plugins.md](features/plugins.md) | Understanding plugin system, plugin lifecycle, custom event coordination (rejection, context fields), plugin states (exposure, versioning, state schemas like `mcpStatus:1`), plugin monitoring, event-driven plugin design, AI completions plugin (tags, request fidelity), system prompt plugin, todo list plugin, tool call tags, mcp plugin (MCP servers as chat tools) |

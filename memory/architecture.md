@@ -15,6 +15,8 @@
 - `next_id()`: Atomically retrieves and increments the next scenario ID
 - Chat operations: `create_chat()`, `list_chats()`, `get_chat()`, `delete_chat()`, `update_chat_title()`, `touch_chat()`
 - Message operations: `add_message()`, `get_messages()`, `get_message()`, `truncate_messages()`, `update_message()`
+- Plugin state operations (`chat_db/plugin_states.rs`): `upsert_plugin_state()` (fresh insert → version 1, update bumps version and clears tombstone), `remove_plugin_state()` (tombstone + version bump, `None` if nothing live), `get_plugin_states()` (live rows, optional plugin/schema filters), `get_plugin_state()` (single row including tombstones, for subscribe catch-up)
+- `plugin_states` table: PK `(plugin_id, key)`, columns `content`, `format` (CHECK `markdown`|`json`), `schema`, `version` (server-managed, monotonic across update/remove/re-create), `is_removed` tombstone, `updated_at`; FK `plugin_id → plugins(plugin_id) ON DELETE CASCADE`; index on `schema`
 - Database files: `<dbDir>/meta.db` (scenarios), `<dbDir>/chats.db` (chats)
 
 **rhd_mcp_client**:
@@ -29,6 +31,9 @@
 - API types for chat WebSocket protocol
 - Defines request/response types for chat operations
 - Event types for real-time updates
+- Plugin state types: `PluginState` (identified by `(plugin_id, key)`), `StateFormat` (`Markdown`/`Json`, serialized lowercase), `StateVersionRef` (`pluginId`/`key`/`version` held by the consumer; `version: 0` = "send latest")
+- Plugin state methods: `updatePluginState`, `removePluginState`, `getPluginStates`, `subscribePluginStates`, `unsubscribePluginStates`
+- Plugin state events: `pluginStateChanged`, `pluginStateRemoved`
 
 **rhd_chat_server**:
 - WebSocket server for chat storage and management
@@ -38,11 +43,16 @@
   - `push(chat_id, reasoning_delta, content_delta, tool_calls_delta)` — Accumulate deltas and notify subscribers.
   - `subscribe_and_get(chat_id)` — Atomically return current state and subscribe to future chunks.
   - `finish(chat_id)` — Finalize stream, notify subscribers, and clean up.
+- **Plugin state handlers** (`handlers/plugin_state.rs`): implement the five state methods; broadcast `pluginStateChanged`/`pluginStateRemoved` to all plugin-state subscribers. Write operations require the connection's registered plugin id.
+- `SubscriptionManager.plugin_states_subscribers`: connection set subscribed to plugin state events. `subscribe_plugin_states` registers the connection under the write lock BEFORE reading the catch-up snapshot (register-before-snapshot atomicity): a change landing in between is either already in the snapshot or delivered as a live event; duplicates are made harmless by client-side version gating.
+- States survive plugin disconnect (rows persist; consumers treat them as "last known" for inactive plugins); FK cascade deletes them with the plugin on `removePlugin`.
 
 **rhd_chat_client**:
 - WebSocket client for connecting to `rhd_chat_server`
 - Provides methods for chat operations: list chats, get chat, create chat, add messages, etc.
 - Handles real-time event subscriptions and streaming
+- Typed plugin state methods: `update_plugin_state`, `remove_plugin_state`, `get_plugin_states`, `subscribe_plugin_states`, `unsubscribe_plugin_states`
+- `on_plugin_state_event(callback)`: single callback for both `pluginStateChanged`/`pluginStateRemoved`; returns a `CancellationToken` — dropping or cancelling it unsubscribes
 
 **rhd_app** (CLI tool):
 - Command-line interface for interacting with `rhd_chat_server`

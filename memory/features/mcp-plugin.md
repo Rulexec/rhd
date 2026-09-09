@@ -11,9 +11,27 @@ results back into the conversation.
 
 ### Startup
 - Reads `--config <path>` YAML listing MCP servers.
-- Spawns and initializes ALL configured servers immediately; any failure
-  aborts plugin startup with a clear error.
+- Spawns and initializes ALL configured servers immediately, **best-effort**:
+  a server that fails to start (spawn, initialize, or list-tools) is recorded
+  as `error` with its message and excluded from routing, while the remaining
+  servers keep working and the plugin stays up.
 - Collects each server's tool list.
+- Config parse errors (missing `env:` variables, duplicate names/ids, empty
+  list, unknown fields) remain fatal — the plugin aborts startup with a clear
+  error.
+
+### Status reporting
+- The plugin publishes a `status` plugin state with schema `mcpStatus:1`
+  listing every configured server in config order with `ok`/`error` status
+  and, for errored servers, the failure message. The UI shows it in the MCPs
+  tab, which appears only while such a state exists.
+- Transitions: startup failure (spawn/initialize/list-tools) and transport
+  failures during tool calls mark a server `error`; a later successful call
+  recovers it to `ok`.
+- Tool-level `isError` results are legitimate MCP responses, **not** server
+  failures — they never flip the status.
+- Pushes are event-driven (on status change) and deduplicated: an unchanged
+  payload is not re-pushed.
 
 ### Tool naming
 - Every tool is registered prefixed with its server's name:
@@ -77,9 +95,12 @@ rhd_plugin_mcp --server-url ws://127.0.0.1:8080/ --plugin-id mcp \
   `ai_completions:preRequest` coordination never blocks on it.
 
 ## Error handling (user perspective)
-- Server spawn/initialize failure → plugin exits at startup; fix config or
-  environment and restart.
-- Tool failure during conversation → the AI sees an error text as the tool
-  result and can retry or proceed.
+- Server spawn/initialize failure → the plugin keeps running; the server
+  appears as `error` in the MCPs tab with its message and its tools are not
+  registered. Fix the config/environment and restart the plugin to bring it
+  back.
+- Tool-call transport failure during conversation → the AI sees an error text
+  as the tool result and can retry or proceed; the server flips to `error` in
+  the MCPs tab and recovers to `ok` on a later successful call.
 - Caveat: MCP servers that send unsolicited notifications are not supported
   by the stdio transport.
