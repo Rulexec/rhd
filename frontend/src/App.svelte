@@ -5,13 +5,12 @@
   import { AppStore } from './stores/AppStore.js';
   import { setAppStore } from './context.js';
   import { mobxObservable } from './util/mobxObservable.svelte.js';
-  import TabView from './lib/components/TabView.svelte';
+  import TabView, { type TabType } from './lib/components/TabView.svelte';
   import ChatList from './lib/components/ChatList.svelte';
   import ChatView from './lib/components/ChatView.svelte';
   import PluginList from './lib/components/PluginList.svelte';
+  import McpStatusList from './lib/components/McpStatusList.svelte';
   import ConnectionStatus from './lib/components/ConnectionStatus.svelte';
-
-  type TabType = 'chats' | 'plugins';
 
   // Initialize the AppStore and provide it to all children via context
   const appStore = new AppStore({ chatApi: defaultChatApi });
@@ -28,6 +27,10 @@
   const connectionStatusGetter = mobxObservable(() => appStore.connection.status);
   let connectionStatus = $derived(connectionStatusGetter());
 
+  // Bridge hasMcpStatus for tab visibility (top-level call — required).
+  const hasMcpStatusGetter = mobxObservable(() => appStore.plugins.hasMcpStatus);
+  let hasMcpStatus = $derived(hasMcpStatusGetter());
+
   onMount(() => {
     websocket.connect();
   });
@@ -37,6 +40,14 @@
     if (connectionStatus === 'connected') {
       appStore.chatsList.init();
       appStore.plugins.init();
+    }
+  });
+
+  // If the last mcpStatus:1 state disappears while the MCPs tab is open,
+  // the tab button vanishes — fall back to Plugins so main never renders blank.
+  $effect(() => {
+    if (activeTab === 'mcps' && !hasMcpStatus) {
+      activeTab = 'plugins';
     }
   });
 
@@ -57,7 +68,7 @@
     <h1>RHD Chat</h1>
   </header>
 
-  <TabView {activeTab} on:tabChange={handleTabChange} />
+  <TabView {activeTab} showMcps={hasMcpStatus} on:tabChange={handleTabChange} />
 
   <main class="app-main">
     {#if activeTab === 'chats'}
@@ -71,6 +82,8 @@
       </div>
     {:else if activeTab === 'plugins'}
       <PluginList />
+    {:else if activeTab === 'mcps'}
+      <McpStatusList />
     {/if}
   </main>
 </div>

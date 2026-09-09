@@ -1,13 +1,15 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
 
-  type TabType = 'chats' | 'plugins';
+  export type TabType = 'chats' | 'plugins' | 'mcps';
 
   interface Props {
     activeTab?: TabType;
+    /** Show the MCPs tab only while some plugin publishes mcpStatus:1. */
+    showMcps?: boolean;
   }
 
-  let { activeTab = 'chats' }: Props = $props();
+  let { activeTab = 'chats', showMcps = false }: Props = $props();
 
   const dispatch = createEventDispatcher<{
     tabChange: { tab: TabType };
@@ -39,6 +41,17 @@
     >
       Plugins
     </button>
+    {#if showMcps}
+      <button
+        class="tab-button"
+        class:active={activeTab === 'mcps'}
+        role="tab"
+        aria-selected={activeTab === 'mcps'}
+        onclick={() => selectTab('mcps')}
+      >
+        MCPs
+      </button>
+    {/if}
   </nav>
 </div>
 
