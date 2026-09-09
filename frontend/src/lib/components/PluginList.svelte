@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { marked } from 'marked';
   import { getAppStore } from '../../context.js';
   import { mobxObservable } from '../../util/mobxObservable.svelte.js';
+  import type { PluginState } from '../api/schemas.js';
   import commonStyles from '../styles/common.module.css';
 
   const appStore = getAppStore();
@@ -13,12 +15,38 @@
   const pluginsLoadingGetter = mobxObservable(() => pluginsStore.loading);
   const pluginsErrorGetter = mobxObservable(() => pluginsStore.error);
   const activePluginsCountGetter = mobxObservable(() => pluginsStore.activePluginsCount);
+  // Single subscription over the raw states array; per-plugin lists are derived
+  // below via a pure helper so we never register mobxObservable inside an each-block.
+  const statesSnapshotGetter = mobxObservable(() => pluginsStore._states);
 
   let plugins = $derived(pluginsGetter());
   let hasPlugins = $derived(hasPluginsGetter());
   let pluginsLoading = $derived(pluginsLoadingGetter());
   let pluginsError = $derived(pluginsErrorGetter());
   let activePluginsCount = $derived(activePluginsCountGetter());
+  let allStates = $derived(statesSnapshotGetter());
+
+  function statesFor(pluginId: string): PluginState[] {
+    return allStates
+      .filter(s => s.pluginId === pluginId)
+      .sort((a, b) => a.key.localeCompare(b.key));
+  }
+
+  function renderMarkdown(content: string): string {
+    try {
+      return marked.parse(content, { breaks: true }) as string;
+    } catch {
+      return content;
+    }
+  }
+
+  function prettyJson(content: string): string {
+    try {
+      return JSON.stringify(JSON.parse(content), null, 2);
+    } catch {
+      return content; // malformed json — show raw rather than crash
+    }
+  }
 </script>
 
 <div class="plugin-list">
@@ -51,6 +79,8 @@
   {:else}
     <ul class="{commonStyles['list']} plugin-list-items">
       {#each plugins as plugin (plugin.pluginId)}
+        <!-- {@const} must be a direct child of the each-block (Svelte 5) -->
+        {@const states = statesFor(plugin.pluginId)}
         <li class="{commonStyles['list-item']} plugin-item">
           <div class="plugin-item-content">
             <div class="plugin-info">
@@ -61,6 +91,33 @@
               </span>
             </div>
           </div>
+          {#if states.length > 0}
+            <details class="plugin-states">
+              <summary class="plugin-states-summary">
+                State ({states.length})
+              </summary>
+              {#each states as state (state.key)}
+                <div class="plugin-state">
+                  <div class="plugin-state-header">
+                    <span class="plugin-state-key">{state.key}</span>
+                    <span class="plugin-state-badge">{state.format}</span>
+                    {#if state.schema}
+                      <span class="plugin-state-badge plugin-state-schema">{state.schema}</span>
+                    {/if}
+                    <span class="plugin-state-version">v{state.version}</span>
+                    {#if !plugin.isActive}
+                      <span class="plugin-state-stale">last known</span>
+                    {/if}
+                  </div>
+                  {#if state.format === 'markdown'}
+                    <div class="plugin-state-content markdown">{@html renderMarkdown(state.content)}</div>
+                  {:else}
+                    <pre class="plugin-state-content plugin-state-json">{prettyJson(state.content)}</pre>
+                  {/if}
+                </div>
+              {/each}
+            </details>
+          {/if}
         </li>
       {/each}
     </ul>
@@ -161,5 +218,75 @@
 
   .plugin-status.inactive {
     color: var(--color-text-muted);
+  }
+
+  .plugin-states {
+    margin-top: var(--spacing-sm);
+    padding-left: var(--spacing-md);
+    border-top: 1px solid var(--color-border);
+  }
+
+  .plugin-states-summary {
+    padding: var(--spacing-xs) 0;
+    color: var(--color-text-muted);
+    font-size: var(--font-size-sm);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .plugin-state {
+    padding: var(--spacing-sm) 0;
+    border-top: 1px dashed var(--color-border);
+  }
+
+  .plugin-state-header {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    flex-wrap: wrap;
+  }
+
+  .plugin-state-key {
+    font-weight: 500;
+    font-size: var(--font-size-sm);
+  }
+
+  .plugin-state-badge {
+    padding: 1px var(--spacing-sm);
+    border-radius: var(--radius-full);
+    background: var(--color-bg-tertiary);
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-xs);
+  }
+
+  .plugin-state-schema {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  .plugin-state-version {
+    color: var(--color-text-muted);
+    font-size: var(--font-size-xs);
+  }
+
+  .plugin-state-stale {
+    color: var(--color-text-muted);
+    font-size: var(--font-size-xs);
+    font-style: italic;
+  }
+
+  .plugin-state-content {
+    margin-top: var(--spacing-xs);
+    font-size: var(--font-size-sm);
+  }
+
+  .plugin-state-json {
+    padding: var(--spacing-sm);
+    margin: var(--spacing-xs) 0 0;
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-secondary);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: var(--font-size-xs);
+    overflow-x: auto;
+    white-space: pre;
   }
 </style>
