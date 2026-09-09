@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "packages/rhd_ai_client",
+    "packages/rhd_ai_proxy",
     "packages/rhd_mock_ai_provider",
     "packages/rhd_mcp_client",
     "packages/rhd_db",
@@ -16,6 +17,7 @@ members = [
 resolver = "2"
 
 [workspace.dependencies]
+axum = { version = "0.7", features = ["macros"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

@@ -1,0 +1,10 @@
+proxy:
+  port: 1234
+  target:
+    path: https://example.org/raw/openrouter/v1
+  models:
+    "z-ai/glm-5.3":
+      extraBody:
+        provider:
+          sort: throughput
+          max_price: {"prompt": 1, "completion": 2}
