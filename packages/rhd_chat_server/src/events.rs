@@ -90,3 +90,19 @@ pub fn assistant_message_with_tool_calls_event(
         serde_json::to_value(data).unwrap(),
     )
 }
+
+/// Create a `pluginStateChanged` event.
+pub fn plugin_state_changed_event(state: rhd_chat_api::PluginState) -> Event {
+    let data = rhd_chat_api::events::PluginStateChangedData { state };
+    Event::new("pluginStateChanged", serde_json::to_value(data).unwrap())
+}
+
+/// Create a `pluginStateRemoved` event.
+pub fn plugin_state_removed_event(plugin_id: &str, key: &str, version: i64) -> Event {
+    let data = rhd_chat_api::events::PluginStateRemovedData {
+        plugin_id: plugin_id.to_string(),
+        key: key.to_string(),
+        version,
+    };
+    Event::new("pluginStateRemoved", serde_json::to_value(data).unwrap())
+}

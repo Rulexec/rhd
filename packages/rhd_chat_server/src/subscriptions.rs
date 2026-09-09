@@ -25,6 +25,8 @@ pub struct SubscriptionManager {
     chats_list_subscribers: HashSet<ConnectionId>,
     /// Set of connection IDs subscribed to the plugins list.
     plugins_list_subscribers: HashSet<ConnectionId>,
+    /// Set of connection IDs subscribed to plugin state change events.
+    plugin_states_subscribers: HashSet<ConnectionId>,
 }
 
 impl SubscriptionManager {
@@ -51,6 +53,8 @@ impl SubscriptionManager {
         self.chats_list_subscribers.remove(connection_id);
         // Remove from plugins list subscriptions
         self.plugins_list_subscribers.remove(connection_id);
+        // Remove from plugin state subscriptions
+        self.plugin_states_subscribers.remove(connection_id);
         // Remove connection
         self.connections.remove(connection_id);
     }
@@ -140,6 +144,29 @@ impl SubscriptionManager {
             Err(_) => return,
         };
         for connection_id in &self.plugins_list_subscribers {
+            if let Some(sender) = self.connections.get(connection_id) {
+                let _ = sender.send(event_json.clone());
+            }
+        }
+    }
+
+    /// Subscribe a connection to plugin state change events.
+    pub fn subscribe_plugin_states(&mut self, connection_id: &str) {
+        self.plugin_states_subscribers.insert(connection_id.to_string());
+    }
+
+    /// Unsubscribe a connection from plugin state change events.
+    pub fn unsubscribe_plugin_states(&mut self, connection_id: &str) {
+        self.plugin_states_subscribers.remove(connection_id);
+    }
+
+    /// Broadcast an event to all subscribers of plugin state events.
+    pub fn broadcast_to_plugin_states(&self, event: Event) {
+        let event_json = match serde_json::to_string(&event) {
+            Ok(j) => j,
+            Err(_) => return,
+        };
+        for connection_id in &self.plugin_states_subscribers {
             if let Some(sender) = self.connections.get(connection_id) {
                 let _ = sender.send(event_json.clone());
             }
@@ -236,6 +263,25 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_subscription_manager_plugin_states_subscription() {
+        let mut manager = SubscriptionManager::new();
+
+        let (conn_id, mut receiver) = manager.register_connection();
+        manager.subscribe_plugin_states(&conn_id);
+
+        let event = Event::new("pluginStateChanged", serde_json::json!({}));
+        manager.broadcast_to_plugin_states(event.clone());
+
+        let received = receiver.recv().await.unwrap();
+        assert_eq!(received, serde_json::to_string(&event).unwrap());
+
+        // Unsubscribe — nothing further is delivered.
+        manager.unsubscribe_plugin_states(&conn_id);
+        manager.broadcast_to_plugin_states(event);
+        assert!(receiver.try_recv().is_err());
+    }
+
+    #[tokio::test]
     async fn test_subscription_manager_broadcast_to_all() {
         let mut manager = SubscriptionManager::new();
         
@@ -260,6 +306,7 @@ mod tests {
         manager.subscribe_chat(&conn_id, 1);
         manager.subscribe_chats_list(&conn_id);
         manager.subscribe_plugins_list(&conn_id);
+        manager.subscribe_plugin_states(&conn_id);
         
         // Unregister
         manager.unregister_connection(&conn_id);
@@ -269,5 +316,6 @@ mod tests {
                 !manager.chat_subscribers.get(&1).unwrap().contains(&conn_id));
         assert!(!manager.chats_list_subscribers.contains(&conn_id));
         assert!(!manager.plugins_list_subscribers.contains(&conn_id));
+        assert!(!manager.plugin_states_subscribers.contains(&conn_id));
     }
 }

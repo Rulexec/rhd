@@ -3,6 +3,7 @@
 pub mod chat;
 pub mod message;
 pub mod plugin;
+pub mod plugin_state;
 pub mod queue_message;
 pub mod stream;
 pub mod subscription;
@@ -76,6 +77,27 @@ pub async fn handle_request(
         "sendCustomEvent" => plugin::send_custom_event(request.params, db, &request_id, connection_id, plugin_registry, subscription_manager).await,
         "ackCustomEvent" => plugin::ack_custom_event(request.params, db, &request_id, connection_id, plugin_registry, subscription_manager).await,
         "getPendingAcks" => plugin::get_pending_acks(request.params, db, &request_id, connection_id, plugin_registry).await,
+        
+        // Plugin state methods
+        "updatePluginState" => {
+            let plugin_id = {
+                let registry = plugin_registry.read().await;
+                let plugins = registry.get_plugins_for_connection(connection_id);
+                plugins.into_iter().next()
+            };
+            plugin_state::update_plugin_state(request.params, db, &request_id, plugin_id.as_deref(), &subscription_manager).await
+        }
+        "removePluginState" => {
+            let plugin_id = {
+                let registry = plugin_registry.read().await;
+                let plugins = registry.get_plugins_for_connection(connection_id);
+                plugins.into_iter().next()
+            };
+            plugin_state::remove_plugin_state(request.params, db, &request_id, plugin_id.as_deref(), &subscription_manager).await
+        }
+        "getPluginStates" => plugin_state::get_plugin_states(request.params, db, &request_id).await,
+        "subscribePluginStates" => plugin_state::subscribe_plugin_states(request.params, db, &request_id, connection_id, subscription_manager).await,
+        "unsubscribePluginStates" => plugin_state::unsubscribe_plugin_states(request.params, db, &request_id, connection_id, subscription_manager).await,
         
         // Queue message methods
         "addQueueMessage" => queue_message::add_queue_message(request.params, db, &request_id, &subscription_manager).await,
