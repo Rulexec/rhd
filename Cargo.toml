@@ -13,6 +13,7 @@ members = [
     "plugins/rhd_plugin_system_prompt",
     "plugins/rhd_plugin_todo_list",
     "plugins/rhd_plugin_mcp",
+    "plugins/rhd_plugin_choice",
 ]
 resolver = "2"
 

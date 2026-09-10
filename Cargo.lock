@@ -1470,6 +1470,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "rhd_plugin_choice"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "include_dir",
+ "rhd_chat_api",
+ "rhd_chat_client",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "rhd_plugin_mcp"
 version = "0.1.0"
 dependencies = [

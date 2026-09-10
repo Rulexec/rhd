@@ -1,0 +1,22 @@
+{
+  "type": "function",
+  "function": {
+    "name": "rhd_choice",
+    "description": "Ask the user to decide between concrete options before continuing. Use this tool whenever the next step depends on a user decision with multiple reasonable variants. Provide a short question and a small set of distinct, self-explanatory options. The user's answer is returned as the tool result: either the exact text of the chosen option, or a free-form message the user typed instead. Do not call this tool for yes/no confirmations that you can reasonably proceed on.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "question": {
+          "type": "string",
+          "description": "The question shown to the user, phrased so it is understandable on its own"
+        },
+        "options": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "The variants the user can choose between; each option is rendered as a button and its text is returned verbatim when chosen"
+        }
+      },
+      "required": ["question", "options"]
+    }
+  }
+}

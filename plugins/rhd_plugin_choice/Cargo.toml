@@ -1,0 +1,20 @@
+[package]
+name = "rhd_plugin_choice"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "rhd_plugin_choice"
+path = "src/main.rs"
+
+[dependencies]
+rhd_chat_api = { path = "../../packages/rhd_chat_api" }
+rhd_chat_client = { path = "../../packages/rhd_chat_client" }
+tokio = { workspace = true, features = ["full"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+include_dir = "0.7"
+clap = { workspace = true, features = ["derive"] }
