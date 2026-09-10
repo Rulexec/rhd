@@ -294,6 +294,21 @@ The `rhd_plugin_mcp` plugin exposes external MCP servers as chat tools.
 
 See [mcp-plugin.md](mcp-plugin.md) for the product view.
 
+### Choice Plugin
+
+The `rhd_plugin_choice` plugin lets the assistant ask the user to choose between concrete options before continuing — the decision belongs to the human, not the model.
+
+**What the user sees:**
+- The choice tool is available in every chat without any user setup.
+- When the assistant decides the next step depends on a user decision, the chat shows a question card: the question text, one button per offered option, and a free-text input for an answer that is none of the options.
+
+**How answering works:**
+- Clicking an option or submitting typed text is a human UI action — the frontend sends the chosen or typed text back as the answer to the assistant's question on the user's behalf.
+- Once answered, the card switches to a resolved state showing the answer; reloading the page keeps it resolved (derived from the chat history).
+
+**Pausing the assistant:**
+- An unanswered choice intentionally pauses the assistant's tool loop: the conversation waits until the user decides. That is the point of the feature.
+
 ### Future Plugin Ideas
 
 - **Notification Plugin**: Send notifications when specific events occur

@@ -63,7 +63,14 @@ packages/rhd_chat_client/src/
 plugins/rhd_plugin_mcp/src/
 └── status.rs           # McpStatusTracker: per-server run status, mcpStatus:1 state pushes
 
+plugins/rhd_plugin_choice/src/
+└── plugin.rs           # Registers rhd_choice tool per chat (no tool-call handling)
+
+templates/mcp_internal/rhd_choice/
+└── tool_definition.json # rhd_choice tool schema (question + options)
+
 frontend/src/lib/components/
+├── ChoicePrompt.svelte  # Choice question card: option buttons + manual answer input
 ├── McpStatusList.svelte # MCPs tab rendering mcpStatus:1 states per server
 └── PluginList.svelte    # Plugins tab with collapsed "State (n)" sections
 

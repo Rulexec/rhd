@@ -123,6 +123,7 @@ To test `rhd_plugin_ai_completions`:
 - **rhd_mock_ai_provider**: Mock AI provider for testing
 - **rhd_app**: CLI tool for chat server interaction
 - **rhd_plugin_ai_completions**: AI completions plugin
+- **rhd_plugin_choice**: Choice tool plugin
 
 ## Plugins
 
@@ -131,6 +132,10 @@ Plugins extend the chat system functionality. See `plugins/README.md` for plugin
 ### rhd_plugin_ai_completions
 
 The AI completions plugin processes queued messages and generates AI responses. It monitors the message queue and automatically adds assistant messages to chats.
+
+### rhd_plugin_choice
+
+The choice plugin provides the `rhd_choice` tool to every chat so the assistant can ask the user to choose between options. The frontend renders the choices as buttons plus a free-text input and answers the tool call on the user's behalf; an unanswered choice pauses the assistant's tool loop until the user decides.
 
 ## Development
 
