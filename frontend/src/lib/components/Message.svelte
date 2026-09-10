@@ -1,7 +1,9 @@
 <script lang="ts">
   import { marked } from 'marked';
   import type { Message as MessageType, StreamToolCallDelta, ToolCall } from '../api/schemas.js';
+  import { CHOICE_TOOL_NAME, ChoiceToolArgsSchema, type ChoiceToolArgs } from '../api/schemas.js';
   import ToolCallMessage from './ToolCallMessage.svelte';
+  import ChoicePrompt from './ChoicePrompt.svelte';
 
   interface StreamContent {
     reasoningContent: string;
@@ -15,9 +17,17 @@
     isQueue?: boolean;
     streamContent?: StreamContent | null;
     toolResults?: Map<string, string>;
+    /** Called when the user answers an rhd_choice tool call. */
+    onChoiceRespond?: (toolCallId: string, content: string) => void;
   }
 
-  let { message, isQueue = false, streamContent = null, toolResults = new Map() }: Props = $props();
+  let {
+    message,
+    isQueue = false,
+    streamContent = null,
+    toolResults = new Map(),
+    onChoiceRespond = undefined
+  }: Props = $props();
 
   let showMarkdown: boolean = $state(true);
   let reasoningExpanded: boolean = $state(false);
@@ -57,6 +67,37 @@
     }
     return message.toolCalls ?? [];
   });
+
+  // Tool-call name across persisted (ToolCall.function.name) and streaming
+  // (StreamToolCallDelta.name) shapes — same accessor pattern as
+  // ToolCallMessage.svelte.
+  function toolCallName(toolCall: ToolCall | StreamToolCallDelta): string {
+    return 'function' in toolCall ? toolCall.function.name : toolCall.name;
+  }
+
+  function parseChoiceArgs(toolCall: ToolCall | StreamToolCallDelta): ChoiceToolArgs | null {
+    if (toolCallName(toolCall) !== CHOICE_TOOL_NAME) return null;
+    const raw = 'function' in toolCall ? toolCall.function.arguments : toolCall.arguments;
+    try {
+      const parsed = ChoiceToolArgsSchema.safeParse(JSON.parse(raw));
+      return parsed.success ? parsed.data : null;
+    } catch {
+      return null; // partial/invalid JSON → fall back to the generic view
+    }
+  }
+
+  // Interactive only for finalized messages: streamed deltas may carry partial
+  // arguments JSON.
+  interface ToolCallView {
+    toolCall: ToolCall | StreamToolCallDelta;
+    choiceArgs: ChoiceToolArgs | null;
+  }
+  let toolCallViews: ToolCallView[] = $derived(
+    displayToolCalls.map((toolCall) => ({
+      toolCall,
+      choiceArgs: isStreaming ? null : parseChoiceArgs(toolCall)
+    }))
+  );
 
   /**
    * Render content as Markdown or plain text.
@@ -209,14 +250,21 @@
       <div class="tool-result-label">Tool Result</div>
       <pre class="tool-result-content">{displayContent}</pre>
     </div>
-  {:else if displayToolCalls.length > 0}
+  {:else if toolCallViews.length > 0}
     <!-- Assistant message with tool calls -->
     <div class="tool-calls">
-      {#each displayToolCalls as toolCall}
-        <ToolCallMessage
-          {toolCall}
-          result={toolResults.get(toolCall.id) ?? null}
-        />
+      {#each toolCallViews as view (view.toolCall.id)}
+        {#if view.choiceArgs}
+          <ChoicePrompt
+            args={view.choiceArgs}
+            resolved={toolResults.has(view.toolCall.id)}
+            answer={toolResults.get(view.toolCall.id) ?? null}
+            disabled={onChoiceRespond === undefined}
+            onRespond={(content) => onChoiceRespond?.(view.toolCall.id, content)}
+          />
+        {:else}
+          <ToolCallMessage toolCall={view.toolCall} result={toolResults.get(view.toolCall.id) ?? null} />
+        {/if}
       {/each}
     </div>
   {/if}

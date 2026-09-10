@@ -414,7 +414,7 @@ export const ToolsUpdatedDataSchema = z.object({
 });
 
 // ============================================================================
-// Well-Known State Schemas
+// Well-Known Schemas & Constants
 // ============================================================================
 
 /** Schema id published by rhd_plugin_mcp. */
@@ -435,6 +435,18 @@ export const McpStatusEntrySchema = z.object({
  */
 export const McpStatusPayloadSchema = z.object({
   mcp: z.array(McpStatusEntrySchema)
+});
+
+/** Tool name provided by rhd_plugin_choice (frontend answers its calls). */
+export const CHOICE_TOOL_NAME = 'rhd_choice';
+
+/**
+ * Parsed `function.arguments` of an rhd_choice tool call.
+ * Defensive: callers must treat parse failures as "not a choice prompt".
+ */
+export const ChoiceToolArgsSchema = z.object({
+  question: z.string(),
+  options: z.array(z.string()).min(1)
 });
 
 // ============================================================================
@@ -490,3 +502,4 @@ export type PluginStateChangedData = z.infer<typeof PluginStateChangedDataSchema
 export type PluginStateRemovedData = z.infer<typeof PluginStateRemovedDataSchema>;
 export type McpStatusEntry = z.infer<typeof McpStatusEntrySchema>;
 export type McpStatusPayload = z.infer<typeof McpStatusPayloadSchema>;
+export type ChoiceToolArgs = z.infer<typeof ChoiceToolArgsSchema>;

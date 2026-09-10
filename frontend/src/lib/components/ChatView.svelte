@@ -91,6 +91,19 @@
   }
 
   /**
+   * Answer an rhd_choice tool call on the user's behalf (Phase 2 store flow).
+   * Store sets chatStore.error on failure; the error banner surfaces it and the
+   * card stays interactive for a retry (resolved flips only when the tool
+   * message arrives back via messageAdded).
+   */
+  function handleChoiceRespond(toolCallId: string, content: string): void {
+    if (!currentChat) return;
+    flowResult(chatStore.addToolResult(currentChat.id, toolCallId, content)).catch(() => {
+      /* error already recorded in chatStore.error */
+    });
+  }
+
+  /**
    * Handle adding a tag to the current chat.
    */
   function handleAddTag(tag: string): void {
@@ -174,7 +187,13 @@
         {:else}
           <div class="messages-list">
             {#each allMessages as message (message.id)}
-              <Message {message} isQueue={message.isQueue} streamContent={message.isStreaming ? streamContent : null} {toolResults} />
+              <Message
+                {message}
+                isQueue={message.isQueue}
+                streamContent={message.isStreaming ? streamContent : null}
+                {toolResults}
+                onChoiceRespond={handleChoiceRespond}
+              />
             {/each}
           </div>
         {/if}
