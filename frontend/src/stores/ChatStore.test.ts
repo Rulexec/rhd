@@ -60,6 +60,7 @@ describe('ChatStore', () => {
       generateChatTitle: vi.fn(),
       onChatListEvents: vi.fn(),
       addQueueMessage: vi.fn(),
+      addMessage: vi.fn().mockResolvedValue(undefined),
       subscribePluginsList: vi.fn(),
       getPlugins: vi.fn(),
       onPluginListEvents: vi.fn()
@@ -273,6 +274,22 @@ describe('ChatStore', () => {
 
     expect(cleanupEvents).toHaveBeenCalled();
     expect(cleanupQueueEvents).toHaveBeenCalled();
+  });
+
+  describe('addToolResult', () => {
+    it('should post a tool-role message with the toolCallId', async () => {
+      await store.addToolResult(1, 'call_42', 'Option A');
+
+      expect(mockChatApi.addMessage).toHaveBeenCalledWith(1, 'tool', 'Option A', 'call_42');
+      expect(store.error).toBe(null);
+    });
+
+    it('should set error and rethrow on failure', async () => {
+      vi.mocked(mockChatApi.addMessage).mockRejectedValueOnce(new Error('send failed'));
+
+      await expect(store.addToolResult(1, 'call_42', 'x')).rejects.toThrow('send failed');
+      expect(store.error).toBe('send failed');
+    });
   });
   
   describe('ChatStore streaming', () => {

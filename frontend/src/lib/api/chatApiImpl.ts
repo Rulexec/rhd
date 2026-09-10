@@ -283,6 +283,36 @@ export async function addQueueMessage(
   });
 }
 
+/**
+ * Add a message directly to a chat (bypassing the queue).
+ *
+ * Used to answer tool calls: `role: "tool"` requires a `toolCallId`
+ * (the server rejects it otherwise). The posted message is broadcast
+ * back via `messageAdded`, so stores update through the event — no
+ * optimistic local insert here.
+ *
+ * @param chatId - Chat ID
+ * @param role - Message role ("tool" for tool results)
+ * @param content - Message content
+ * @param toolCallId - For tool-role messages: the assistant tool call id being answered
+ * @param tags - Optional tags
+ */
+export async function addMessage(
+  chatId: number,
+  role: string,
+  content: string,
+  toolCallId?: string,
+  tags: string[] = []
+): Promise<void> {
+  await websocket.request('addMessage', {
+    chatId,
+    role,
+    content,
+    ...(toolCallId !== undefined ? { toolCallId } : {}),
+    tags
+  });
+}
+
 export interface QueueMessageEventHandlers {
   onQueueMessageAdded?: (data: QueueMessageAddedData) => void;
   onQueueMessageUpdated?: (data: QueueMessageUpdatedData) => void;

@@ -22,6 +22,7 @@ export interface ChatApi {
   onChatEvents: typeof chatApi.onChatEvents;
   getQueueMessages: typeof chatApi.getQueueMessages;
   addQueueMessage: typeof chatApi.addQueueMessage;
+  addMessage: typeof chatApi.addMessage;
   onQueueMessageEvents: typeof chatApi.onQueueMessageEvents;
   subscribePluginsList: typeof chatApi.subscribePluginsList;
   getPlugins: typeof chatApi.getPlugins;
@@ -51,6 +52,7 @@ export const defaultChatApi: ChatApi = {
   onChatEvents: chatApi.onChatEvents,
   getQueueMessages: chatApi.getQueueMessages,
   addQueueMessage: chatApi.addQueueMessage,
+  addMessage: chatApi.addMessage,
   onQueueMessageEvents: chatApi.onQueueMessageEvents,
   subscribePluginsList: chatApi.subscribePluginsList,
   getPlugins: chatApi.getPlugins,

@@ -306,6 +306,26 @@ export class ChatStore {
   }
 
   /**
+   * Answer an assistant tool call by posting a tool-role message.
+   *
+   * The server broadcasts `messageAdded` for it; `toolResults` (and any UI
+   * derived from it) updates reactively. Throws on failure so callers can
+   * keep their controls enabled for a retry.
+   *
+   * @param chatId - Chat ID
+   * @param toolCallId - The assistant tool call id being answered
+   * @param content - Plain-text result (chosen option text or user message)
+   */
+  *addToolResult(chatId: number, toolCallId: string, content: string): Generator<unknown, void, unknown> {
+    try {
+      yield* yieldPromise(this.#chatApi.addMessage(chatId, 'tool', content, toolCallId));
+    } catch (error) {
+      this.error = error instanceof Error ? error.message : String(error);
+      throw error;
+    }
+  }
+
+  /**
    * Clear the current chat and unsubscribe.
    */
   *clearChat(): Generator<unknown, void, unknown> {
