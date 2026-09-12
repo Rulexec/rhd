@@ -2,6 +2,11 @@ proxy:
   port: 1234
   target:
     path: https://example.org/raw/openrouter/v1
+    # Optional: sent as `Authorization: Bearer <token>` on every forwarded request.
+    # Either a literal string:
+    apiKey: sk-example-token
+    # ...or read from an environment variable:
+    # apiKey: { env: OPENROUTER_API_KEY }
   models:
     "z-ai/glm-5.3":
       extraBody:

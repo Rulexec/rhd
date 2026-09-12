@@ -13,6 +13,10 @@ requests. Streaming (SSE) responses are piped through unchanged.
    - Forwards all headers except `host`, `content-length`, and hop-by-hop headers
      (`connection`, `keep-alive`, `proxy-connection`, `te`, `trailer`, `transfer-encoding`, `upgrade`).
      The `Host` header is derived from the target URL automatically.
+   - When `proxy.target.apiKey` is configured, an `Authorization: Bearer <token>` header is
+     sent to the target on every request, replacing any `Authorization` header supplied by
+     the client. When no `apiKey` is configured, the client's `Authorization` header is
+     forwarded unchanged.
    - If the path is a completions endpoint (`/chat/completions` or `/completions`), the body is a
      JSON object, and its `model` matches a key in `proxy.models`, the model's `extraBody` keys are
      merged into the **top level** of the request body.
@@ -26,6 +30,9 @@ proxy:
   port: 1234
   target:
     path: https://example.org/raw/openrouter/v1
+    # Optional: sent as `Authorization: Bearer <token>` on every forwarded request.
+    # Accepts a literal string or `{ env: "VAR_NAME" }` to read from the environment.
+    apiKey: sk-example-token
   models:
     "z-ai/glm-5.3":
       extraBody:
@@ -34,8 +41,9 @@ proxy:
           max_price: {"prompt": 1, "completion": 2}
 ```
 
-- Parsing is strict: unknown fields are rejected, and keys are camelCase (`extraBody`).
+- Parsing is strict: unknown fields are rejected, and keys are camelCase (`extraBody`, `apiKey`).
 - `target.path` must be an absolute `http(s)` URL.
+- `target.apiKey` is optional. When set, it overrides any client-supplied `Authorization` header.
 - `models` is optional; model keys are matched exactly against the request body's `model` field.
 
 See [`proxy.example.yaml`](proxy.example.yaml).

@@ -15,7 +15,7 @@ use serde_json::{json, Value};
 use tokio::net::TcpListener;
 use tokio::sync::{oneshot, Mutex};
 
-use rhd_ai_proxy::config::{ModelConfig, Proxy as ProxyConfig, Target};
+use rhd_ai_proxy::config::{ApiKey, ModelConfig, Proxy as ProxyConfig, Target};
 use rhd_ai_proxy::proxy::{build_router, ProxyState};
 
 // ─── Echo upstream ───
@@ -128,9 +128,20 @@ fn target_base(addr: SocketAddr) -> String {
 }
 
 async fn spawn_proxy(target_path: String, models: HashMap<String, ModelConfig>) -> u16 {
+    spawn_proxy_with_key(target_path, models, None).await
+}
+
+async fn spawn_proxy_with_key(
+    target_path: String,
+    models: HashMap<String, ModelConfig>,
+    api_key: Option<String>,
+) -> u16 {
     let config = ProxyConfig {
         port: 0,
-        target: Target { path: target_path },
+        target: Target {
+            path: target_path,
+            api_key: api_key.map(ApiKey::Literal),
+        },
         models,
     };
     let state = Arc::new(ProxyState::new(&config).unwrap());
@@ -307,4 +318,98 @@ async fn returns_bad_gateway_when_upstream_unreachable() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+}
+
+#[tokio::test]
+async fn injects_configured_api_key_as_bearer_header() {
+    let upstream = EchoUpstream::new();
+    let addr = spawn_upstream(Router::new().fallback(echo_handler).with_state(upstream.clone())).await;
+    let proxy_port =
+        spawn_proxy_with_key(target_base(addr), HashMap::new(), Some("sk-configured".to_string())).await;
+
+    let response = reqwest::Client::new()
+        .post(format!(
+            "http://127.0.0.1:{proxy_port}/v1/chat/completions"
+        ))
+        .json(&json!({"model": "gpt-4o", "messages": []}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let received = upstream.received_request().await;
+    assert_eq!(
+        received.header("authorization"),
+        Some("Bearer sk-configured")
+    );
+}
+
+#[tokio::test]
+async fn configured_api_key_overrides_client_supplied_authorization() {
+    let upstream = EchoUpstream::new();
+    let addr = spawn_upstream(Router::new().fallback(echo_handler).with_state(upstream.clone())).await;
+    let proxy_port =
+        spawn_proxy_with_key(target_base(addr), HashMap::new(), Some("sk-configured".to_string())).await;
+
+    let response = reqwest::Client::new()
+        .post(format!(
+            "http://127.0.0.1:{proxy_port}/v1/chat/completions"
+        ))
+        .header("authorization", "Bearer client-supplied")
+        .json(&json!({"model": "gpt-4o", "messages": []}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let received = upstream.received_request().await;
+    assert_eq!(
+        received.header("authorization"),
+        Some("Bearer sk-configured")
+    );
+}
+
+#[tokio::test]
+async fn passes_through_client_authorization_when_no_api_key_configured() {
+    let upstream = EchoUpstream::new();
+    let addr = spawn_upstream(Router::new().fallback(echo_handler).with_state(upstream.clone())).await;
+    let proxy_port = spawn_proxy(target_base(addr), HashMap::new()).await;
+
+    let response = reqwest::Client::new()
+        .post(format!(
+            "http://127.0.0.1:{proxy_port}/v1/chat/completions"
+        ))
+        .header("authorization", "Bearer client-supplied")
+        .json(&json!({"model": "gpt-4o", "messages": []}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let received = upstream.received_request().await;
+    assert_eq!(
+        received.header("authorization"),
+        Some("Bearer client-supplied")
+    );
+}
+
+#[tokio::test]
+async fn injects_api_key_on_non_completions_path_too() {
+    let upstream = EchoUpstream::new();
+    let addr = spawn_upstream(Router::new().fallback(echo_handler).with_state(upstream.clone())).await;
+    let proxy_port =
+        spawn_proxy_with_key(target_base(addr), HashMap::new(), Some("sk-configured".to_string())).await;
+
+    let response = reqwest::Client::new()
+        .get(format!("http://127.0.0.1:{proxy_port}/v1/models"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let received = upstream.received_request().await;
+    assert_eq!(
+        received.header("authorization"),
+        Some("Bearer sk-configured")
+    );
 }

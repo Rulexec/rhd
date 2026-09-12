@@ -21,6 +21,9 @@ pub struct ProxyState {
     client: reqwest::Client,
     target_base: Url,
     models: HashMap<String, ModelConfig>,
+    /// Resolved API key token, if configured. Sent as `Authorization: Bearer <token>`
+    /// on every forwarded request, overriding any client-supplied `Authorization` header.
+    api_key: Option<String>,
 }
 
 impl ProxyState {
@@ -29,6 +32,7 @@ impl ProxyState {
             client: reqwest::Client::new(),
             target_base: config.target_url()?,
             models: config.models.clone(),
+            api_key: config.api_key()?,
         })
     }
 }
@@ -65,11 +69,20 @@ async fn handle_proxy(State(state): State<Arc<ProxyState>>, request: Request) ->
     }
 
     let mut builder = state.client.request(parts.method, target_url.clone());
+    let has_api_key = state.api_key.is_some();
     for (name, value) in parts.headers {
         let Some(name) = name else { continue };
+        // When an API key is configured it is injected as `Authorization: Bearer <token>`
+        // below, so drop any client-supplied `authorization` header to avoid sending both.
+        if has_api_key && name.as_str() == "authorization" {
+            continue;
+        }
         if is_forwardable_request_header(&name) {
             builder = builder.header(name, value);
         }
+    }
+    if let Some(token) = &state.api_key {
+        builder = builder.header("authorization", format!("Bearer {token}"));
     }
 
     match builder.body(outcome.body).send().await {
