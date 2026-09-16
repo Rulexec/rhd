@@ -3,15 +3,15 @@
 ## Planning
 
 - Implementation plans saved to `plans/` folder as markdown files
-- Plan naming: `<feature>-plan.md` or `<feature>-plan-<n>.md` for iterations
+- Plan naming: descriptive file names per [MEMORY.md](MEMORY.md) conventions, e.g. `<feature>-plan.md`
 - Plans should include: goal, architecture, implementation steps, file changes, risks, success criteria
 
 ## Code Organization
 
 - All crates prefixed with `rhd_`
 - Shared dependencies managed in workspace root `Cargo.toml`
-- Strict YAML parsing with `deny_unknown_fields`
-- Field names use camelCase in YAML, snake_case in Rust structs (via `#[serde(rename_all = "camelCase")]`)
+- Strict YAML parsing with `deny_unknown_fields` (chat server args, plugin configs)
+- Field names use camelCase in YAML/JSON, snake_case in Rust structs (via `#[serde(rename_all = "camelCase")]`)
 
 ### File Size Limits
 
@@ -49,44 +49,20 @@ See [backend-e2e.md](backend-e2e.md)
 
 - `cargo build` for compilation
 - `cargo test` for unit tests
-- Daemon validates models and scenarios at startup
+- Plugin configs are validated at startup (model map, `default` model, credentials must resolve)
 
 ## Committing
 
 - Commit messages should be short and descriptive, inferred from the work completed
 - Format: lowercase, no period, concise summary of changes
-- Examples: "add seeded rng for e2e tests", "fix placeholder resolution bug", "update daemon shutdown logic"
+- Examples: "add seeded rng for e2e tests", "fix stream subscription race", "handle plugin disconnect in status tracker"
 - Always use `git add -A` to stage all changes before committing
-
-## Important Conventions
-
-1. **Placeholder resolution**: Missing values resolve to empty string, not errors. Exception: flag placeholders (`%step.flag_name%`) resolve to "false" when flag not set
-2. **runCommand behavior**: Captures exit code + stdout/stderr, never fails scenario
-3. **aiChat behavior**: Resolves placeholders in systemPrompt and message before API call
-4. **output behavior**: Resolves placeholders in template, returns final string
-5. **Model loading**: Filename (without extension) becomes model name in HashMap
-6. **Scenario loading**: Directory name is scenario identifier (used as HashMap key), `scenario.yaml` contains definition
-7. **Socket cleanup**: Daemon removes stale socket file on startup
-8. **Graceful shutdown**: Daemon handles SIGTERM/SIGINT for clean shutdown
-9. **CWD propagation**: `rhd run` sends its cwd to daemon; commands execute in client's cwd unless overridden in scenario
-10. **Socket path**: Default socket location is `$HOME/rhd.sock`; both daemon and client accept `--socket` flag for custom location
 
 ## Error Handling
 
-- Daemon stays alive on scenario errors
-- Client exits with code 0 on success, 1 on error, 2 on abort
-- All errors include context (file path, line number, step name)
-- Model validation at daemon startup (exits if invalid)
-
-## Scenario ID Persistence
-
-- Scenario execution IDs are persisted in SQLite database to survive daemon restarts
-- Database location: `<dbDir>/meta.db` (default: `rhd_db/meta.db`)
-- Single table `meta` with column `nextScenarioId` (INTEGER)
-- IDs are atomically incremented using SQLite transactions
-- WAL mode enabled for better concurrency and crash recovery
-- Database directory is created automatically if it doesn't exist
-- Fails fast if database cannot be opened or accessed
+- Chat server stays alive on per-connection and per-plugin errors
+- All errors include context (file path, chat id, plugin id)
+- Plugin config validation fails fast (missing `default` model, unresolved alias, missing credential)
 
 ## Plugin Development
 

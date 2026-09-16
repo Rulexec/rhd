@@ -23,9 +23,8 @@ For integration testing, use the CLI tool (`rhd_app`) with `rhd_chat_server`:
 2. Use CLI commands to create chats, queue messages, and verify responses
 3. Check server logs for plugin activity
 
-See [features/cli.md](frontend/features/cli.md) for CLI usage details.
+See [features/cli.md](features/cli.md) for CLI usage details.
 
-## Test Data
+## Plugin E2E Tests
 
-- Test models: `test_e2e/models/*.yaml`
-- Test projects: `test_e2e/projects/`
+Integration tests live in plugin `tests/` directories (e.g. `plugins/rhd_plugin_ai_completions/tests/tool_call_e2e_test.rs`) and drive the mock AI provider (`packages/rhd_mock_ai_provider`) against a real chat server. See [features/testing.md](features/testing.md) for the test infrastructure from the product view.

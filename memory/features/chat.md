@@ -1,7 +1,7 @@
 # Chat
 
 ## Purpose
-Persistent conversational interface for direct AI interaction. Users create chats, send messages, receive streaming responses, and can edit/resend previous messages. All conversations persist across daemon restarts.
+Persistent conversational interface for direct AI interaction. Users create chats, send messages, receive streaming responses, and can edit/resend previous messages. All conversations persist across server restarts.
 
 ## Frontend UI
 
@@ -124,18 +124,9 @@ Persistent conversational interface for direct AI interaction. Users create chat
 
 ### Chat Lifecycle
 1. User creates a new chat with a title
-2. User selects a model from available models list
-3. User sends messages; AI responds with streaming text
-4. User can edit previous messages — this truncates the conversation after that point and resends to AI
-5. User can abort streaming responses mid-generation
-6. Reopening a chat restores the same model selection
-
-### Model Selection
-- Model selector dropdown appears under message input
-- Available models fetched from daemon (real models only, not aliases)
-- Selected model persists per chat — reopening chat shows same model
-- Visual indicators in chat history show when model changes between messages
-- Model indicators are visual-only, not sent to AI context
+2. User sends messages; the AI completions plugin responds with streaming text (model comes from the plugin's configured `default`)
+3. User can edit previous messages — this truncates the conversation after that point and resends to AI
+4. User can abort streaming responses mid-generation
 
 ### Streaming Responses
 - AI responses stream token-by-token
@@ -217,7 +208,7 @@ AI responses are streamed through the chat server via a plugin-driven streaming 
 - User can edit their own messages
 - Editing truncates all messages after the edited message
 - AI regenerates response from the edited point forward
-- Model used for regeneration is the chat's active model
+- Model used for regeneration is the plugin's configured default model
 
 ### Abort
 - User can abort streaming response mid-generation

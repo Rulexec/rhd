@@ -2,117 +2,49 @@
 
 ## Overview
 
-Templates are markdown and JSON files used for rendering dynamic content in the RHD system. They are embedded into the binary at compile time using Rust's `include_str!` macro, eliminating runtime file I/O and path resolution issues.
+Templates are markdown and JSON files in the shared top-level `templates/` directory, used for tool definitions, contracts, and prompt rendering. Each consumer plugin embeds the whole directory at compile time with `include_dir!` (`$CARGO_MANIFEST_DIR/../../templates`) and loads the specific files it needs — no runtime file I/O or path resolution.
 
 ## Architecture
 
-### Compile-Time Template Registry
+- **Compile-time embedding**: `include_dir!` embeds `templates/` into the plugin binary; missing files fail at compile time.
+- **Per-plugin loaders**: there is no central TemplateLoader. Each plugin has its own `templates.rs`:
+  - `plugins/rhd_plugin_todo_list/src/templates.rs` — `Templates::load()` + typed accessors, renders via `{placeholder}` string replacement
+  - `plugins/rhd_plugin_choice/src/templates.rs` — loads the `rhd_choice` tool definition
+- **Template names** are the relative paths inside `templates/` (e.g. `mcp_internal/rhd_set_todo_list/tool_definition.json`).
 
-Templates are loaded at compile time via the `TemplateRegistry` in [`packages/rhd_app/src/templates.rs`](../../../packages/rhd_app/src/templates.rs). This approach provides:
-
-- **No runtime dependencies**: Templates are embedded in the binary
-- **Faster startup**: No file I/O at initialization
-- **Simpler deployment**: Single binary contains everything
-- **Type safety**: Compile-time errors if template files are missing
-- **Better performance**: Templates are in static memory, no heap allocation for storage
-
-### TemplateLoader
-
-The [`TemplateLoader`](../../../packages/rhd_app/src/template_loader.rs) provides a simple interface for accessing and rendering templates:
-
-```rust
-pub struct TemplateLoader;
-
-impl TemplateLoader {
-    pub fn new() -> Self;
-    pub fn get_template(&self, name: &str) -> Option<&'static str>;
-}
-```
-
-## Folder Structure
-
-Templates are organized into logical folders based on their purpose:
+## Folder Structure & Consumers
 
 ```
 templates/
-├── mcp_internal/           # MCP tool definitions and contracts
-│   ├── rhd_set_todo_list/
+├── mcp_internal/                   # Tool definitions and contracts
+│   ├── rhd_choice/                 # → used by rhd_plugin_choice
+│   ├── rhd_set_todo_list/          # → used by rhd_plugin_todo_list
 │   │   ├── tool_definition.json
-│   │   └── contract.md
-│   ├── rhd_set_role/
-│   │   └── tool_definition.json
-│   └── rhd_set_flag/
-│       └── tool_definition.json
-├── environment/            # Environment details and todo list templates
-│   ├── details_no_role.md
-│   ├── details_with_role.md
-│   ├── todo_list_empty.md
-│   └── todo_list_with_items.md
-└── roles/                  # Role-related prompts
-    ├── roles_list_prompt.md
-    └── role_switch_prompt.md
+│   │   ├── contract.md
+│   │   └── tool_error_invalid_format.md
+│   ├── rhd_set_flag/               # ⚠ legacy vestige (scenario-era, unused)
+│   └── rhd_set_role/               # ⚠ legacy vestige (unused)
+└── environment/                    # Prompt injection templates
+    ├── todo_list_empty.md          # → used by rhd_plugin_todo_list
+    ├── todo_list_with_items.md     # → used by rhd_plugin_todo_list
+    ├── details_no_role.md          # ⚠ legacy vestige (unused)
+    └── details_with_role.md        # ⚠ legacy vestige (unused)
 ```
 
-## Available Templates
-
-### MCP Internal Tools
-
-| Template Path | Purpose |
-|---------------|---------|
-| `mcp_internal/rhd_set_todo_list/tool_definition` | Tool definition JSON for rhd_set_todo_list |
-| `mcp_internal/rhd_set_todo_list/contract` | Contract documentation for rhd_set_todo_list |
-| `mcp_internal/rhd_set_role/tool_definition` | Tool definition JSON for rhd_set_role |
-| `mcp_internal/rhd_set_flag/tool_definition` | Tool definition JSON for rhd_set_flag |
-
-### Environment Templates
-
-| Template Path | Purpose |
-|---------------|---------|
-| `environment/details_no_role` | Environment details without active role |
-| `environment/details_with_role` | Environment details with active role |
-| `environment/todo_list_empty` | Empty todo list prompt |
-| `environment/todo_list_with_items` | Todo list with items template |
-
-### Role Templates
-
-| Template Path | Purpose |
-|---------------|---------|
-| `roles/roles_list_prompt` | Roles list injection template |
-| `roles/role_switch_prompt` | Role switch notification template |
+`templates/roles/` (`roles_list_prompt.md`, `role_switch_prompt.md`) is also a legacy vestige with no code consumers.
 
 ## Adding New Templates
 
-To add a new template:
-
-1. Create a new file in the appropriate folder:
-   - MCP tool definitions: `templates/mcp_internal/<tool_name>/`
-   - Environment templates: `templates/environment/`
-   - Role templates: `templates/roles/`
-
-2. Add the template to the `TemplateRegistry::get()` match statement in [`packages/rhd_app/src/templates.rs`](../../../packages/rhd_app/src/templates.rs)
-
-3. Rebuild the project to embed the new template
+1. Create the file under `templates/` in the appropriate folder
+2. Add the path constant + load + accessor in the consuming plugin's `templates.rs`
+3. Rebuild — `include_dir!` picks up the new file automatically
 
 ## Placeholder Syntax
 
-Templates support placeholder substitution using the `{placeholderName}` syntax. Placeholders are replaced with values during rendering.
-
-Example template:
-```markdown
-# Todo List
-
-{todoItems}
-
-Current Role: {currentRoleName}
-```
+Rendering is simple `String::replace` of `{placeholderName}` tokens (e.g., `{todoItems}` in `todo_list_with_items.md`).
 
 ## Usage
 
-Templates are used throughout the application for:
-
-- **Tool Definitions**: Providing AI models with tool usage instructions (JSON format)
-- **Environment Details**: Injecting system context into AI prompts
-- **Todo List Rendering**: Displaying todo items in a formatted table
-- **Role Prompts**: Managing role switching and role list injection
-
-The `TemplateLoader` is initialized in the daemon and passed to components that need template access via `Arc<TemplateLoader>`.
+- **Tool definitions**: JSON schemas registered by plugins so AI models can call their tools
+- **Contracts**: system-message documentation injected into tagged chats (todo list)
+- **Todo list rendering**: formatted task tables injected into AI context

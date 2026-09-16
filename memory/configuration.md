@@ -1,157 +1,39 @@
 # Configuration
 
-## Environment Variable Substitution
+Implementation view of configuration handling. For the product-view of config files see [features/configuration.md](features/configuration.md).
 
-Model configs and scenario YAMLs support `$ENV_VAR` syntax in string values. At load time, all `$VAR_NAME` patterns (alphanumeric + underscore) are replaced with the corresponding environment variable value. If the variable is not set, the original `$VAR_NAME` string is kept as-is.
+There is no global `rhd.yaml` daemon config anymore — each component takes its own CLI args and/or YAML file.
 
-Example:
-```yaml
-baseUrl: "http://localhost:$E2E_MODEL_PORT/v1"
-cmd: "$E2E_SCRIPTS_DIR/run.sh"
-```
+## `rhd start` — Process Supervisor Config
 
-## Model Config (`models/*.yaml`)
+`packages/rhd_app/src/commands/start.rs`: `StartConfig { children: Vec<ChildConfig> }`, `ChildConfig { name, cmd, cwd?, args? }` (serde_yaml). Relative `cwd` resolves against the config file's directory. Child stdout/stderr are forwarded with `[name]` prefixes.
 
-```yaml
-baseUrl: "https://api.openai.com/v1"
-apiKey: "sk-..."          # Plain string, credential reference, or env var
-model: "gpt-4"
-inputTokenPrice: 5.0      # Optional: price per 1M tokens
-outputTokenPrice: 15.0    # Optional: price per 1M tokens
-priceTiers:               # Optional: tiered pricing
-  - afterTokens: 250000
-    inputTokenPrice: 10.0
-    outputTokenPrice: 30.0
-```
+## Chat Server
 
-**Important**: The filename (without extension) is used as the model identifier in logs, meta.json, and scenario references. The `model` field is only used for API calls. For example, `models/gpt4.yaml` with `model: "gpt-4"` will be referenced as `gpt4` in scenarios and logs, while `gpt-4` is sent to the API. For aliases, the resolved target name is used in logs (e.g., `small.yaml` with `alias: other_model` logs as `other_model`).
+`packages/rhd_chat_server/src/config.rs`: clap `Config { host, port, db_path, clear_pending_acks }`. Defaults: `127.0.0.1:8080`, `./rhd_db` (creates `chats.db` inside). `--clear-pending-acks` deletes pending custom-event acknowledgments before startup (recovery utility).
 
-## Model Alias
+## AI Completions Plugin
 
-A model config file can contain only an `alias` field to reference another model:
-```yaml
-alias: gpt4
-```
-This creates an alias named after the filename (e.g., `medium.yaml` with `alias: gpt4` creates a `medium` alias that resolves to the `gpt4` model). In logs and meta.json, the resolved target name is shown (e.g., `medium` alias logs as `gpt4`). Aliases can chain (alias pointing to another alias), but circular references are not allowed.
+`plugins/rhd_plugin_ai_completions/src/config.rs`:
 
-## CLI Model Alias Override
+- `PluginConfig { credentialsConfig: String, ai_completions: AiCompletionsConfig }`
+- `AiCompletionsConfig { models: HashMap<String, ModelConfig> }`
+- `ModelConfig { alias?, baseUrl?, apiKey?: ApiKeyConfig { cred }, model?, sendReasoningContent? (default true) }`
+- `load_config(path)`: parses YAML, resolves `credentialsConfig` relative to the config file, validates a `default` model exists, and validates alias targets resolve. `ConfigError` variants: MainConfigFileRead, CredentialsFileRead, Parse, Validation.
+- `load_credentials(path)` + `resolve_api_key(config, cred_name)`: credentials file is a flat `HashMap<String, String>` (name → key); missing credential is a validation error.
 
-The `rhd run` command supports `--modelAlias ALIAS=TARGET` to override model names at runtime:
-```bash
-rhd run example --modelAlias medium=gpt4 --modelAlias small=qwen3
-```
-This replaces all occurrences of `medium` with `gpt4` and `small` with `qwen3` in aiChat steps. CLI aliases apply after YAML alias resolution, so they can override both direct model names and YAML-resolved aliases.
+## System Prompt Plugin
 
-## API Key Forms
+`plugins/rhd_plugin_system_prompt/src/config.rs`: `PluginConfig { systemPrompts: map name → file path }`. Relative paths resolve against the config file's directory; prompts are cached at startup (`CachedPrompt`), missing files fail startup.
 
-The `apiKey` field supports three forms:
-1. **Plain string**: `apiKey: "sk-..."` - used as-is
-2. **Credential reference**:
-   ```yaml
-   apiKey:
-     cred: myApiKey
-   ```
-   References a key in the credentials file (see Credentials Configuration below)
-3. **Environment variable** (full replacement only): `apiKey: "$MY_API_KEY"` - entire value replaced with env var
+## MCP Plugin
 
-**Note**: Partial environment variable substitution (e.g., `apiKey: "sk-$MY_KEY"`) is NOT supported for apiKey. The string must be exactly `"$VAR_NAME"` to trigger env var lookup. If the environment variable is not set or empty, the daemon will fail to start.
+`plugins/rhd_plugin_mcp/src/config.rs`: `PluginConfig { servers: Vec<ResolvedServer> }`; entries (`McpServerEntry`) carry `id?`, `name`, `cmd`, `args`, `cwd?`, `env`, `registerOnTag?`. Strict parsing via `deny_unknown_fields`.
 
-## CLI Usage
+## AI Proxy
 
-```bash
-# Start daemon
-rhd daemon [--config rhd.yaml] [--models-dir models] [--scenarios-dir scenarios] [--mcp-dir mcp] [--default-model name] [--logs logs] [--socket PATH] [--ws-port PORT] [--db-dir DIR]
+`packages/rhd_ai_proxy/src/config.rs`: YAML config with `Proxy`, `Target`, `EnvApiKey`, `ModelConfig` structs; strict parsing via `deny_unknown_fields`.
 
-# Run scenario
-rhd run <scenario_name> [--socket PATH] [--modelAlias ALIAS=TARGET]
+## CLI (`rhd_app`)
 
-# Reload configuration
-rhd reload [--socket PATH]
-```
-
-By default, the socket is located at `$HOME/rhd.sock`. The `--socket` flag allows specifying a custom socket path.
-The `--ws-port` flag enables WebSocket server on the specified port (optional).
-The `--db-dir` flag specifies the directory for the SQLite database (default: `rhd_db`).
-
-The `reload` command reloads all configuration files (scenarios, models, MCP servers, projects) without restarting the daemon. It waits for active executions to complete, then reloads configs and restarts MCP servers whose configuration has changed.
-
-## Configuration File (`rhd.yaml`)
-
-The daemon can be configured via a YAML file (default: `rhd.yaml` in current directory). CLI arguments override config file values.
-
-```yaml
-modelsDir: models
-scenariosDir: scenarios
-mcpDir: mcp
-defaultModel: null
-logs: null
-logChats: null
-logChatsRaw: false
-wsPort: null
-dbDir: rhd_db
-credentialsConfig: null   # Optional: path to credentials file
-```
-
-- `modelsDir`: Directory containing model YAML files (default: `models`)
-- `scenariosDir`: Directory containing scenario folders (default: `scenarios`)
-- `mcpDir`: Directory containing MCP server configurations (default: `mcp`)
-- `defaultModel`: Fallback model for `aiChat` steps without `model` field (default: `null`)
-- `logs`: Directory for execution logs (default: `null`, no logging)
-- `logChats`: Directory for chat interaction logs (default: `null`, no logging)
-- `logChatsRaw`: Enable raw API request/response logging to `raw.txt` alongside `log.txt` (default: `false`). Requires `logChats` to be set.
-- `wsPort`: WebSocket server port (default: `null`, disabled)
-- `dbDir`: Directory for SQLite database (default: `rhd_db`, creates `meta.db` inside)
-- `credentialsConfig`: Path to credentials file (default: `null`, optional). Path is resolved relative to the config file location.
-
-## Credentials Configuration
-
-The credentials feature allows separating sensitive API keys from model configurations, enabling safe sharing of `rhd.yaml` and scenario files without leaking secrets.
-
-**Credentials file format** (`credentials.yaml`):
-```yaml
-myApiKey: "sk-..."
-anotherKey: "secret123"
-```
-
-**Usage in rhd.yaml**:
-```yaml
-credentialsConfig: ../credentials.yaml
-modelsDir: models
-scenariosDir: scenarios
-```
-
-**Behavior**:
-- If `credentialsConfig` is specified and the file does not exist, the daemon exits with an error
-- If `credentialsConfig` is not specified, no error occurs (credentials are optional)
-- Path is resolved relative to the `rhd.yaml` file location
-- Credentials can be referenced in model configs using `apiKey: { cred: keyName }`
-
-**Example**: Secure configuration sharing
-```
-project/
-├── rhd.yaml              # Can be committed to git
-├── credentials.yaml      # Add to .gitignore
-├── models/
-│   └── gpt4.yaml         # References credentials
-└── scenarios/
-    └── my_scenario/
-        └── scenario.yaml
-```
-
-In `rhd.yaml`:
-```yaml
-credentialsConfig: ./credentials.yaml
-```
-
-In `models/gpt4.yaml`:
-```yaml
-baseUrl: "https://api.openai.com/v1"
-apiKey:
-  cred: openaiKey
-model: "gpt-4"
-```
-
-In `credentials.yaml` (not committed):
-```yaml
-openaiKey: "sk-actual-api-key-here"
-```
+`packages/rhd_app/src/cli.rs`: clap subcommands for chat ops, `messages`, `queue`, `create-chat`, plugins, tag management, and `start <config>`. Connects to `ws://127.0.0.1:8080/` via `rhd_chat_client`. Outputs JSON.

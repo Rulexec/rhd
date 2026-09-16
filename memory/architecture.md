@@ -8,24 +8,22 @@
 - Provides streaming chat completions with tool support
 
 **rhd_db**:
-- `ScenarioDb`: SQLite database wrapper for persisting scenario execution IDs
 - `ChatDb`: SQLite database wrapper for chat persistence (chats and messages)
 - Uses WAL mode for better concurrency and crash recovery
 - Thread-safe via `Mutex<Connection>`
-- `next_id()`: Atomically retrieves and increments the next scenario ID
+- (Legacy: `ScenarioDb` next-ID counter remains in `lib.rs` but has no consumers)
 - Chat operations: `create_chat()`, `list_chats()`, `get_chat()`, `delete_chat()`, `update_chat_title()`, `touch_chat()`
 - Message operations: `add_message()`, `get_messages()`, `get_message()`, `truncate_messages()`, `update_message()`
 - Plugin state operations (`chat_db/plugin_states.rs`): `upsert_plugin_state()` (fresh insert → version 1, update bumps version and clears tombstone), `remove_plugin_state()` (tombstone + version bump, `None` if nothing live), `get_plugin_states()` (live rows, optional plugin/schema filters), `get_plugin_state()` (single row including tombstones, for subscribe catch-up)
 - `plugin_states` table: PK `(plugin_id, key)`, columns `content`, `format` (CHECK `markdown`|`json`), `schema`, `version` (server-managed, monotonic across update/remove/re-create), `is_removed` tombstone, `updated_at`; FK `plugin_id → plugins(plugin_id) ON DELETE CASCADE`; index on `schema`
-- Database files: `<dbDir>/meta.db` (scenarios), `<dbDir>/chats.db` (chats)
+- Database file: `<dbDir>/chats.db` (chats)
 
 **rhd_mcp_client**:
 - `McpConfig`: MCP server configuration (cmd, args, cwd, env)
 - `McpClient`: MCP client implementation with stdio transport
 - `ToolDefinition`, `ToolResult`: Tool types for MCP protocol
 - `McpClientTrait`: Trait for MCP client implementations
-- Built-in tools support (e.g., `rhd_set_flag`)
-- `pid()`: Returns PID of spawned MCP server process (for logging during reload)
+- (Legacy: `BuiltinTools`/`rhd_set_flag` and `pid()` remain in the crate but have no consumers)
 
 **rhd_chat_api**:
 - API types for chat WebSocket protocol

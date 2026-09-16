@@ -1,78 +1,45 @@
 # Protocols
 
-## IPC Protocol
+JSON over WebSocket between clients (frontend, CLI, plugins via `rhd_chat_client`) and `rhd_chat_server`. The default endpoint is `ws://127.0.0.1:8080` (server flags `--host`/`--port`).
 
-- Unix socket at `$HOME/rhd.sock` by default (configurable via `--socket`)
-- Message format: 4-byte version + 4-byte length + rkyv payload
-- Protocol version: 1
-- **Each message** (request or response) includes version prefix
-- Request: `IpcRequest::RunScenario { name: String, cwd: String }`, `IpcRequest::Reload`
-- Response: `IpcResponse::Success { output: String }`, `IpcResponse::Error { message: String }`, `IpcResponse::Aborted`, `IpcResponse::Paused { error: String, step: String }`, or `IpcResponse::Reloaded { scenarios_reloaded, models_reloaded, mcp_restarted, mcp_stopped, projects_reloaded }`
-- Multi-response support: `handle_request` returns `Vec<IpcResponse>` for scenarios that pause then resume
+All message type/event names use **camelCase** (e.g., `pluginStateChanged`, not `pluginstatechanged`).
 
-## WebSocket Protocol
+## Message Envelopes
 
-- Optional TCP listener on `127.0.0.1:{ws_port}` (configurable via `--ws-port` or `wsPort` in config)
-- JSON over WebSocket for web-friendly integration
-- **Client → Server requests**:
-  - `runScenario`: Execute a scenario
-  - `subscribe`: Subscribe to execution events (returns list of currently active executions)
-  - `getFinishedScenarios`: Get list of finished scenarios from meta.json. Accepts optional `lastId` parameter to fetch only scenarios with id > lastId (for incremental updates)
-  - `abortScenario`: Abort an active scenario execution by execution ID
-  - `createChat`: Create a new chat with title
-  - `listChats`: Get list of all chats (sorted by updated_at DESC)
-  - `getChat`: Get chat info and messages by chat_id
-  - `deleteChat`: Delete a chat and all its messages
-  - `sendMessage`: Send a message to a chat and stream AI response
-  - `editMessage`: Edit a user message, truncate subsequent messages, and re-stream AI response
-  - `abortChat`: Abort an active streaming response in a chat
-  - `getAvailableModels`: Get list of available models (real models only, excludes aliases)
-  - `streamPush`: Push streaming content deltas to an active stream. Params: `chatId`, `reasoningContent?`, `content?`, `toolCalls?`. Result: `{ success: true }`.
-  - `streamSubscribe`: Subscribe to a stream and get current accumulated content. Params: `chatId`. Result: `{ reasoningContent, content, toolCalls, isFinished }`. Also subscribes the caller to `streamChunk` events.
-  - `streamFinish`: Finish an active stream. Params: `chatId`, `reasoningContent?`, `content?`, `toolCalls?`. Result: `{ success: true }`.
-- **Server → Client responses**: Request responses with success/error status
-- **Server → Client events**: Real-time execution events (scenarioStarted, stepStarted, scenarioFinished, scenarioPaused, scenarioResumed)
-  - All event names use **camelCase** (e.g., `scenarioStarted`, not `scenariostarted`)
-  - `scenarioFinished` event data uses same `ScenarioMeta` format as `getFinishedScenarios` response items
-  - `scenarioPaused` emitted when scenario pauses on AI error (includes executionId, error, stepName, availableModels)
-  - `scenarioResumed` emitted when retry starts (includes executionId)
-- **Chat streaming events**:
-  - `chatStreamChunk`: Contains `chatId` and `content` (incremental text)
-  - `chatThinkingChunk`: Contains `chatId` and `content` (incremental thinking/reasoning content)
-  - `chatStreamFinished`: Contains `chatId`, `messageId`, and `finishReason`
-  - `chatStreamError`: Contains `chatId` and `error` message
-  - `chatMessageAdded`: Contains `chatId` and `message` object (user, assistant, or system message persisted)
-  - `chatUpdated`: Contains `chatId` and `title` (when chat title changes)
-  - `chatToolCallStarted`: Contains `chatId`, `toolCallId`, `toolName`, `arguments`, `mcpId`
-  - `chatToolCallCompleted`: Contains `chatId`, `toolCallId`, `result`
-  - `chatPaused`: Contains `chatId` (chat paused during tool loop)
-  - `chatResumed`: Contains `chatId` (chat resumed from pause)
-  - `todoListUpdated`: Contains `chatId` and `items` array (todo list updated by AI tool call)
-  - `roleChanged`: Contains `chatId`, `projectName`, `roleName` (active role changed)
-  - `rolesUpdated`: Contains `chatId` (roles list updated when project attached/detached)
-  - `activeRoleCleared`: Contains `chatId` (active role cleared)
-  - `streamChunk`: Contains `chatId`, `type` (reasoningDelta/contentDelta/toolCallDelta), and delta content. Sent to chat subscribers when new content is pushed to a stream.
-  - `streamFinished`: Contains `chatId`. Sent when a stream completes.
-- Multiple subscribers supported via broadcast channels (separate for execution events and chat events)
+Defined in `packages/rhd_chat_api/src/protocol.rs`:
 
-## CWD Propagation
+- **Request** (client → server): `{ "type": "request", "id": "<uuid>", "method": "<name>", "params": {…} }`
+- **Response** (server → client): `{ "type": "response", "id": "<uuid>", "success": true, "data": {…} }` — matched to request by `id`; errors carry an error status/message instead
+- **Event** (server → client): `{ "type": "event", "event": "<name>", "data": {…} }` — pushed to subscribed connections
 
-- `rhd run` captures its current working directory and sends it to the daemon via IPC
-- Commands execute in the client's cwd by default (when `cwd` not explicitly set in scenario YAML)
-- If `cwd` is set in scenario YAML, it takes precedence over client's cwd
-- The resolved cwd for each `runCommand` step is stored in `StepResult.cwd` and accessible via `%stepName.cwd%` placeholder
-- E2E tests run daemon and client in separate directories to verify cwd propagation works correctly
+## Methods
 
-## Reload Command
+Source of truth: `packages/rhd_chat_api/src/methods/`.
 
-```bash
-rhd reload [--socket PATH]
-```
+- **Chats**: `createChat`, `listChats`, `getChat`, `updateChat`, `deleteChat`
+- **Messages**: `addMessage`, `getMessages`, `updateMessage`, `deleteMessage`
+- **Queue**: `addQueueMessage`, `getQueueMessages`, `updateQueueMessage`, `deleteQueueMessage`
+- **Subscriptions**: `subscribeChat`/`unsubscribeChat`, `subscribeChatsList`/`unsubscribeChatsList`, `subscribePluginsList`/`unsubscribePluginsList`
+- **Streams** (plugin-driven AI streaming): `streamPush` (accumulate deltas), `streamSubscribe` (get current state + subscribe to `streamChunk`), `streamFinish`
+- **Plugins**: `registerPlugin`, `getPlugins`, `removePlugin`
+- **Tools**: `addTools`, `removeTools`, `getTools`, `updateToolCallTags`
+- **Plugin states**: `updatePluginState`, `removePluginState`, `getPluginStates`, `subscribePluginStates`, `unsubscribePluginStates` — semantics in [architecture.md](architecture.md) (register-before-snapshot, version gating)
+- **Custom events**: `sendCustomEvent`, `ackCustomEvent`, `getPendingAcks`
 
-Reloads YAML configs (scenarios, projects, MCP, models) without restarting the daemon. The reload:
-- Waits for running scenarios and AI chat streams to finish
-- Blocks new scenarios/chats silently until reload completes (no errors)
-- Restarts only MCP servers whose configs changed
-- Stops MCP servers removed from config (logs PID for manual kill if needed)
+## Events
 
-Response includes counts: scenarios_reloaded, models_reloaded, mcp_restarted, mcp_stopped, projects_reloaded.
+Source of truth: `packages/rhd_chat_api/src/events/`.
+
+- **Chats**: `chatCreated`, `chatUpdated`, `chatDeleted`
+- **Messages**: `messageAdded`, `messageUpdated`, `messageDeleted`, `assistantMessageWithToolCalls`
+- **Queue**: `queueMessageAdded`, `queueMessageUpdated`, `queueMessageDeleted`
+- **Streams**: `streamChunk` (delta type: reasoningDelta/contentDelta/toolCallDelta), `streamFinished`
+- **Plugins**: `pluginRegistered`, `pluginUpdated`, `pluginRemoved`
+- **Plugin states**: `pluginStateChanged`, `pluginStateRemoved`
+- **Tools**: `toolsUpdated`
+- **Custom events**: `customEvent`, `customEventAcknowledged`
+
+## Related
+
+- StreamManager internals (server-side stream accumulation): [architecture.md](architecture.md)
+- Client-side subscription/callback API (`rhd_chat_client`): [architecture.md](architecture.md)

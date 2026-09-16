@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-RHD is a Rust-based automation tool for AI-assisted task execution. It uses a daemon/client architecture where a long-running daemon process executes scenarios (action chains) on behalf of client requests via Unix socket IPC. The system also includes a persistent chat feature for direct AI conversations with streaming responses and MCP tool integration.
+RHD is a Rust-based AI chat platform. A WebSocket chat server (`rhd_chat_server`) stores persistent chats in SQLite and coordinates plugins that provide behavior: AI completions with streaming responses, MCP servers exposed as chat tools, system prompt injection, todo-list tracking, and choice prompts. Clients (web frontend, CLI) connect over WebSocket. (Historical note: the earlier daemon/scenario-execution architecture, including Unix socket IPC, was removed; only vestigial dead code remains in `rhd_db`/`rhd_mcp_client`.)
 
 ## Multi-Crate Workspace Structure
 
@@ -17,18 +17,22 @@ rhd/
 │   ├── frontend/     # Frontend-specific documentation
 ├── packages/
 │   ├── rhd_ai_client/      # AI client wrapper
+│   ├── rhd_ai_proxy/       # OpenAI-compatible request proxy
 │   ├── rhd_mock_ai_provider/ # Mock AI provider for testing
 │   ├── rhd_db/             # SQLite database layer
 │   ├── rhd_mcp_client/     # MCP protocol client for tool usage
 │   ├── rhd_chat_api/       # Chat API types and protocol definitions
 │   ├── rhd_chat_server/    # WebSocket server for chat management
 │   ├── rhd_chat_client/    # WebSocket client for chat server
-│   └── rhd_app/            # CLI tool for chat server interaction
+│   └── rhd_app/            # CLI tool + `rhd start` process supervisor
 ├── plugins/
 │   ├── rhd_plugin_ai_completions/  # AI completions plugin
 │   ├── rhd_plugin_mcp/             # MCP servers-as-chat-tools plugin
 │   ├── rhd_plugin_system_prompt/   # System prompt injection plugin
-│   └── rhd_plugin_todo_list/       # Todo list tool-tracking plugin
+│   ├── rhd_plugin_todo_list/       # Todo list tool-tracking plugin
+│   └── rhd_plugin_choice/          # Choice-question tool plugin
+├── frontend/               # Svelte + MobX web UI
+└── templates/              # Shared templates embedded via include_dir!
 ```
 
 ## Documentation Structure
@@ -37,7 +41,7 @@ rhd/
 
 The knowledge base is organized into two layers:
 
-**Top-level files** (`chat.md`, `configuration.md`, `scenarios.md`, etc.):
+**Top-level files** (`architecture.md`, `configuration.md`, `protocols.md`, etc.):
 - **Implementation details**: crate APIs, database schemas, protocols, internal architecture
 - **When to read**: When implementing or modifying code in specific areas
 - **Contains**: Function signatures, struct definitions, database schemas, protocol messages, key file paths
@@ -72,14 +76,11 @@ Detailed documentation is split into topic-specific files. Read the relevant fil
 | File | When to read |
 |------|-------------|
 | [architecture.md](architecture.md) | When working on crate structure, core component APIs, or understanding how crates relate to each other |
-| [scenarios.md](scenarios.md) | When implementing or modifying scenario execution, action types, MCP tool integration, skip conditions, or placeholder resolution |
-| [configuration.md](configuration.md) | When working on model configs, credentials, CLI arguments, `rhd.yaml`, env var substitution, or model aliases |
-| [protocols.md](protocols.md) | When working on IPC (Unix socket), WebSocket protocol, CWD propagation, or client-daemon communication |
-| [logging.md](logging.md) | When working on execution logs, `meta.json` format, log output format, or step timing/tracking |
+| [configuration.md](configuration.md) | When working on component configs (server args, plugin YAML, credentials, `rhd start` children) |
+| [protocols.md](protocols.md) | When working on the chat WebSocket protocol: request/response envelopes, methods, events, subscriptions |
 | [development.md](development.md) | When planning features, running tests, committing code, or needing to understand project conventions and error handling |
 | [file-structure.md](file-structure.md) | When you need to find which file contains specific functionality or understand the project layout |
-| [backend-e2e.md](backend-e2e.md) | When working on backend E2E tests, mock server, or test scenarios |
-| [test-cases.md](test-cases.md) | When creating or modifying test cases, writing test step comments, or understanding test case format |
+| [backend-e2e.md](backend-e2e.md) | When working on backend tests, plugin E2E tests, or the mock AI provider |
 | [debugging.md](debugging.md) | When any test fails |
 | [frontend/MEMORY.md](frontend/MEMORY.md) | When working on frontend code, MobX stores, component patterns, or frontend architecture |
 

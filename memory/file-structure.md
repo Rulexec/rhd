@@ -7,17 +7,16 @@ packages/rhd_app/src/
 ├── main.rs           # CLI entry point, command dispatch
 ├── cli.rs            # clap argument definitions
 └── commands/
-    ├── mod.rs        # Command module exports
-    ├── chats.rs      # List chats command
-    ├── messages.rs   # View chat messages command
-    ├── queue.rs      # View queued messages command
+    ├── mod.rs         # Command module exports
+    ├── chats.rs       # List chats / add-tag / remove-tag commands
+    ├── messages.rs    # View chat messages command
+    ├── queue.rs       # View + add queued message commands
     ├── create_chat.rs # Create chat command
-    ├── plugins.rs    # List plugins command
-    ├── remove_plugin.rs # Remove plugin command
-    └── add_queue.rs  # Add queued message command
+    ├── plugins.rs     # List + remove plugin commands
+    └── start.rs       # Process supervisor (spawn children from YAML config)
 
 packages/rhd_db/src/
-├── lib.rs            # Module exports, ScenarioDb, DbError
+├── lib.rs            # Module exports, DbError, (legacy ScenarioDb — unused)
 ├── tests.rs          # DB tests
 └── chat_db/
     ├── mod.rs        # ChatDb, ChatInfo, Message, chat/message persistence
@@ -38,7 +37,7 @@ packages/rhd_mcp_client/src/
 ├── client.rs         # MCP client implementation
 ├── protocol.rs       # MCP JSON-RPC protocol types
 ├── transport.rs      # stdio transport for MCP servers
-└── builtin.rs        # Built-in tools (rhd_set_flag)
+└── builtin.rs        # BuiltinTools (scenario-era vestige — unused)
 
 packages/rhd_chat_api/src/
 ├── common.rs           # Chat, Message, PluginState, StateFormat, StateVersionRef types
