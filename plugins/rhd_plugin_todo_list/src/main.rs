@@ -7,11 +7,7 @@
 use clap::Parser;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
-mod parser;
-mod plugin;
-mod templates;
-mod todo_store;
-mod tool_handler;
+use rhd_plugin_todo_list::plugin;
 
 #[derive(Parser, Debug)]
 #[command(name = "rhd_plugin_todo_list")]

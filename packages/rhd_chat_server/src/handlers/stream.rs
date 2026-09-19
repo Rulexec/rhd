@@ -18,7 +18,7 @@ pub async fn stream_push(
     params: Value,
     request_id: &str,
     stream_manager: &SharedStreamManager,
-    subscription_manager: &SharedSubscriptionManager,
+    _subscription_manager: &SharedSubscriptionManager,
     chat_id: i64,
 ) -> Result<Value, ServerError> {
     let params: StreamPushParams = match serde_json::from_value(params) {
@@ -34,7 +34,6 @@ pub async fn stream_push(
     // Extract fields before moving into push
     let reasoning_content = params.reasoning_content.clone();
     let content = params.content.clone();
-    let tool_calls = params.tool_calls.clone();
 
     // Convert tool call deltas (they're already the same type now)
     let tool_calls_delta = params.tool_calls;
@@ -131,7 +130,7 @@ pub async fn stream_finish(
     params: Value,
     request_id: &str,
     stream_manager: &SharedStreamManager,
-    subscription_manager: &SharedSubscriptionManager,
+    _subscription_manager: &SharedSubscriptionManager,
     chat_id: i64,
 ) -> Result<Value, ServerError> {
     let _params: StreamFinishParams = match serde_json::from_value(params) {

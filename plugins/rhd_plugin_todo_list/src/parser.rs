@@ -1,6 +1,5 @@
 //! Markdown checklist parser for todo lists.
 
-use regex::Regex;
 use std::fmt;
 
 /// Status of a todo item.

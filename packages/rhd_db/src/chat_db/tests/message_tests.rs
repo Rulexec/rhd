@@ -76,14 +76,13 @@ fn test_update_tool_call_tags_add_and_remove() {
     let version_before = db.get_chat(chat_id).unwrap().unwrap().version;
 
     // Add tags to call_1 (with a duplicate to verify dedup), then change call_2 tags.
-    let new_version = db
-        .update_message_tool_call_tags(
-            msg_id,
-            "call_1",
-            &["reviewed".to_string(), "reviewed".to_string()],
-            &[],
-        )
-        .unwrap();
+    db.update_message_tool_call_tags(
+        msg_id,
+        "call_1",
+        &["reviewed".to_string(), "reviewed".to_string()],
+        &[],
+    )
+    .unwrap();
     let new_version = db
         .update_message_tool_call_tags(msg_id, "call_2", &["extra".to_string()], &["keep".to_string()])
         .unwrap();

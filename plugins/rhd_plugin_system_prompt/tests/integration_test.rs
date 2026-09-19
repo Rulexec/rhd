@@ -95,7 +95,6 @@ async fn connect_client(port: u16) -> ChatClient {
 /// Test helper to create a config file with prompt files.
 fn create_test_config(prompts: &[(&str, &str)]) -> (NamedTempFile, Vec<NamedTempFile>) {
     let mut config_file = NamedTempFile::new().unwrap();
-    let config_dir = config_file.path().parent().unwrap();
 
     let mut prompt_files = Vec::new();
     let mut config_content = String::from("systemPrompts:\n");

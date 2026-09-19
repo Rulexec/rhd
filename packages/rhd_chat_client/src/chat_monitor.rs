@@ -456,12 +456,4 @@ impl ChatMonitor {
             .await
             .push(Box::new(callback));
     }
-
-    /// Notify all registered callbacks about a chat state change.
-    async fn notify_state_change(&self, chat_id: i64, state: ChatState) {
-        let callbacks = self.state_change_callbacks.read().await;
-        for callback in callbacks.iter() {
-            callback(chat_id, state.clone());
-        }
-    }
 }

@@ -137,7 +137,7 @@ impl PluginsMonitor {
 
         let result = timeout(timeout_duration, async {
             loop {
-                let (all_acked, pending_plugins) = {
+                let all_acked = {
                     let all_plugins = self.all_plugins.read().await;
                     let acks = self.acknowledgments.read().await;
                     let event_acks = acks.get(event_id).cloned().unwrap_or_default();
@@ -158,7 +158,7 @@ impl PluginsMonitor {
                         );
                     }
 
-                    (all_acked, pending)
+                    all_acked
                 };
 
                 if all_acked {
