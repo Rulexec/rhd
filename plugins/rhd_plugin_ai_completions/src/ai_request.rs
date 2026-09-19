@@ -2,7 +2,8 @@
 //!
 //! This module handles the complete flow of making an AI completion request:
 //! 1. Send preRequest event and wait for acknowledgments
-//! 2. Process queued messages (move from queue to regular messages)
+//! 2. If queuedMessages trigger: send preDrainQueue event and wait for acknowledgments,
+//!    then process queued messages (move from queue to regular messages)
 //! 3. Build and validate AI request from chat messages (D4: refuse inconsistent histories)
 //! 4. Make AI completion request
 //! 5. Handle response (success or error)
@@ -29,7 +30,8 @@ use crate::trigger_detection::TriggerReason;
 /// This function implements the complete AI request flow:
 /// 1. Send `ai_completions:preRequest` event
 /// 2. Wait for all other plugins to acknowledge
-/// 3. Process queued messages if trigger reason is QueuedMessages
+/// 3. If trigger reason is QueuedMessages: send `ai_completions:preDrainQueue`, wait for
+///    all other plugins to acknowledge, then process queued messages
 /// 4. Acknowledge own event
 /// 5. Build and validate the AI completion request — on validation failure, park the chat and send nothing (D4)
 /// 6. Handle response (add assistant message on success, error tag/message on failure)
@@ -44,36 +46,22 @@ pub async fn handle_ai_request(
     trigger_reason: TriggerReason,
     known_version: Option<i64>,
 ) -> Result<(), AiRequestError> {
-    // Send preRequest event
-    let event_result = client
-        .send_custom_event(SendCustomEventParams {
-            event_name: "ai_completions:preRequest".to_string(),
-            additional: Some(
-                serde_json::to_string(&serde_json::json!({
-                    "triggerReason": match trigger_reason {
-                        TriggerReason::QueuedMessages => "queuedMessages",
-                        TriggerReason::ToolLoopContinuation => "toolLoopContinuation",
-                        TriggerReason::None => "none",
-                    }
-                }))
-                .map_err(|e| AiRequestError::EventSend(e.to_string()))?,
-            ),
-            chat_id: Some(chat_id.to_string()),
-            message_id: None,
-            tool_call_id: None,
-        })
-        .await
-        .map_err(|e| AiRequestError::EventSend(e.to_string()))?;
-
-    let event_id = event_result.event_id;
-
-    // Wait for all other plugins to acknowledge
-    let except_plugins: Vec<&str> = vec![plugin_id];
-
-    plugins_monitor
-        .wait_for_acks_except(&event_id, &except_plugins, Duration::from_secs(30))
-        .await
-        .map_err(|e| AiRequestError::WaitTimeout(e.to_string()))?;
+    // Send preRequest event and wait for all other plugins to acknowledge.
+    let event_id = emit_and_wait_for_acks(
+        &client,
+        &plugins_monitor,
+        plugin_id,
+        chat_id,
+        "ai_completions:preRequest",
+        serde_json::json!({
+            "triggerReason": match trigger_reason {
+                TriggerReason::QueuedMessages => "queuedMessages",
+                TriggerReason::ToolLoopContinuation => "toolLoopContinuation",
+                TriggerReason::None => "none",
+            }
+        }),
+    )
+    .await?;
 
     // Process queued messages if needed
     let current_messages = if trigger_reason == TriggerReason::QueuedMessages {
@@ -82,6 +70,18 @@ pub async fn handle_ai_request(
             trigger_reason = ?trigger_reason,
             "processing queued messages"
         );
+
+        // Give plugins a chance to inspect/rewrite the queue before promotion.
+        emit_and_wait_for_acks(
+            &client,
+            &plugins_monitor,
+            plugin_id,
+            chat_id,
+            "ai_completions:preDrainQueue",
+            serde_json::json!({ "triggerReason": "queuedMessages" }),
+        )
+        .await?;
+
         process_queued_messages(&client, chat_id).await?;
         tracing::info!(chat_id = chat_id, "finished processing queued messages");
 
@@ -543,6 +543,44 @@ pub async fn handle_ai_request(
             Err(AiRequestError::AiRequest(e.to_string()))
         }
     }
+}
+
+/// Emit a custom event for this chat and wait for every other plugin to acknowledge it.
+///
+/// Returns the id of the emitted event so callers that acknowledge their own event
+/// later (e.g. `preRequest`) can do so; callers that do not need it can discard it.
+async fn emit_and_wait_for_acks(
+    client: &ChatClient,
+    plugins_monitor: &PluginsMonitor,
+    plugin_id: &str,
+    chat_id: i64,
+    event_name: &str,
+    additional: serde_json::Value,
+) -> Result<String, AiRequestError> {
+    let event_result = client
+        .send_custom_event(SendCustomEventParams {
+            event_name: event_name.to_string(),
+            additional: Some(
+                serde_json::to_string(&additional)
+                    .map_err(|e| AiRequestError::EventSend(e.to_string()))?,
+            ),
+            chat_id: Some(chat_id.to_string()),
+            message_id: None,
+            tool_call_id: None,
+        })
+        .await
+        .map_err(|e| AiRequestError::EventSend(e.to_string()))?;
+
+    plugins_monitor
+        .wait_for_acks_except(
+            &event_result.event_id,
+            &[plugin_id],
+            Duration::from_secs(30),
+        )
+        .await
+        .map_err(|e| AiRequestError::WaitTimeout(e.to_string()))?;
+
+    Ok(event_result.event_id)
 }
 
 /// Errors that can occur during AI request handling.

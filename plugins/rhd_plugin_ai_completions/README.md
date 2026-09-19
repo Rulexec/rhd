@@ -71,6 +71,29 @@ Emitted before making AI completion request.
 
 **Wait Logic**: Plugin waits for all other plugins to acknowledge this event before proceeding.
 
+### `ai_completions:preDrainQueue`
+
+Emitted when a queuedMessages-triggered request is about to move queue messages
+into the conversation — after `ai_completions:preRequest` acks and before the drain.
+
+**Payload**:
+```json
+{
+  "chatId": 123,
+  "triggerReason": "queuedMessages"
+}
+```
+
+**Purpose**: Allows plugins to inspect and rewrite queued messages (parse
+slash-commands, insert/remove queued messages, adjust tags) before they become
+permanent history. The `rhd_plugin_commands` plugin is the primary consumer.
+
+**Emitted only** on the `queuedMessages` trigger path (never on tool-loop
+continuation, where there is no queue to drain).
+
+**Wait Logic**: Waits for all other plugins to acknowledge (30 s timeout;
+timeout parks the chat with `ai_completions:error`, same as `preRequest`).
+
 ## Tags Added
 
 ### `ai_completions:error`
