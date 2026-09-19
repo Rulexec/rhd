@@ -186,7 +186,7 @@ fn test_queue_message_round_trip_with_tool_call_id() {
     let chat_id = db.create_chat("Chat").unwrap();
 
     let (msg_id, _) = db
-        .add_queue_message(chat_id, "tool", "result", None, None, Some("call_xyz"))
+        .add_queue_message(chat_id, None, "tool", "result", None, None, Some("call_xyz"))
         .unwrap();
 
     let msg = db.get_queue_message(msg_id).unwrap().unwrap();
@@ -210,8 +210,8 @@ fn test_count_queue_messages() {
     assert_eq!(db.count_queue_messages(chat_id).unwrap(), 0);
 
     // Add queue messages
-    db.add_queue_message(chat_id, "user", "Message 1", None, None, None).unwrap();
-    db.add_queue_message(chat_id, "user", "Message 2", None, None, None).unwrap();
+    db.add_queue_message(chat_id, None, "user", "Message 1", None, None, None).unwrap();
+    db.add_queue_message(chat_id, None, "user", "Message 2", None, None, None).unwrap();
 
     // Count should be 2
     assert_eq!(db.count_queue_messages(chat_id).unwrap(), 2);

@@ -287,13 +287,14 @@ impl ChatDb {
     pub fn add_queue_message(
         &self,
         chat_id: i64,
+        before_message_id: Option<i64>,
         role: &str,
         content: &str,
         model: Option<&str>,
         thinking_content: Option<&str>,
         tool_call_id: Option<&str>,
     ) -> DbResult<(i64, i64)> {
-        messages_queue::add_queue_message(&self.conn, chat_id, role, content, model, thinking_content, tool_call_id)
+        messages_queue::add_queue_message(&self.conn, chat_id, before_message_id, role, content, model, thinking_content, tool_call_id)
     }
 
     pub fn get_queue_messages(&self, chat_id: i64) -> DbResult<Vec<Message>> {

@@ -182,6 +182,7 @@ async fn test_plugin_triggers_on_queued_messages() {
                 tool_call_id: None,
                 reasoning_content: None,
                 tags: vec![],
+                before_message_id: None,
             })
             .await
             .expect("Failed to add queue message");
@@ -252,6 +253,7 @@ async fn test_plugin_skips_chats_with_error_tag() {
                 tool_call_id: None,
                 reasoning_content: None,
                 tags: vec![],
+                before_message_id: None,
             })
             .await
             .expect("Failed to add queue message");
@@ -430,6 +432,7 @@ ai_completions:
                 tool_call_id: None,
                 reasoning_content: None,
                 tags: vec![],
+                before_message_id: None,
             })
             .await
             .expect("Failed to add queue message");
@@ -524,6 +527,7 @@ async fn test_streaming_ai_request_flow() {
                 tool_call_id: None,
                 reasoning_content: None,
                 tags: vec![],
+                before_message_id: None,
             })
             .await
             .expect("Failed to add queue message");
@@ -611,6 +615,7 @@ async fn test_stream_subscription_receives_chunks() {
                 tool_call_id: None,
                 reasoning_content: None,
                 tags: vec![],
+                before_message_id: None,
             })
             .await
             .expect("Failed to add queue message");
@@ -742,6 +747,7 @@ async fn test_startup_tags_chat_with_unfinished_message() {
                 tool_call_id: None,
                 reasoning_content: None,
                 tags: vec![],
+                before_message_id: None,
             })
             .await
             .unwrap();
@@ -821,6 +827,7 @@ async fn test_startup_does_not_tag_finished_chat() {
                 tool_call_id: None,
                 reasoning_content: None,
                 tags: vec![],
+                before_message_id: None,
             })
             .await
             .unwrap();
@@ -886,6 +893,7 @@ async fn test_running_tag_removed_after_success() {
                 tool_call_id: None,
                 reasoning_content: None,
                 tags: vec![],
+                before_message_id: None,
             })
             .await
             .expect("Failed to add queue message");

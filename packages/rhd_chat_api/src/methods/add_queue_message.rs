@@ -35,6 +35,10 @@ pub struct AddQueueMessageParams {
     /// Optional tags to associate with the message.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
+    /// When set, insert this message directly before the queue message with this id
+    /// instead of appending to the end of the queue.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub before_message_id: Option<i64>,
 }
 
 /// Result of the `addQueueMessage` method.
@@ -65,6 +69,7 @@ mod tests {
             tool_call_id: None,
             reasoning_content: Some("Thinking...".to_string()),
             tags: vec!["tag1".to_string()],
+            before_message_id: None,
         };
 
         let json = serde_json::to_string(&params).unwrap();
@@ -95,6 +100,47 @@ mod tests {
         let json = r#"{"chatId":1,"role":"tool","content":"ok","toolCallId":"call_1"}"#;
         let params: AddQueueMessageParams = serde_json::from_str(json).unwrap();
         assert_eq!(params.tool_call_id, Some("call_1".to_string()));
+    }
+
+    #[test]
+    fn test_add_queue_message_params_before_message_id_serialization() {
+        let params = AddQueueMessageParams {
+            chat_id: 123,
+            role: "user".to_string(),
+            content: "Inserted".to_string(),
+            tool_call_id: None,
+            reasoning_content: None,
+            tags: vec![],
+            before_message_id: Some(42),
+        };
+
+        let json = serde_json::to_string(&params).unwrap();
+        assert!(json.contains("\"beforeMessageId\":42"));
+
+        let deserialized: AddQueueMessageParams = serde_json::from_str(&json).unwrap();
+        assert_eq!(params, deserialized);
+    }
+
+    #[test]
+    fn test_add_queue_message_params_without_before_message_id() {
+        let params = AddQueueMessageParams {
+            chat_id: 123,
+            role: "user".to_string(),
+            content: "Appended".to_string(),
+            tool_call_id: None,
+            reasoning_content: None,
+            tags: vec![],
+            before_message_id: None,
+        };
+
+        // None → the key is omitted from the wire format.
+        let json = serde_json::to_string(&params).unwrap();
+        assert!(!json.contains("beforeMessageId"));
+
+        // Old producers without the key still deserialize (backward compatibility).
+        let legacy = r#"{"chatId":123,"role":"user","content":"Appended"}"#;
+        let deserialized: AddQueueMessageParams = serde_json::from_str(legacy).unwrap();
+        assert_eq!(deserialized.before_message_id, None);
     }
 
     #[test]

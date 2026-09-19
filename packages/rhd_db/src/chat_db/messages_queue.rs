@@ -12,6 +12,7 @@ fn now_iso() -> String {
 pub(crate) fn add_queue_message(
     conn: &Mutex<Connection>,
     chat_id: i64,
+    before_message_id: Option<i64>,
     role: &str,
     content: &str,
     model: Option<&str>,
@@ -23,9 +24,46 @@ pub(crate) fn add_queue_message(
         .map_err(|e| DbError::InitializationError(e.to_string()))?;
     let tx = conn.unchecked_transaction()?;
     let now = now_iso();
+
+    let position: i64 = match before_message_id {
+        Some(before_id) => {
+            // Resolve the anchor row; it must exist and belong to the same chat.
+            let anchor: Option<(i64, i64)> = tx
+                .query_row(
+                    "SELECT chat_id, position FROM messages_queue WHERE id = ?1",
+                    params![before_id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .ok();
+            let (anchor_chat_id, anchor_position) = anchor
+                .ok_or_else(|| DbError::NotFound(format!("queue message {}", before_id)))?;
+            if anchor_chat_id != chat_id {
+                return Err(DbError::NotFound(format!(
+                    "queue message {} does not belong to chat {}",
+                    before_id, chat_id
+                )));
+            }
+            // Make room: everything at/after the anchor shifts one position right.
+            tx.execute(
+                "UPDATE messages_queue SET position = position + 1 WHERE chat_id = ?1 AND position >= ?2",
+                params![chat_id, anchor_position],
+            )?;
+            anchor_position
+        }
+        None => {
+            // Append: one past the current maximum for this chat.
+            let max_position: Option<i64> = tx.query_row(
+                "SELECT MAX(position) FROM messages_queue WHERE chat_id = ?1",
+                params![chat_id],
+                |row| row.get(0),
+            )?;
+            max_position.map(|p| p + 1).unwrap_or(1)
+        }
+    };
+
     tx.execute(
-        "INSERT INTO messages_queue (chat_id, role, content, created_at, model, thinking_content, tool_call_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-        params![chat_id, role, content, now, model, thinking_content, tool_call_id],
+        "INSERT INTO messages_queue (chat_id, role, content, created_at, model, thinking_content, tool_call_id, position) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        params![chat_id, role, content, now, model, thinking_content, tool_call_id, position],
     )?;
     let message_id = tx.last_insert_rowid();
     tx.execute(
@@ -46,7 +84,7 @@ pub(crate) fn get_queue_messages(conn: &Mutex<Connection>, chat_id: i64) -> DbRe
         .lock()
         .map_err(|e| DbError::InitializationError(e.to_string()))?;
     let mut stmt = conn.prepare(
-        "SELECT id, chat_id, role, content, created_at, model, thinking_content, tool_calls, tool_call_id FROM messages_queue WHERE chat_id = ?1 ORDER BY id ASC",
+        "SELECT id, chat_id, role, content, created_at, model, thinking_content, tool_calls, tool_call_id FROM messages_queue WHERE chat_id = ?1 ORDER BY position ASC, id ASC",
     )?;
     let rows = stmt.query_map(params![chat_id], |row| {
         let tool_calls_json: Option<String> = row.get(7)?;
@@ -150,8 +188,8 @@ pub(crate) fn insert_queue_message(
         .as_ref()
         .map(|tc| serde_json::to_string(tc).unwrap_or_default());
     tx.execute(
-        "INSERT INTO messages_queue (id, chat_id, role, content, created_at, model, thinking_content, tool_calls, tool_call_id)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        "INSERT INTO messages_queue (id, chat_id, role, content, created_at, model, thinking_content, tool_calls, tool_call_id, position)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params![
             message.id,
             message.chat_id,
@@ -162,6 +200,9 @@ pub(crate) fn insert_queue_message(
             message.thinking_content,
             tool_calls_json,
             message.tool_call_id,
+            // Match the migration backfill convention so an explicit-id insert
+            // cannot collide into the front of the position ordering.
+            message.id,
         ],
     )?;
     let now = now_iso();

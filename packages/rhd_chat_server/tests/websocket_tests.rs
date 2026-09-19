@@ -178,6 +178,7 @@ async fn test_get_chat_includes_queue_count() {
             tool_call_id: None,
             reasoning_content: None,
             tags: vec![],
+            before_message_id: None,
         })
         .await
         .unwrap();
@@ -190,6 +191,7 @@ async fn test_get_chat_includes_queue_count() {
             tool_call_id: None,
             reasoning_content: None,
             tags: vec![],
+            before_message_id: None,
         })
         .await
         .unwrap();

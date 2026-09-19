@@ -80,9 +80,32 @@ pub async fn add_queue_message(
         ))?);
     }
 
+    // Validate positional insertion anchor (must be a queue message of the same chat).
+    if let Some(before_id) = params.before_message_id {
+        match db.get_queue_message(before_id)? {
+            None => {
+                return Ok(serde_json::to_value(ErrorResponse::message_not_found(
+                    request_id,
+                    before_id,
+                ))?);
+            }
+            Some(anchor) if anchor.chat_id != params.chat_id => {
+                return Ok(serde_json::to_value(ErrorResponse::invalid_request(
+                    request_id,
+                    format!(
+                        "beforeMessageId {} belongs to chat {}, not {}",
+                        before_id, anchor.chat_id, params.chat_id
+                    ),
+                ))?);
+            }
+            Some(_) => {}
+        }
+    }
+
     // Add queue message
     let (message_id, mut chat_version) = db.add_queue_message(
         params.chat_id,
+        params.before_message_id,
         &params.role,
         &params.content,
         None, // model

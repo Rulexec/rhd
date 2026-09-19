@@ -21,6 +21,7 @@ pub async fn execute(subcommand: QueueSubcommand) -> Result<(), Box<dyn std::err
                 tool_call_id: None,
                 reasoning_content: None,
                 tags: vec![],
+                before_message_id: None,
             }).await?;
             println!("Queued message with ID: {}", result.message_id);
             Ok(())

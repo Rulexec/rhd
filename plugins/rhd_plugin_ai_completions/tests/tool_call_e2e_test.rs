@@ -234,6 +234,7 @@ async fn test_tool_call_complete_flow() {
                 tool_call_id: None,
                 reasoning_content: None,
                 tags: vec![],
+                before_message_id: None,
             })
             .await
             .expect("Failed to add queue message");
@@ -482,6 +483,7 @@ async fn test_tool_call_chunked_streaming() {
                 tool_call_id: None,
                 reasoning_content: None,
                 tags: vec![],
+                before_message_id: None,
             })
             .await
             .expect("Failed to add queue message");
