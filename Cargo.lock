@@ -1474,6 +1474,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "rhd_plugin_commands"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "clap",
+ "rhd_chat_api",
+ "rhd_chat_client",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "rhd_plugin_mcp"
 version = "0.1.0"
 dependencies = [
