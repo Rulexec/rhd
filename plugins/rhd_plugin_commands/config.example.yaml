@@ -1,0 +1,30 @@
+# Example configuration for the commands plugin (rhd_plugin_commands).
+#
+# Every command maps a name (usable as `/name` at the start of a queued user
+# message) to one step or an ordered list of steps. Prompt paths are resolved
+# relative to this file's directory and must exist (validated at startup).
+
+commands:
+  # Single chat-tags step: additive/subtractive updateChat on every occurrence.
+  tags_example:
+    type: chat_tags
+    add: [mcp:common]
+    remove: [pause]
+
+  # Shorthand: a prompt inserted as role=user directly before the command
+  # message.
+  prompt_example: ./commands/prompt.md
+
+  # Explicit prompt step with a non-default role (user | system | assistant).
+  system_prompt_example:
+    type: prompt
+    role: system
+    prompt: ./systemPrompts/warhammer.md
+
+  # Multi command: steps expand in order (message tags on the carrying
+  # message, then both prompts inserted before it).
+  multi_example:
+    - type: message_tags
+      add: [some_tag]
+    - ./commands/prompt.md
+    - ./commands/another_prompt.md

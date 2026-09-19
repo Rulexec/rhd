@@ -5,10 +5,11 @@
 //! executes commands configured under leading `/name` tokens of queued user
 //! messages, and rewrites the queue accordingly.
 //!
-//! This crate currently contains the config model and the pure command parser;
-//! the event executor lands with Phase 4.
+//! Contains the config model, the pure command parser, the queue executor,
+//! and the plugin lifecycle.
 
 pub mod config;
+pub mod executor;
 pub mod parser;
 pub mod plugin;
 
