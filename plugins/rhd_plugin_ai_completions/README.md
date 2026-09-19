@@ -243,6 +243,10 @@ This plugin emits `ai_completions:preRequest` before making AI requests. Other p
 - Modify queued messages
 - Acknowledge to allow the request to proceed
 
+To rewrite the queue immediately before it is promoted into the conversation (the
+`ai_completions:preRequest`-then-drain path only), listen for the
+`ai_completions:preDrainQueue` event instead — see its section above.
+
 Example plugin that listens for preRequest:
 ```rust
 client.on_custom_event(|event| async move {

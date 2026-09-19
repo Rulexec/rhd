@@ -27,6 +27,7 @@ rhd/
 │   └── rhd_app/            # CLI tool + `rhd start` process supervisor
 ├── plugins/
 │   ├── rhd_plugin_ai_completions/  # AI completions plugin
+│   ├── rhd_plugin_commands/        # Queued-message slash-commands plugin
 │   ├── rhd_plugin_mcp/             # MCP servers-as-chat-tools plugin
 │   ├── rhd_plugin_system_prompt/   # System prompt injection plugin
 │   ├── rhd_plugin_todo_list/       # Todo list tool-tracking plugin
@@ -136,4 +137,4 @@ Product-scoped feature documentation (what the feature does, not how it's implem
 | [features/testing.md](features/testing.md) | Understanding E2E test infrastructure, mock server, test utilities |
 | [features/cli.md](features/cli.md) | Understanding CLI usage details, commands, and arguments |
 | [features/templates.md](features/templates.md) | Understanding template registry, template loading, and rendering |
-| [features/plugins.md](features/plugins.md) | Understanding plugin system, plugin lifecycle, custom event coordination (rejection, context fields), plugin states (exposure, versioning, state schemas like `mcpStatus:1`), plugin monitoring, event-driven plugin design, AI completions plugin (tags, request fidelity), system prompt plugin, todo list plugin, tool call tags, mcp plugin (MCP servers as chat tools) |
+| [features/plugins.md](features/plugins.md) | Understanding plugin system, plugin lifecycle, custom event coordination (rejection, context fields), plugin states (exposure, versioning, state schemas like `mcpStatus:1`), plugin monitoring, event-driven plugin design, AI completions plugin (tags, request fidelity, preDrainQueue), system prompt plugin, commands plugin (queued slash-commands), todo list plugin, tool call tags, mcp plugin (MCP servers as chat tools) |

@@ -18,7 +18,7 @@ Source of truth: `packages/rhd_chat_api/src/methods/`.
 
 - **Chats**: `createChat`, `listChats`, `getChat`, `updateChat`, `deleteChat`
 - **Messages**: `addMessage`, `getMessages`, `updateMessage`, `deleteMessage`
-- **Queue**: `addQueueMessage`, `getQueueMessages`, `updateQueueMessage`, `deleteQueueMessage`
+- **Queue**: `addQueueMessage` (optional `beforeMessageId` inserts the new message directly before the referenced one; the queue is ordered by an internal `position`, `position ASC, id ASC`), `getQueueMessages`, `updateQueueMessage`, `deleteQueueMessage`
 - **Subscriptions**: `subscribeChat`/`unsubscribeChat`, `subscribeChatsList`/`unsubscribeChatsList`, `subscribePluginsList`/`unsubscribePluginsList`
 - **Streams** (plugin-driven AI streaming): `streamPush` (accumulate deltas), `streamSubscribe` (get current state + subscribe to `streamChunk`), `streamFinish`
 - **Plugins**: `registerPlugin`, `getPlugins`, `removePlugin`

@@ -167,11 +167,12 @@ The `rhd_plugin_ai_completions` plugin is event-driven: it reacts to chat state 
 - Emits `ai_completions:preRequest` custom event before making AI requests
 - Waits for all other plugins to acknowledge the event
 - Allows other plugins to modify state or block the request
+- Emits `ai_completions:preDrainQueue` **only on the queuedMessages trigger**, after `preRequest` acks and immediately before queued messages are promoted into the conversation; waits for all other plugins to acknowledge so they can inspect/rewrite the queue at the last moment (a missed ack within the timeout parks the chat with `ai_completions:error`, same semantics as `preRequest`)
 
 **Queued Message Processing:**
 - Fetches queued messages from the chat
 - Deletes each queued message from the queue
-- Adds each as a regular message to maintain chat history
+- Adds each as a regular message to maintain chat history (in queue position order)
 - Builds AI request from message history (filtering out error messages)
 
 **Chat Tags:**
@@ -227,6 +228,26 @@ The `rhd_plugin_system_prompt` plugin injects system prompts into chats based on
 - A chat carrying `ai_completions:running` or `ai_completions:error` is locked: no injection while the AI plugin owns the chat or the chat is parked
 - Effect: prompts are injected only when the chat is new or awaits its next queued message. A prompt required mid-tool-loop is deferred and injected within one tick after the chat returns to idle (or after an operator clears the error tag)
 - Troubleshooting: if prompts are not being injected, check the chat does not carry an `ai_completions:running`/`ai_completions:error` tag
+
+### Commands Plugin
+
+The `rhd_plugin_commands` plugin turns leading slash-commands in a queued message into actions on the queue itself, so a user can enrich a message ("apply this prompt, set these tags") before it reaches the model.
+
+**What the user does:** at the start of a queued message they type one or more `/name` commands, optionally followed by the actual text. The command tokens run and are stripped; what remains is the message the model sees. Examples: `/prompt_example hello` inserts a prompt just before the message and leaves `hello`; `/tags_example /prompt_example` (commands only) applies the tags, inserts the prompt, and the now-empty message is removed.
+
+**Syntax rules:**
+- Only the **leading** run of commands counts — the message must start with `/` after any whitespace.
+- Commands may be whitespace-separated (`/a /b`) or adjacent (`/a/b`); they execute left to right.
+- A **multi-command** expands into an ordered list of steps (tags + one or more prompts) executed in config order.
+- An **unknown** `/token` (or `/` with nothing after it) is not a command: parsing stops and its text — plus everything after — is kept **verbatim** as the message content. A message whose first token is unknown is left untouched.
+
+**Command effects:** apply chat tags (add/remove), apply message tags to the carrying message, or insert a prompt message. A prompt is inserted **directly before** the command message (not appended), so multiple queued command messages keep their interleaved order when promoted. Inserted prompts carry a `commands:prompt:<name>` tag for observability. Prompt file contents are read once and cached at startup; a missing prompt fails startup.
+
+**Coordination & safety:**
+- Reacts to `ai_completions:preDrainQueue` (fires only on the queuedMessages trigger). It **always acknowledges** that event — even when a message's commands fail — so one bad message never parks the chat; other plugins that don't handle the event acknowledge it automatically, so the queue drains normally with the plugin down.
+- Only `user`-role queued messages are scanned; assistant/tool messages and messages with a `tool_call_id` are never rewritten.
+- **Crash window:** if the plugin dies between inserting a prompt and updating the carrying message, a startup recovery re-processes the pending event; because already-stripped commands are re-parsed as plain text this is safe, but a partially-applied message could re-insert a prompt (duplication). The window is sub-second and is a documented limitation.
+- Because the queue's internal order is not exposed on the wire, a prompt can briefly render at the queue end in the live view until the drain (milliseconds); a reload shows the final order.
 
 ### Tool Call Tags
 

@@ -26,6 +26,10 @@ There is no global `rhd.yaml` daemon config anymore — each component takes its
 
 `plugins/rhd_plugin_system_prompt/src/config.rs`: `PluginConfig { systemPrompts: map name → file path }`. Relative paths resolve against the config file's directory; prompts are cached at startup (`CachedPrompt`), missing files fail startup.
 
+## Commands Plugin
+
+`plugins/rhd_plugin_commands/src/config.rs`: `PluginConfig { commands: map name → CommandDef }` with `deny_unknown_fields`. serde untagged model (variant order is load-bearing): `CommandDef = Multi(Vec<CommandStep>) | Single(CommandStep)`, `CommandStep = PromptPath(String) | Spec(CommandSpec)` (a bare string is prompt shorthand, role `user`). `CommandSpec` is internally tagged by `type` — `chat_tags {add,remove}` | `message_tags {add,remove}` | `prompt {role (default user), prompt}` — with `deny_unknown_fields`. `load_config(path) → Result<CommandRegistry, ConfigError>` validates names `^[A-Za-z0-9_]+$`, resolves prompt paths against the config file's directory (absolute paths kept verbatim), reads+caches each prompt file (fail fast on missing), restricts prompt roles to user/system/assistant (`tool` rejected), and errors on tag steps with empty add+remove or empty tag strings. `ConfigError`: MainConfigFileRead, Parse, InvalidCommandName, PromptFileRead, InvalidPromptRole, EmptyTags, EmptyTag.
+
 ## MCP Plugin
 
 `plugins/rhd_plugin_mcp/src/config.rs`: `PluginConfig { servers: Vec<ResolvedServer> }`; entries (`McpServerEntry`) carry `id?`, `name`, `cmd`, `args`, `cwd?`, `env`, `registerOnTag?`. Strict parsing via `deny_unknown_fields`.
