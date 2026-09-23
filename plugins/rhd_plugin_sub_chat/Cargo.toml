@@ -21,4 +21,7 @@ clap = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
 rhd_chat_server = { path = "../../packages/rhd_chat_server" }
+rhd_mock_ai_provider = { path = "../../packages/rhd_mock_ai_provider" }
+rhd_plugin_ai_completions = { path = "../rhd_plugin_ai_completions" }
+futures-util = { workspace = true }
 tempfile = "3"

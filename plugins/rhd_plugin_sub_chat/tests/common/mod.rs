@@ -12,11 +12,18 @@
 //! through the production dispatch entry `handler::handle_tool_call_event`
 //! with synthetic events, exactly as the `on_tool_call` subscription would
 //! deliver them. Phase 6 crash-state fixtures live in the [`crash_states`]
-//! submodule.
+//! submodule; the Phase 7 full-pipeline harness (chat server + ai_completions
+//! + this plugin + content-routed mock AI) lives in [`routing`] (the
+//! `RoutingListener`), [`bootstrap`] (server/config/probe plumbing),
+//! [`full_env`] (the `FullEnv` itself) and [`polling`] (its wait helpers).
 
 #![allow(dead_code)]
 
+pub mod bootstrap;
 pub mod crash_states;
+pub mod full_env;
+pub mod polling;
+pub mod routing;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -120,6 +127,38 @@ pub async fn get_chat(client: &ChatClient, chat_id: i64) -> rhd_chat_api::GetCha
         })
         .await
         .expect("getChat failed")
+}
+
+/// Chat tags minus the orthogonal `ai_completions:*` lifecycle tags, sorted —
+/// the exact sub-chat lineage tag-set assertions (Phase 7 e2e). The lifecycle
+/// tags appear/disappear on their plugin's own schedule, so "exact set" is
+/// always relative to them.
+pub fn production_tags(tags: &[String]) -> Vec<String> {
+    let mut filtered: Vec<String> = tags
+        .iter()
+        .filter(|tag| !tag.starts_with("ai_completions:"))
+        .cloned()
+        .collect();
+    filtered.sort();
+    filtered
+}
+
+/// The chat's last message when it is a finished, non-streaming assistant
+/// message without tool calls — the completion-predicate shape, read live.
+pub fn final_assistant_message(messages: &[Message]) -> Option<Message> {
+    messages
+        .last()
+        .filter(|m| m.role == "assistant" && m.is_finished && !m.is_streaming && m.tool_calls.is_empty())
+        .cloned()
+}
+
+/// True when the chat has a finished assistant message declaring `tool_call_id`.
+pub fn history_has_assistant_call(messages: &[Message], tool_call_id: &str) -> bool {
+    messages.iter().any(|m| {
+        m.role == "assistant"
+            && m.is_finished
+            && m.tool_calls.iter().any(|c| c.id == tool_call_id)
+    })
 }
 
 /// `tool`-role messages in `chat_id` answering `tool_call_id`.
