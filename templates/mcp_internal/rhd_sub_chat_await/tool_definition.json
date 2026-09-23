@@ -1,0 +1,14 @@
+{
+  "type": "function",
+  "function": {
+    "name": "rhd_sub_chat_await",
+    "description": "Wait for a subchat you spawned from this chat to finish. This call holds until the subchat completes, then returns its final assistant message content verbatim. Prefer it over polling rhd_sub_chat_status. Only direct children of the current chat can be awaited. There is no timeout: a subchat parked on an error keeps this call pending until an operator fixes it.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "chatId": { "type": "integer", "description": "Id of the subchat, as reported by rhd_sub_chat" }
+      },
+      "required": ["chatId"]
+    }
+  }
+}

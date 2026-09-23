@@ -1,0 +1,34 @@
+{
+  "type": "function",
+  "function": {
+    "name": "rhd_sub_chat",
+    "description": "Delegate a self-contained task to a fresh subchat: a new chat that runs with its own history and tools and finishes with a final assistant answer. Provide the subchat conversation seed as ordered messages with roles 'system' (instructions for the subchat) and 'user' (the task). Tags are applied to the subchat BEFORE its messages are queued, so prompt/tool-gating tags take effect on its very first request. In default (sync) mode this call returns only when the subchat has finished, with its final assistant message as the result. Set async=true to start it and return immediately with the subchat id; inspect it later with rhd_sub_chat_status or rhd_sub_chat_await. A subchat that errored stays pending until an operator fixes it.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "messages": {
+          "type": "array",
+          "description": "Ordered seed messages for the subchat. Roles restricted to system and user.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "role": { "type": "string", "enum": ["system", "user"] },
+              "content": { "type": "string" }
+            },
+            "required": ["role", "content"]
+          }
+        },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Extra chat tags for the subchat (e.g. systemPrompt:<name>, worktree:<id>, mcp:<tag>). Reserved tags (paused, parent:, root:, sub_chat:) are rejected."
+        },
+        "async": {
+          "type": "boolean",
+          "description": "If true, return immediately after starting the subchat; if false or omitted, return the subchat's final answer when it completes."
+        }
+      },
+      "required": ["messages"]
+    }
+  }
+}

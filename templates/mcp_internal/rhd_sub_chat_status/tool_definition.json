@@ -1,0 +1,14 @@
+{
+  "type": "function",
+  "function": {
+    "name": "rhd_sub_chat_status",
+    "description": "Check a subchat you spawned from this chat. Returns exactly 'pending' (still running, queued, or parked on an error) or 'completed' (idle with a final assistant message). Only direct children of the current chat can be queried.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "chatId": { "type": "integer", "description": "Id of the subchat, as reported by rhd_sub_chat" }
+      },
+      "required": ["chatId"]
+    }
+  }
+}

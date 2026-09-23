@@ -15,6 +15,7 @@ members = [
     "plugins/rhd_plugin_mcp",
     "plugins/rhd_plugin_choice",
     "plugins/rhd_plugin_commands",
+    "plugins/rhd_plugin_sub_chat",
 ]
 resolver = "2"
 
