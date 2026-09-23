@@ -7,12 +7,17 @@ use crate::ai_request::AiRequestError;
 
 /// Process queued messages: remove from queue and add as regular messages.
 ///
+/// Returns the number of messages promoted. A `0` return means another plugin
+/// emptied the queue during `ai_completions:preDrainQueue` (e.g. a commands-only
+/// message was consumed), and the caller must decide whether a request is owed
+/// at all.
+///
 /// `tool_call_id` is carried through (P8) so a queued `tool` message keeps the id of
 /// the call it answers and passes the D4 integrity check after promotion.
 pub async fn process_queued_messages(
     client: &ChatClient,
     chat_id: i64,
-) -> Result<(), AiRequestError> {
+) -> Result<usize, AiRequestError> {
     tracing::debug!(chat_id = chat_id, "fetching queued messages");
     // Get queued messages
     let queue_result = client
@@ -20,9 +25,10 @@ pub async fn process_queued_messages(
         .await
         .map_err(|e| AiRequestError::QueueGet(e.to_string()))?;
 
+    let promoted = queue_result.messages.len();
     tracing::debug!(
         chat_id = chat_id,
-        message_count = queue_result.messages.len(),
+        message_count = promoted,
         "found queued messages"
     );
 
@@ -68,5 +74,5 @@ pub async fn process_queued_messages(
         );
     }
 
-    Ok(())
+    Ok(promoted)
 }

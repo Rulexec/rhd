@@ -1465,6 +1465,7 @@ dependencies = [
  "include_dir",
  "rhd_chat_api",
  "rhd_chat_client",
+ "rhd_chat_server",
  "serde",
  "serde_json",
  "thiserror",

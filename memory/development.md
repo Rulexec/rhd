@@ -81,6 +81,13 @@ let callback = sub.callback.clone();
 tokio::spawn(async move { (callback)(data).await; });
 ```
 
+### Pattern: Every Plugin Must Acknowledge Live Custom Events
+
+**Context:** Writing or reviewing any plugin in `plugins/` that registers with the chat server.
+**Rule:** A registered plugin must acknowledge **every** custom event it receives — subscribe via `on_custom_event` and ack unhandled events immediately, in addition to the startup `getPendingAcks` drain. A startup-only drain is NOT sufficient: events delivered while the plugin is running would never be acked.
+**Why:** Senders (`ai_completions:preRequest`, `ai_completions:preDrainQueue`) wait for acks from every registered plugin in their `PluginsMonitor` snapshot; one silent plugin parks the chat for the 30 s timeout and then errors it (`ai_completions:error`). `rhd_plugin_choice` shipped with no `on_custom_event` subscription and caused exactly this on the first `preDrainQueue` rollout; the guard test is `plugins/rhd_plugin_choice/tests/custom_event_ack_test.rs`.
+**Example:** See "Acknowledging Unhandled Events" in [`plugins/README.md`](../plugins/README.md) and the always-ack subscriptions in `rhd_plugin_mcp` / `rhd_plugin_choice` / `rhd_plugin_commands`.
+
 ### Pattern: Plugins Are Event-Driven, Not Polling
 
 **Context:** Implementing or modifying any plugin in `plugins/`

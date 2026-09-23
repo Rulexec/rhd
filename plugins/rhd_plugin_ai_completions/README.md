@@ -94,6 +94,18 @@ continuation, where there is no queue to drain).
 **Wait Logic**: Waits for all other plugins to acknowledge (30 s timeout;
 timeout parks the chat with `ai_completions:error`, same as `preRequest`).
 
+**Empty-drain skip**: the drain after this event reports how many queued
+messages it promoted. When a consumer (e.g. `rhd_plugin_commands`) empties the
+whole queue during `preDrainQueue` — so the drain promotes **nothing** — and no
+tool-loop continuation is owed (the last assistant message has no fully
+resolved tool calls awaiting a reply), the plugin does **not** send an AI
+request. It acknowledges its own `preRequest` event and returns without setting
+the `ai_completions:running` tag or creating a streaming message, leaving the
+chat pristine to wait for a real user message (the next queued message
+re-triggers the full flow). A queue-consuming slash-command that carries no
+text therefore never wakes the model on its own. When a genuine continuation
+*is* pending, the request still goes out despite the empty drain.
+
 ## Tags Added
 
 ### `ai_completions:error`

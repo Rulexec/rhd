@@ -9,8 +9,8 @@ use std::time::Duration;
 
 use rhd_chat_api::{
     AckCustomEventParams, AddMessageParams, AddQueueMessageParams, AddToolsParams, CreateChatParams,
-    CustomEventData, FunctionDefinition, GetChatParams, Message, RegisterPluginParams,
-    ToolDefinition,
+    CustomEventData, DeleteQueueMessageParams, FunctionDefinition, GetChatParams,
+    GetQueueMessagesParams, Message, RegisterPluginParams, ToolDefinition,
 };
 use rhd_chat_client::ChatClient;
 use rhd_mock_ai_provider::{MockAiProvider, MockAiResponse, RecordingListener};
@@ -237,6 +237,91 @@ fn trigger_reason_of(event: &CustomEventData) -> String {
         .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
         .and_then(|v| v["triggerReason"].as_str().map(str::to_string))
         .unwrap_or_default()
+}
+
+/// Observer plugin that CONSUMES queued messages on `ai_completions:preDrainQueue`:
+/// before acking, it deletes every queued message whose content starts with
+/// `/delete-me` — simulating what `rhd_plugin_commands` does with a commands-only
+/// message — and acknowledges every event it receives.
+///
+/// Must be called BEFORE the plugin under test starts: its `PluginsMonitor`
+/// snapshots the plugin list at creation, so only already-registered plugins
+/// are awaited on the ack-wait.
+async fn spawn_queue_consumer_observer(url: &str, plugin_id: &str) -> Arc<ChatClient> {
+    let client = Arc::new(
+        ChatClient::connect(url)
+            .await
+            .expect("Failed to connect observer"),
+    );
+    client
+        .register_plugin(RegisterPluginParams {
+            plugin_id: plugin_id.to_string(),
+        })
+        .await
+        .expect("Failed to register observer plugin");
+
+    let handler_client = Arc::clone(&client);
+    let _token = client.on_custom_event(move |event| {
+        let client = Arc::clone(&handler_client);
+        async move {
+            if event.event_name == "ai_completions:preDrainQueue" {
+                if let Some(chat_id) =
+                    event.chat_id.as_deref().and_then(|s| s.parse::<i64>().ok())
+                {
+                    if let Ok(queue) = client
+                        .get_queue_messages(GetQueueMessagesParams { chat_id })
+                        .await
+                    {
+                        for msg in queue.messages {
+                            if msg.content.starts_with("/delete-me") {
+                                let _ = client
+                                    .delete_queue_message(DeleteQueueMessageParams {
+                                        message_id: msg.id,
+                                    })
+                                    .await;
+                            }
+                        }
+                    }
+                }
+            }
+            let _ = client
+                .ack_custom_event(AckCustomEventParams {
+                    event_id: event.event_id,
+                    is_rejected: None,
+                })
+                .await;
+        }
+    });
+    client
+}
+
+/// Chat tags as currently stored on the server.
+async fn chat_tags(client: &ChatClient, chat_id: i64) -> Vec<String> {
+    client
+        .get_chat(GetChatParams {
+            chat_id,
+            if_version_higher_than: None,
+        })
+        .await
+        .expect("Failed to get chat")
+        .chat
+        .tags
+}
+
+/// Queue one plain user message on an existing chat.
+async fn queue_on_chat(client: &ChatClient, chat_id: i64, content: &str) {
+    client
+        .add_queue_message(AddQueueMessageParams {
+            chat_id,
+            role: "user".to_string(),
+            content: content.to_string(),
+            tool_call_id: None,
+            reasoning_content: None,
+            tags: vec![],
+            before_message_id: None,
+        })
+        .await
+        .expect("Failed to queue message");
 }
 
 #[tokio::test]
@@ -479,6 +564,194 @@ async fn test_drain_waits_for_pre_drain_queue_acks() {
         assert!(
             !messages.iter().any(|m| m.tags.iter().any(|t| t == "ai_completions:error")),
             "chat must not be parked: the wait finished well within the 30 s timeout"
+        );
+
+        plugin_handle.abort();
+    })
+    .await
+    .expect("Test timed out");
+}
+
+/// When a plugin consumes the WHOLE queue during preDrainQueue (the commands
+/// plugin deleting a commands-only message), the drain promotes nothing and no
+/// request is owed: the plugin must skip the AI request, leave the chat
+/// pristine (no running tag, no parked error, no streaming message), and wait
+/// for a real message — which then triggers the flow normally.
+#[tokio::test]
+async fn test_empty_queue_after_pre_drain_skips_request() {
+    init_tracing();
+    timeout(Duration::from_secs(30), async {
+        let env = TestEnv::new().await;
+        env.listener
+            .push_response(MockAiResponse::stream_text("Real reply"));
+
+        let client =
+            spawn_queue_consumer_observer(&env.chat_server_url(), "queue_consumer").await;
+        let plugin_handle = spawn_plugin(&env);
+        sleep(Duration::from_millis(500)).await;
+
+        let chat_id = queue_user_message(&client, "Emptied drain", "/delete-me marker").await;
+
+        // Wait for the consumer to empty the queue during preDrainQueue.
+        let emptied = {
+            let mut done = false;
+            for _ in 0..100 {
+                let queue = client
+                    .get_queue_messages(GetQueueMessagesParams { chat_id })
+                    .await
+                    .expect("Failed to get queue");
+                if queue.messages.is_empty() {
+                    done = true;
+                    break;
+                }
+                sleep(Duration::from_millis(100)).await;
+            }
+            done
+        };
+        assert!(emptied, "queue consumer must have deleted the marker message");
+
+        // Give a (buggy) post-drain request a window to appear, then verify
+        // silence and zero residue.
+        sleep(Duration::from_secs(2)).await;
+        assert!(
+            env.listener.get_requests().is_empty(),
+            "a drain that promoted nothing must not send a request"
+        );
+        let messages = fetch_messages(&client, chat_id).await;
+        assert!(
+            messages.is_empty(),
+            "the skipped cycle must leave no residue in history: {messages:?}"
+        );
+        let tags = chat_tags(&client, chat_id).await;
+        assert!(
+            !tags.iter().any(|t| t == "ai_completions:running"),
+            "skip must not leave the running tag: {tags:?}"
+        );
+        assert!(
+            !tags.iter().any(|t| t == "ai_completions:error"),
+            "skip must not park the chat: {tags:?}"
+        );
+
+        // A real message now triggers the flow as usual.
+        queue_on_chat(&client, chat_id, "real question").await;
+        let messages = wait_for_condition(&client, chat_id, 15, |msgs| {
+            msgs.iter()
+                .any(|m| m.role == "assistant" && m.is_finished && !m.content.is_empty())
+        })
+        .await
+        .expect("assistant must reply to the next real message");
+        assert_eq!(env.listener.get_requests().len(), 1);
+        assert!(messages
+            .iter()
+            .any(|m| m.role == "user" && m.content == "real question"));
+
+        plugin_handle.abort();
+    })
+    .await
+    .expect("Test timed out");
+}
+
+/// The empty-drain skip must not swallow a genuinely owed continuation: when a
+/// tool result and a queue message coalesce into one QueuedMessages trigger and
+/// the queue is consumed before the drain, the last assistant message still has
+/// fully resolved tool calls — the request must go out anyway as the tool-loop
+/// continuation.
+#[tokio::test]
+async fn test_tool_loop_continuation_survives_empty_drain() {
+    init_tracing();
+    timeout(Duration::from_secs(40), async {
+        let env = TestEnv::new().await;
+        env.listener
+            .push_response(MockAiResponse::stream_tool_call(
+                "get_weather",
+                r#"{"city":"London"}"#,
+            ));
+        env.listener
+            .push_response(MockAiResponse::stream_text("London: sunny, 20C."));
+
+        let client =
+            spawn_queue_consumer_observer(&env.chat_server_url(), "queue_consumer").await;
+        let plugin_handle = spawn_plugin(&env);
+        sleep(Duration::from_millis(500)).await;
+
+        let chat_id = client
+            .create_chat(CreateChatParams {
+                title: "Continuation after empty drain".to_string(),
+                tags: vec![],
+            })
+            .await
+            .expect("Failed to create chat")
+            .chat_id;
+        client
+            .add_tools(AddToolsParams {
+                chat_id,
+                tools: vec![ToolDefinition {
+                    tool_type: "function".to_string(),
+                    function: FunctionDefinition {
+                        name: "get_weather".to_string(),
+                        description: "Get the current weather for a city".to_string(),
+                        parameters: serde_json::json!({"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]}),
+                    },
+                }],
+            })
+            .await
+            .expect("Failed to add tools");
+
+        // Primer: the assistant declares a tool call; the loop parks unresolved.
+        queue_on_chat(&client, chat_id, "What's the weather in London?").await;
+        let messages = wait_for_condition(&client, chat_id, 20, |msgs| {
+            msgs.iter().any(|m| m.role == "assistant" && !m.tool_calls.is_empty())
+        })
+        .await
+        .expect("assistant tool call should appear");
+        let tool_call_id = messages
+            .iter()
+            .find_map(|m| m.tool_calls.first().map(|tc| tc.id.clone()))
+            .expect("tool call id");
+        assert_eq!(env.listener.get_requests().len(), 1);
+
+        // While parked, queue the consumable marker; nothing may drain yet.
+        queue_on_chat(&client, chat_id, "/delete-me marker").await;
+        sleep(Duration::from_millis(500)).await;
+        assert_eq!(
+            env.listener.get_requests().len(),
+            1,
+            "a parked loop must not drain early"
+        );
+
+        // Resolve the tool call → QueuedMessages trigger fires; the consumer
+        // deletes the marker during preDrainQueue, so the drain promotes 0 —
+        // but the resolved tool loop is pending and must still continue.
+        client
+            .add_message(AddMessageParams {
+                chat_id,
+                role: "tool".to_string(),
+                content: r#"{"temperature":"20C","condition":"sunny"}"#.to_string(),
+                tool_call_id: Some(tool_call_id),
+                reasoning_content: None,
+                tags: vec![],
+                is_finished: true,
+                is_streaming: false,
+            })
+            .await
+            .expect("Failed to add tool result");
+
+        wait_for_condition(&client, chat_id, 20, |msgs| {
+            msgs.iter().any(|m| {
+                m.role == "assistant" && m.tool_calls.is_empty() && m.is_finished && !m.content.is_empty()
+            })
+        })
+        .await
+        .expect("the owed continuation must fire despite the empty drain");
+        assert_eq!(
+            env.listener.get_requests().len(),
+            2,
+            "pending continuation must not be swallowed by the empty-drain skip"
+        );
+        let history = fetch_messages(&client, chat_id).await;
+        assert!(
+            !history.iter().any(|m| m.content.contains("/delete-me")),
+            "consumed marker must never enter history: {history:?}"
         );
 
         plugin_handle.abort();

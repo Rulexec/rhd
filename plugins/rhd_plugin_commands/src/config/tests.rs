@@ -119,21 +119,27 @@ commands:
 }
 
 #[test]
-fn test_load_config_unknown_top_level_field() {
-    // deny_unknown_fields: stray top-level keys are a Parse error.
-    let (_dir, path) = temp_config(
+fn test_load_config_tolerates_foreign_top_level_fields() {
+    // The plugin config lives in the shared rhd.yaml alongside other plugins'
+    // sections (children, ai_completions, ...): foreign top-level keys are
+    // ignored; only `commands` is consumed.
+    let (dir, path) = temp_config(
         r#"
-commands: {}
-unexpected: 1
+credentialsConfig: ../credentials.yaml
+commands:
+  prompt_example: ./commands/prompt.md
+ai_completions:
+  models: {}
+children:
+  - name: chat_server
+    cmd: rhd_chat_server
 "#,
     );
+    write_canonical_prompt_files(dir.path());
 
-    match load_config(&path) {
-        Err(e @ ConfigError::Parse(_)) => {
-            assert!(e.to_string().contains("unexpected"), "got: {e}");
-        }
-        other => panic!("expected Parse error, got {other:?}"),
-    }
+    let registry = load_config(&path).unwrap();
+    assert_eq!(registry.len(), 1);
+    assert!(registry.has("prompt_example"));
 }
 
 #[test]

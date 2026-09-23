@@ -18,9 +18,12 @@ use crate::templates::Templates;
 /// 1. Connect to chat server
 /// 2. Register as plugin
 /// 3. Process pending acks
-/// 4. Create chat monitor, subscribe to all chats
-/// 5. On every chat state change: register rhd_choice tool once per chat
-/// 6. Main loop (keep alive)
+/// 4. Subscribe to custom events and acknowledge them unhandled (the plugin
+///    reacts to none — never acking would park senders' coordination waits,
+///    e.g. `ai_completions:preRequest` / `ai_completions:preDrainQueue`)
+/// 5. Create chat monitor, subscribe to all chats
+/// 6. On every chat state change: register rhd_choice tool once per chat
+/// 7. Main loop (keep alive)
 pub async fn run_plugin(server_url: &str, plugin_id: &str) -> Result<(), PluginError> {
     let templates = Arc::new(Templates::load().map_err(|e| PluginError::Template(e.to_string()))?);
     tracing::info!("Templates loaded");
@@ -57,6 +60,29 @@ pub async fn run_plugin(server_url: &str, plugin_id: &str) -> Result<(), PluginE
             .await
             .map_err(|e| PluginError::PendingAcks(e.to_string()))?;
     }
+
+    // Acknowledge every live custom event. The choice plugin reacts to none of
+    // them, but senders (e.g. ai_completions on `preRequest` / `preDrainQueue`)
+    // wait for an ack from every registered plugin — a missing ack here would
+    // stall the coordination timeout. See plugins/README.md, "Acknowledging
+    // Unhandled Events".
+    let client_for_events = Arc::clone(&client);
+    let _custom_event_token = client.on_custom_event(move |event| {
+        let client = Arc::clone(&client_for_events);
+        async move {
+            tracing::debug!(
+                event_id = %event.event_id,
+                event_name = %event.event_name,
+                "acknowledging unhandled custom event"
+            );
+            let _ = client
+                .ack_custom_event(AckCustomEventParams {
+                    event_id: event.event_id,
+                    is_rejected: None,
+                })
+                .await;
+        }
+    });
 
     let chat_monitor = Arc::new(
         client

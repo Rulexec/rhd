@@ -1,11 +1,17 @@
 //! Configuration loading and validation for the commands plugin.
 //!
-//! The YAML surface is a strict `commands:` map (`deny_unknown_fields`) in
-//! which every value is one of four shapes:
+//! The YAML surface is a `commands:` map in which every value is one of four
+//! shapes:
 //!
 //! 1. a bare path string (prompt shorthand, role `user`),
 //! 2. a single tagged spec (`type: chat_tags | message_tags | prompt`),
 //! 3. a list mixing both shapes (multi-step command).
+//!
+//! Strictness lives on the individual command specs (`deny_unknown_fields` on
+//! `CommandSpec`), NOT on the file root: this config is meant to live alongside
+//! the other plugins' sections in the shared `rhd.yaml`, so the top-level
+//! struct ignores foreign keys exactly like system_prompt/ai_completions/mcp
+//! configs do.
 //!
 //! Loading resolves every prompt file against the config file's directory and
 //! caches its content verbatim (markdown, no content parsing), failing fast on
@@ -15,10 +21,14 @@ use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-/// Raw plugin configuration loaded from the YAML file.
+/// Raw plugin configuration loaded from the (shared) YAML file.
+///
+/// Deliberately *not* `deny_unknown_fields`: `rhd.yaml` carries every plugin's
+/// section, so foreign top-level keys (`children`, `ai_completions`, …) must be
+/// ignored. Per-command strictness is enforced on [`CommandSpec`] instead.
 #[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct PluginConfig {
+    #[serde(default)]
     pub commands: HashMap<String, CommandDef>,
 }
 

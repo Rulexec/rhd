@@ -3,7 +3,10 @@
 //! This module handles the complete flow of making an AI completion request:
 //! 1. Send preRequest event and wait for acknowledgments
 //! 2. If queuedMessages trigger: send preDrainQueue event and wait for acknowledgments,
-//!    then process queued messages (move from queue to regular messages)
+//!    then process queued messages (move from queue to regular messages). When the
+//!    drain promotes nothing (a plugin — e.g. rhd_plugin_commands — consumed the
+//!    whole queue) and no tool-loop continuation is pending, the request is skipped:
+//!    the chat goes back to waiting for a real user message.
 //! 3. Build and validate AI request from chat messages (D4: refuse inconsistent histories)
 //! 4. Make AI completion request
 //! 5. Handle response (success or error)
@@ -23,6 +26,7 @@ use rhd_chat_client::{ChatClient, PluginsMonitor};
 use crate::config::PluginConfig;
 use crate::message_conversion;
 use crate::queued_messages::process_queued_messages;
+use crate::tool_resolution;
 use crate::trigger_detection::TriggerReason;
 
 /// Handle AI completion request for a chat.
@@ -31,7 +35,9 @@ use crate::trigger_detection::TriggerReason;
 /// 1. Send `ai_completions:preRequest` event
 /// 2. Wait for all other plugins to acknowledge
 /// 3. If trigger reason is QueuedMessages: send `ai_completions:preDrainQueue`, wait for
-///    all other plugins to acknowledge, then process queued messages
+///    all other plugins to acknowledge, then process queued messages. If the drain
+///    promotes nothing and no tool-loop continuation is pending, acknowledge own
+///    event and return without sending a request (the chat waits for real input).
 /// 4. Acknowledge own event
 /// 5. Build and validate the AI completion request — on validation failure, park the chat and send nothing (D4)
 /// 6. Handle response (add assistant message on success, error tag/message on failure)
@@ -82,8 +88,12 @@ pub async fn handle_ai_request(
         )
         .await?;
 
-        process_queued_messages(&client, chat_id).await?;
-        tracing::info!(chat_id = chat_id, "finished processing queued messages");
+        let promoted = process_queued_messages(&client, chat_id).await?;
+        tracing::info!(
+            chat_id = chat_id,
+            promoted = promoted,
+            "finished processing queued messages"
+        );
 
         // Refetch messages after processing queued messages using conditional fetch
         let chat_result = client
@@ -99,6 +109,28 @@ pub async fn handle_ai_request(
             chat_version = chat_result.chat.version,
             "refetched messages after processing queue"
         );
+
+        // Empty-drain skip: a plugin (e.g. rhd_plugin_commands) consumed the whole
+        // queue during preDrainQueue, so there is no new user input to answer. The
+        // guard preserves a genuine tool-loop continuation that shared this trigger
+        // (last assistant's tool calls all resolved). Returning here runs *before*
+        // the running tag and the streaming message are created, so the chat is
+        // left pristine and the next real queued message re-triggers the whole flow.
+        if promoted == 0 && !tool_resolution::all_tool_calls_resolved(&chat_result.messages) {
+            tracing::info!(
+                chat_id = chat_id,
+                "queue emptied during preDrainQueue with no pending continuation; skipping AI request"
+            );
+            client
+                .ack_custom_event(AckCustomEventParams {
+                    event_id,
+                    is_rejected: None,
+                })
+                .await
+                .map_err(|e| AiRequestError::EventAck(e.to_string()))?;
+            return Ok(());
+        }
+
         chat_result.messages
     } else {
         // Verify state freshness before AI request

@@ -16,6 +16,7 @@ A plugin that provides the `rhd_choice` decision tool to every chat in the RHD c
 ## Events Listened For
 
 - Chat state changes only (via `ChatMonitor::subscribe_to_all_chats` + `on_chat_state_change`).
+- All custom events are **acknowledged unhandled** (via `on_custom_event`) — the plugin reacts to none, but must never stall senders' all-plugin ack waits.
 
 ## Events Emitted
 
@@ -39,7 +40,7 @@ The tool definition lives in `templates/mcp_internal/rhd_choice/tool_definition.
 ## Behavior Notes
 
 - **Unanswered `rhd_choice` calls intentionally pause the `ai_completions` tool loop.** The AI plugin requires all tool calls resolved before continuing, so the conversation waits until a human answers in the UI — that is the point of the feature.
-- The plugin subscribes to no custom events, but still drains `getPendingAcks` at startup and acknowledges everything, so senders waiting on all-plugin acknowledgments never time out on this plugin.
+- The plugin handles no custom events, but it **must still acknowledge them**: it subscribes via `on_custom_event` and acks everything unhandled, and drains `getPendingAcks` at startup. A registered plugin that never acks stalls senders' all-plugin coordination waits (e.g. `ai_completions:preRequest` / `ai_completions:preDrainQueue` park the chat on a 30 s timeout) — the startup-only drain was insufficient because events delivered *while running* were left un-acked (regression seen with `preDrainQueue`).
 - The `on_chat_state_change` callback body is `tokio::spawn`ed — never `await`ed inline in the monitor's dispatch path (see the "Event Callbacks Must Not Block the WebSocket Read Task" pattern in `memory/development.md`).
 
 ## Configuration

@@ -766,3 +766,114 @@ async fn test_no_commands_plugin_no_behavior_change() {
     .await
     .expect("test timed out");
 }
+
+/// 9. A tag-only command (no text, no prompt) is applied, its emptied message
+/// is removed from the queue, and the chat stays SILENT: no AI request is sent
+/// for a drain that promoted nothing. The next real message triggers the first
+/// request — the command "waits for actual new messages".
+#[tokio::test]
+async fn test_tag_only_command_stays_silent_until_real_message() {
+    init_tracing();
+    timeout(Duration::from_secs(25), async {
+        let env = TestEnv::new().await;
+        env.listener
+            .push_response(MockAiResponse::stream_text("First reply"));
+        // Available only if the model is (wrongly) woken by the command, or on
+        // the legitimate second request below — assertions on request count
+        // disambiguate.
+        env.listener
+            .push_response(MockAiResponse::stream_text("Second reply"));
+
+        let _cmd = start_commands(&env).await;
+        let ai = start_ai(&env);
+        sleep(Duration::from_millis(500)).await;
+
+        let client = connect(&env.chat_server_url()).await;
+        let chat_id = create_chat(&client, "Tag only", vec![]).await;
+
+        // Seed one real exchange so the tag-only command has stale history to
+        // (must not) re-answer.
+        queue_text(&client, chat_id, "hello").await;
+        let ok = wait_until(Duration::from_secs(15), || async {
+            assistant_replied(&get_history(&client, chat_id).await)
+        })
+        .await;
+        assert!(ok, "first real message must be answered");
+        assert_eq!(
+            env.listener.get_requests().len(),
+            1,
+            "exactly one request after the seed exchange"
+        );
+
+        // The tag-only command: steps run, message is consumed, queue empties.
+        queue_text(&client, chat_id, "/tags_example").await;
+        let applied = wait_until(Duration::from_secs(15), || async {
+            get_chat_tags(&client, chat_id)
+                .await
+                .iter()
+                .any(|t| t == "mcp:common")
+                && get_queue(&client, chat_id).await.is_empty()
+        })
+        .await;
+        assert!(
+            applied,
+            "chat tag must be applied and the emptied command message removed"
+        );
+
+        // Give the (buggy) post-drain request a window to appear, then prove
+        // the model stayed silent and the chat is pristine.
+        sleep(Duration::from_secs(3)).await;
+        assert_eq!(
+            env.listener.get_requests().len(),
+            1,
+            "a queue-emptying command must not trigger an AI request"
+        );
+        let history = get_history(&client, chat_id).await;
+        assert_eq!(
+            history
+                .iter()
+                .filter(|m| m.role == "assistant" && m.is_finished)
+                .count(),
+            1,
+            "no second assistant reply: {history:?}"
+        );
+        assert!(
+            !history
+                .iter()
+                .any(|m| m.content.contains("/tags_example")),
+            "command text must not reach history: {history:?}"
+        );
+        let tags = get_chat_tags(&client, chat_id).await;
+        assert!(
+            !tags.iter().any(|t| t == "ai_completions:running"),
+            "skip must not leave the running tag: {tags:?}"
+        );
+        assert!(
+            !tags.iter().any(|t| t == "ai_completions:error"),
+            "skip must not park the chat: {tags:?}"
+        );
+
+        // A real message now triggers the flow as usual.
+        queue_text(&client, chat_id, "second message").await;
+        let replied = wait_until(Duration::from_secs(15), || async {
+            get_history(&client, chat_id)
+                .await
+                .iter()
+                .any(|m| m.role == "assistant" && m.content == "Second reply")
+        })
+        .await;
+        assert!(replied, "the next real message must trigger the request");
+        let requests = env.listener.get_requests();
+        assert_eq!(requests.len(), 2, "one request per real wake-up");
+        let debug_last = format!("{:?}", requests[1].messages);
+        assert!(
+            debug_last.contains("second message"),
+            "the second request must carry the new user message: {debug_last}"
+        );
+
+        ai.abort();
+        _cmd.abort();
+    })
+    .await
+    .expect("test timed out");
+}

@@ -231,7 +231,7 @@ This pattern doesn't scale and wastes resources checking chats that haven't chan
 
 ### Acknowledging Unhandled Events
 
-When a plugin subscribes to custom events via `on_custom_event`, it **must acknowledge all events it receives**, even if it doesn't handle them. This is critical for the coordination system to work correctly.
+Every plugin **must subscribe** to custom events via `on_custom_event` — even if it handles none — and **acknowledge all events it receives**. This is critical for the coordination system to work correctly. The startup `getPendingAcks` drain alone is NOT sufficient: events delivered while the plugin is running would never be acked.
 
 **Why this matters:**
 - The sender of a custom event waits for acknowledgments from all registered plugins

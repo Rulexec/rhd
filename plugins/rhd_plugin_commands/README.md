@@ -40,7 +40,10 @@ None.
 
 ## Commands
 
-Configuration is a strict top-level `commands:` map (`deny_unknown_fields`).
+Configuration is a top-level `commands:` map. Individual command specs are
+strict (`deny_unknown_fields` on each spec), but the file root ignores foreign
+top-level keys — so this section can live directly in the shared `rhd.yaml`
+alongside the other plugins' sections, exactly like `systemPrompts` / `mcp`.
 Each value is one of the four shapes:
 
 ```yaml
@@ -97,6 +100,13 @@ Validation at startup (all failures abort with a clear error):
   during the same pass are never re-parsed (no recursion), and assistant/tool
   messages pass through untouched.
 
+A commands-only message that consumes the whole queue (e.g. a pure tag
+command: its steps run and its emptied message is deleted) never reaches the
+model: when the drain promotes nothing, the AI completions plugin skips the
+request entirely and the chat waits for the next real message. Commands that
+leave text (or insert a prompt) in the queue still drain and trigger the model
+as before.
+
 ## Examples
 
 With the example configuration above (`config.example.yaml`):
@@ -127,16 +137,32 @@ With the example configuration above (`config.example.yaml`):
 ./rhd_plugin_commands --server-url ws://localhost:8080/ --config commands-config.yaml
 ```
 
+In a standard deployment the `commands:` section lives in the shared `rhd.yaml`
+(like `systemPrompts` / `mcp`) and the plugin is launched by `rhd start`:
+
+```yaml
+children:
+  - name: commands
+    cmd: rhd_plugin_commands
+    args:
+      - '--server-url'
+      - 'ws://127.0.0.1:8080'
+      - '--config'
+      - './rhd.yaml'
+```
+
 ### Command-Line Arguments
 
 - `--server-url`: WebSocket URL of the chat server (required)
-- `--config`: Path to the commands YAML file (required)
+- `--config`: Path to the YAML file carrying the `commands:` section (required;
+  may be the shared `rhd.yaml`)
 - `--plugin-id`: Plugin ID (optional, defaults to `commands`)
 
 ## Error Handling
 
-- **Bad config = fail fast at startup** (unknown fields, invalid names/roles,
-  missing prompt files); the plugin never runs with a half-loaded registry.
+- **Bad config = fail fast at startup** (unknown fields inside a command spec,
+  invalid names/roles, missing prompt files); the plugin never runs with a
+  half-loaded registry.
 - **Runtime**: per-step client errors are logged with chat/message/command
   context and the remaining messages still get processed.
 - **The event is always acknowledged**, even when processing fails — failures

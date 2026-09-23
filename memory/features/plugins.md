@@ -173,6 +173,7 @@ The `rhd_plugin_ai_completions` plugin is event-driven: it reacts to chat state 
 - Fetches queued messages from the chat
 - Deletes each queued message from the queue
 - Adds each as a regular message to maintain chat history (in queue position order)
+- **Empty-drain skip:** if the drain promotes zero messages (a plugin emptied the whole queue during `preDrainQueue`, e.g. `rhd_plugin_commands` consuming a text-less command message) **and** no tool-loop continuation is owed (last assistant has no fully-resolved tool calls), the plugin does not send an AI request at all — it acknowledges its own `preRequest`, sets no `running` tag, creates no streaming message, and the chat simply waits for the next real queued message. A genuine pending continuation still fires despite the empty drain.
 - Builds AI request from message history (filtering out error messages)
 
 **Chat Tags:**
@@ -246,6 +247,7 @@ The `rhd_plugin_commands` plugin turns leading slash-commands in a queued messag
 **Coordination & safety:**
 - Reacts to `ai_completions:preDrainQueue` (fires only on the queuedMessages trigger). It **always acknowledges** that event — even when a message's commands fail — so one bad message never parks the chat; other plugins that don't handle the event acknowledge it automatically, so the queue drains normally with the plugin down.
 - Only `user`-role queued messages are scanned; assistant/tool messages and messages with a `tool_call_id` are never rewritten.
+- **A text-less command never wakes the model:** a command-only message whose steps consume it (e.g. a pure tag command like `/mcp_on`) is removed from the queue, and when that empties the queue the AI completions plugin's empty-drain skip means no request is sent — the command applies and the chat waits for the next real message. Commands that leave text (or insert a prompt) still drain and trigger normally.
 - **Crash window:** if the plugin dies between inserting a prompt and updating the carrying message, a startup recovery re-processes the pending event; because already-stripped commands are re-parsed as plain text this is safe, but a partially-applied message could re-insert a prompt (duplication). The window is sub-second and is a documented limitation.
 - Because the queue's internal order is not exposed on the wire, a prompt can briefly render at the queue end in the live view until the drain (milliseconds); a reload shows the final order.
 
