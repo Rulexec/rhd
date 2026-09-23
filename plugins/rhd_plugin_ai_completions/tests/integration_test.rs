@@ -6,9 +6,10 @@ use std::time::Duration;
 
 use rhd_chat_api::{
     AddMessageParams, AddQueueMessageParams, CreateChatParams, GetChatParams, GetPluginsParams,
+    UpdateChatParams,
 };
 use rhd_chat_client::ChatClient;
-use rhd_mock_ai_provider::{MockAiProvider, SimpleListener};
+use rhd_mock_ai_provider::{MockAiProvider, MockAiResponse, RecordingListener, SimpleListener};
 use rhd_plugin_ai_completions::config::PluginConfig;
 use rhd_plugin_ai_completions::plugin;
 use tempfile::NamedTempFile;
@@ -1061,6 +1062,185 @@ async fn test_startup_reconciliation_running_tag_with_unfinished_message() {
         assert!(
             !chat_result.chat.tags.iter().any(|t| t == "ai_completions:running"),
             "running tag should be removed when error tag is added"
+        );
+
+        // Cleanup
+        plugin_handle.abort();
+    })
+    .await
+    .expect("Test timed out");
+}
+
+/// Test: A chat carrying the `paused` tag never triggers an AI request;
+/// removing the tag via `updateChat` resumes the normal flow.
+#[tokio::test]
+async fn test_paused_chat_never_triggers_until_unpaused() {
+    init_tracing();
+    timeout(Duration::from_secs(20), async {
+        // Start chat server on random port
+        let chat_config = rhd_chat_server::config::Config {
+            host: "127.0.0.1".to_string(),
+            port: 0,
+            db_path: ":memory:".to_string(),
+            clear_pending_acks: false,
+        };
+        let (chat_server_port, _server_handle) = rhd_chat_server::server::start(chat_config)
+            .await
+            .expect("Failed to start chat server");
+
+        // Start mock AI provider with a recording listener to assert request counts.
+        // The plugin always issues streaming requests, so queue a streaming response.
+        let listener = RecordingListener::new();
+        listener.push_response(MockAiResponse::stream_text("Unpaused response"));
+        let mock_ai = MockAiProvider::start(listener.clone())
+            .await
+            .expect("Failed to start mock AI provider");
+
+        // Create credentials file
+        let mut creds_file = NamedTempFile::new().expect("Failed to create creds file");
+        std::io::Write::write_all(
+            &mut creds_file,
+            b"testApiKey: test-api-key-12345\n",
+        )
+        .expect("Failed to write creds");
+
+        // Create config file
+        let mut config_file = NamedTempFile::new().expect("Failed to create config file");
+        let config_content = format!(
+            r#"
+credentialsConfig: {}
+ai_completions:
+  models:
+    default:
+      alias: test
+    test:
+      baseUrl: "{}"
+      apiKey:
+        cred: testApiKey
+      model: "test-model"
+"#,
+            creds_file.path().to_str().unwrap(),
+            mock_ai.base_url()
+        );
+        std::io::Write::write_all(&mut config_file, config_content.as_bytes())
+            .expect("Failed to write config");
+
+        // Load config
+        let config = rhd_plugin_ai_completions::config::load_config(
+            config_file.path().to_str().unwrap(),
+        )
+        .expect("Failed to load config");
+
+        // Start plugin in background
+        let plugin_handle = tokio::spawn({
+            let url = format!("ws://127.0.0.1:{}/", chat_server_port);
+            let config = config.clone();
+            async move {
+                plugin::run_plugin(&url, "test_plugin", config).await
+            }
+        });
+
+        // Wait for plugin to initialize
+        sleep(Duration::from_millis(500)).await;
+
+        // Connect a plain client — `updateChat` tag ops work from any connection
+        let client = ChatClient::connect(&format!("ws://127.0.0.1:{}/", chat_server_port))
+            .await
+            .expect("Failed to connect");
+
+        // Create a chat tagged `paused`
+        let create_result = client
+            .create_chat(CreateChatParams {
+                title: "Paused Chat".to_string(),
+                tags: vec!["paused".to_string()],
+            })
+            .await
+            .expect("Failed to create chat");
+
+        let chat_id = create_result.chat_id;
+
+        // Add a queued message; a paused chat must never trigger
+        client
+            .add_queue_message(AddQueueMessageParams {
+                chat_id,
+                role: "user".to_string(),
+                content: "Hello".to_string(),
+                tool_call_id: None,
+                reasoning_content: None,
+                tags: vec![],
+                before_message_id: None,
+            })
+            .await
+            .expect("Failed to add queue message");
+
+        // Wait and assert no AI request was made and the queue was not drained
+        sleep(Duration::from_secs(2)).await;
+        assert!(
+            listener.get_requests().is_empty(),
+            "paused chat must not trigger AI requests"
+        );
+        let chat_result = client
+            .get_chat(GetChatParams {
+                chat_id,
+                if_version_higher_than: None,
+            })
+            .await
+            .expect("Failed to get chat");
+        assert_eq!(
+            chat_result.queued_messages_count, 1,
+            "paused chat must not process its queue"
+        );
+        assert_eq!(
+            chat_result.messages.len(),
+            0,
+            "paused chat must not receive an assistant message"
+        );
+
+        // Unpause: removing the `paused` tag bumps the chat version and fires
+        // the normal state-change flow
+        client
+            .update_chat(UpdateChatParams {
+                chat_id,
+                title: None,
+                add_tags: vec![],
+                remove_tags: vec!["paused".to_string()],
+            })
+            .await
+            .expect("Failed to update chat");
+
+        // Poll until a finished assistant message appears
+        let mut assistant_msg = None;
+        for _ in 0..20 {
+            sleep(Duration::from_millis(500)).await;
+
+            let chat_result = client
+                .get_chat(GetChatParams {
+                    chat_id,
+                    if_version_higher_than: None,
+                })
+                .await
+                .expect("Failed to get chat");
+
+            if let Some(msg) = chat_result
+                .messages
+                .iter()
+                .find(|m| m.role == "assistant" && m.is_finished && !m.is_streaming)
+            {
+                assistant_msg = Some(msg.clone());
+                break;
+            }
+        }
+
+        let assistant_msg =
+            assistant_msg.expect("chat should trigger AI processing after unpausing");
+        assert_eq!(
+            assistant_msg.content, "Unpaused response",
+            "assistant answer should match the pushed mock response"
+        );
+        assert_eq!(
+            listener.get_requests().len(),
+            1,
+            "exactly one AI request should reach the mock after unpause"
         );
 
         // Cleanup

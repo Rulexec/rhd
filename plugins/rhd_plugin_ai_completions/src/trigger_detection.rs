@@ -22,12 +22,18 @@ pub enum TriggerReason {
 ///
 /// The detection logic follows this priority:
 /// 1. If chat has error tag → no trigger
-/// 2. If queued messages present and no unresolved tool calls → QueuedMessages
-/// 3. If all tool calls resolved → ToolLoopContinuation
-/// 4. Otherwise → None
+/// 2. If chat has `paused` tag → no trigger
+/// 3. If queued messages present and no unresolved tool calls → QueuedMessages
+/// 4. If all tool calls resolved → ToolLoopContinuation
+/// 5. Otherwise → None
 pub fn should_trigger(chat_state: &ChatState) -> TriggerReason {
     // Skip if chat has error tag
     if has_error_tag(chat_state) {
+        return TriggerReason::None;
+    }
+
+    // Skip if chat is paused (platform-level stop switch, see grand plan AD-3)
+    if has_paused_tag(chat_state) {
         return TriggerReason::None;
     }
 
@@ -52,6 +58,11 @@ pub fn has_error_tag(chat_state: &ChatState) -> bool {
         .tags
         .iter()
         .any(|tag| tag == "ai_completions:error")
+}
+
+/// Check if chat has the `paused` tag (platform-level: no AI requests while paused).
+pub fn has_paused_tag(chat_state: &ChatState) -> bool {
+    chat_state.tags.iter().any(|tag| tag == "paused")
 }
 
 #[cfg(test)]
@@ -199,5 +210,38 @@ mod tests {
     fn test_has_error_tag_empty() {
         let state = create_chat_state(vec![], 0, vec![]);
         assert!(!has_error_tag(&state));
+    }
+
+    #[test]
+    fn paused_blocks_queued_messages_trigger() {
+        let messages = vec![create_message(1, "user", "Hello")];
+        let state = create_chat_state(messages, 1, vec!["paused".to_string()]);
+        assert_eq!(should_trigger(&state), TriggerReason::None);
+    }
+
+    #[test]
+    fn paused_blocks_tool_loop_continuation() {
+        // Fully-resolved tool loop would normally trigger continuation.
+        let messages = vec![
+            create_message(1, "user", "Use tools"),
+            assistant_with_calls(2, &["call_a", "call_b"]),
+            tool_result(3, "call_a"),
+            tool_result(4, "call_b"),
+        ];
+        let state = create_chat_state(messages, 0, vec!["paused".to_string()]);
+        assert_eq!(should_trigger(&state), TriggerReason::None);
+    }
+
+    #[test]
+    fn has_paused_tag_positive_negative() {
+        let state = create_chat_state(vec![], 0, vec!["paused".to_string()]);
+        assert!(has_paused_tag(&state));
+
+        // Exact match only: namespaced variants do not count.
+        let state = create_chat_state(vec![], 0, vec!["sub_chat:paused".to_string()]);
+        assert!(!has_paused_tag(&state));
+
+        let state = create_chat_state(vec![], 0, vec![]);
+        assert!(!has_paused_tag(&state));
     }
 }
