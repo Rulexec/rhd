@@ -1,18 +1,25 @@
-//! Tool-call event handling: dispatch over the three sub-chat tool names and
-//! the `rhd_sub_chat` spawn flow (validate → converge → answer / park).
+//! Tool-call event handling: dispatch over the three sub-chat tool names —
+//! the `rhd_sub_chat` spawn flow (validate → converge → answer / park) and the
+//! `rhd_sub_chat_status` / `rhd_sub_chat_await` flows (shared direct-child
+//! lookup → fresh predicate evaluation / watcher registration).
+//!
+//! The per-tool status/await functions are plain (no `ToolCall` coupling):
+//! Phase 6 recovery calls these exact signatures with values parsed from
+//! stored arguments — this is the frozen seam.
 //!
 //! The dispatcher in `rhd_chat_client` already runs subscription callbacks in
 //! spawned tasks, so awaiting client requests inline here is safe.
 
 use std::sync::Arc;
 
-use rhd_chat_api::{AssistantMessageWithToolCallsData, ToolCall};
-use rhd_chat_client::ChatClient;
+use rhd_chat_api::{AssistantMessageWithToolCallsData, GetChatParams, ToolCall};
+use rhd_chat_client::{ChatClient, ChatState, ClientError};
 
+use crate::completion::{self, COMPLETED, PENDING};
 use crate::reply::AnswerGuards;
 use crate::spawn::{SpawnError, SpawnPlan};
-use crate::watcher::{Waiter, Watcher};
-use crate::{reply, spawn};
+use crate::watcher::{self, Waiter, Watcher};
+use crate::{reply, spawn, tags};
 
 /// Shared context for tool-call handlers.
 #[derive(Clone)]
@@ -71,7 +78,7 @@ pub async fn handle_spawn(ctx: HandlerCtx, caller_chat_id: i64, tool_call: ToolC
                     format!("unexpected error: {unexpected}")
                 }
             };
-            answer_error(&ctx, caller_chat_id, &tool_call_id, &message).await;
+            answer_error(&ctx, "rhd_sub_chat", caller_chat_id, &tool_call_id, &message).await;
             return;
         }
     };
@@ -106,7 +113,7 @@ pub async fn handle_spawn(ctx: HandlerCtx, caller_chat_id: i64, tool_call: ToolC
                     detail,
                 } => prepare_failure_answer(*sub_chat_id, detail),
             };
-            answer_error(&ctx, caller_chat_id, &tool_call_id, &message).await;
+            answer_error(&ctx, "rhd_sub_chat", caller_chat_id, &tool_call_id, &message).await;
             return;
         }
     };
@@ -152,15 +159,159 @@ pub async fn handle_spawn(ctx: HandlerCtx, caller_chat_id: i64, tool_call: ToolC
     }
 }
 
-/// Entry point for the `on_tool_call` subscription (Phase 5 extends the
-/// dispatch with the status/await arms).
+/// Parse the `{"chatId": int}` arguments of the status/await tools. The error
+/// string is a single-line, model-facing fragment; the dispatcher prefixes it
+/// with `{name} error: invalid arguments: ` (Wire Contract). Strict on
+/// purpose: unparseable JSON, non-object documents, a missing key, and
+/// non-integer values (strings, floats, nulls, bools) all fail. Unknown extra
+/// fields are tolerated like in `spawn::parse_spawn_request`. (An explicit
+/// `Value` walk rather than a derived struct: serde derives also accept a
+/// JSON **array** as a struct in sequence form, which the contract forbids.)
+pub fn parse_target_chat_id(arguments: &str) -> Result<i64, String> {
+    let value: serde_json::Value =
+        serde_json::from_str(arguments).map_err(|e| e.to_string())?;
+    value.as_object().ok_or_else(|| {
+        r#"expected a JSON object like {"chatId": <id>}"#.to_string()
+    })?;
+    let chat_id = value
+        .get("chatId")
+        .ok_or_else(|| "missing field `chatId`".to_string())?;
+    chat_id
+        .as_i64()
+        .ok_or_else(|| "`chatId` must be an integer".to_string())
+}
+
+/// Fetch a chat and enforce the direct-child rule (AD-5): the target must
+/// carry the exact `parent:<caller>` tag; siblings, grandchildren, unrelated
+/// and unknown chats are rejected. The `Err` strings are ready-to-send error
+/// answers — callers only add the `{tool} error: ` prefix.
+async fn ensure_direct_child(
+    client: &ChatClient,
+    caller_chat_id: i64,
+    target_chat_id: i64,
+) -> Result<ChatState, String> {
+    match client
+        .get_chat(GetChatParams {
+            chat_id: target_chat_id,
+            if_version_higher_than: None,
+        })
+        .await
+    {
+        Err(e) if is_not_found(&e) => Err(format!("chat {target_chat_id} not found")),
+        Err(e) => Err(format!("chat {target_chat_id} lookup failed: {e}")),
+        Ok(result) if !tags::is_direct_child(&result.chat.tags, caller_chat_id) => Err(format!(
+            "chat {target_chat_id} is not a direct subchat of this chat"
+        )),
+        Ok(result) => Ok(watcher::chat_state_from_get(&result)),
+    }
+}
+
+/// Only the server's structured `CHAT_NOT_FOUND` code (see
+/// `rhd_chat_api::ErrorCode`, surfaced by the client as `ClientError::Server`)
+/// means "this chat does not exist". Everything else — timeouts, connection
+/// drops, other codes — is a lookup failure, deliberately kept distinct from
+/// "not found". The whole mapping lives here, in one place.
+fn is_not_found(error: &ClientError) -> bool {
+    matches!(
+        error,
+        ClientError::Server { code, .. }
+            if *code == rhd_chat_api::ErrorCode::ChatNotFound.to_string()
+    )
+}
+
+/// Handle a `rhd_sub_chat_status` call: answer a **fresh** evaluation of the
+/// completion predicate with the literal `pending` / `completed` (AD-6: no
+/// reason suffix; note 1: the watcher cache is never consulted — "status"
+/// means right now, so a re-activated subchat reads `pending` again).
+pub async fn handle_status(
+    ctx: &HandlerCtx,
+    tool: &str,
+    caller_chat_id: i64,
+    tool_call_id: &str,
+    target_chat_id: i64,
+) {
+    let state = match ensure_direct_child(&ctx.client, caller_chat_id, target_chat_id).await {
+        Ok(state) => state,
+        Err(message) => {
+            answer_error(ctx, tool, caller_chat_id, tool_call_id, &message).await;
+            return;
+        }
+    };
+    let text = if completion::is_completed(&state) {
+        COMPLETED
+    } else {
+        PENDING
+    };
+    answer_guarded(ctx, caller_chat_id, tool_call_id, text.to_string()).await;
+}
+
+/// Handle a `rhd_sub_chat_await` call: completed target → final assistant
+/// content verbatim, answered immediately; otherwise register a watcher
+/// waiter — an `await` waiter is indistinguishable from a sync-spawn waiter
+/// inside `Watcher` (that reuse is the point). Not answering *is* the parking
+/// mechanism (AD-1). Note 2: awaiting a completed-then-reactivated subchat
+/// registers and waits for the **next** idle transition, no special casing.
+pub async fn handle_await(
+    ctx: &HandlerCtx,
+    tool: &str,
+    caller_chat_id: i64,
+    tool_call_id: &str,
+    target_chat_id: i64,
+) {
+    let state = match ensure_direct_child(&ctx.client, caller_chat_id, target_chat_id).await {
+        Ok(state) => state,
+        Err(message) => {
+            answer_error(ctx, tool, caller_chat_id, tool_call_id, &message).await;
+            return;
+        }
+    };
+    if completion::is_completed(&state) {
+        let content = completion::final_answer(&state).unwrap_or_default().to_string();
+        answer_guarded(ctx, caller_chat_id, tool_call_id, content).await;
+        return;
+    }
+    ctx.watcher
+        .register_or_complete(
+            target_chat_id,
+            Waiter {
+                parent_chat_id: caller_chat_id,
+                tool_call_id: tool_call_id.to_string(),
+            },
+        )
+        .await;
+}
+
+/// Entry point for the `on_tool_call` subscription: dispatch over the three
+/// sub-chat tool names.
 pub async fn handle_tool_call_event(ctx: HandlerCtx, event: AssistantMessageWithToolCallsData) {
     for tool_call in &event.message.tool_calls {
-        match tool_call.function.name.as_str() {
+        let name = tool_call.function.name.as_str();
+        match name {
             "rhd_sub_chat" => handle_spawn(ctx.clone(), event.chat_id, tool_call.clone()).await,
-            // `rhd_sub_chat_status` / `rhd_sub_chat_await` are already covered
-            // by the subscription's name filter but handled only in Phase 5 —
-            // until then their calls fall through unanswered (parked).
+            "rhd_sub_chat_status" | "rhd_sub_chat_await" => {
+                match parse_target_chat_id(&tool_call.function.arguments) {
+                    Ok(target_chat_id) if name == "rhd_sub_chat_status" => {
+                        handle_status(&ctx, name, event.chat_id, &tool_call.id, target_chat_id)
+                            .await;
+                    }
+                    Ok(target_chat_id) => {
+                        handle_await(&ctx, name, event.chat_id, &tool_call.id, target_chat_id)
+                            .await;
+                    }
+                    Err(message) => {
+                        answer_error(
+                            &ctx,
+                            name,
+                            event.chat_id,
+                            &tool_call.id,
+                            &format!("invalid arguments: {message}"),
+                        )
+                        .await;
+                    }
+                }
+            }
+            // Foreign names never reach us in practice — the subscription
+            // filters on the three tool names (Phase 3) — but stay parked.
             _ => {}
         }
     }
@@ -179,18 +330,27 @@ fn prepare_failure_answer(sub_chat_id: Option<i64>, detail: &str) -> String {
     }
 }
 
-/// Answer the tool call with a single-line `rhd_sub_chat error: ` message
-/// (validation / mid-spawn failures) through the shared guards; a failed
-/// answer is only logged.
-async fn answer_error(ctx: &HandlerCtx, chat_id: i64, tool_call_id: &str, message: &str) {
+/// Answer the tool call with a single-line `{tool} error: ` message (spawn
+/// validation / mid-spawn failures, status/await rejections, invalid
+/// arguments) through the shared guards.
+async fn answer_error(ctx: &HandlerCtx, tool: &str, chat_id: i64, tool_call_id: &str, message: &str) {
+    answer_guarded(
+        ctx,
+        chat_id,
+        tool_call_id,
+        format!("{tool} error: {message}"),
+    )
+    .await;
+}
+
+/// Post `content` as the answer through the shared guards (which skip
+/// in-flight and already-persisted duplicates). A failed answer is only
+/// logged: the caller's loop stays parked and a later event or the Phase 6
+/// recovery pass retries the call.
+async fn answer_guarded(ctx: &HandlerCtx, chat_id: i64, tool_call_id: &str, content: String) {
     match ctx
         .guards
-        .answer_once(
-            ctx.client.as_ref(),
-            chat_id,
-            tool_call_id,
-            format!("rhd_sub_chat error: {message}"),
-        )
+        .answer_once(ctx.client.as_ref(), chat_id, tool_call_id, content)
         .await
     {
         Ok(true) | Ok(false) => {}
@@ -198,7 +358,62 @@ async fn answer_error(ctx: &HandlerCtx, chat_id: i64, tool_call_id: &str, messag
             chat_id,
             tool_call_id = %tool_call_id,
             error = %e,
-            "failed to answer rhd_sub_chat with an error"
+            "failed to answer sub-chat tool call"
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_target_chat_id;
+
+    #[test]
+    fn parses_the_contract_shape() {
+        assert_eq!(parse_target_chat_id(r#"{"chatId":5}"#), Ok(5));
+    }
+
+    #[test]
+    fn rejects_missing_key() {
+        assert!(parse_target_chat_id("{}").is_err());
+        // The error fragment names the missing field for the model.
+        let err = parse_target_chat_id("{}").unwrap_err();
+        assert!(err.contains("chatId"), "error mentions the key: {err}");
+    }
+
+    #[test]
+    fn rejects_non_integer_values() {
+        for arguments in [
+            r#"{"chatId":"5"}"#,
+            r#"{"chatId":5.5}"#,
+            r#"{"chatId":null}"#,
+            r#"{"chatId":true}"#,
+        ] {
+            assert!(
+                parse_target_chat_id(arguments).is_err(),
+                "expected rejection of {arguments}"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_non_object_and_unparseable_json() {
+        for arguments in [
+            "",
+            "not json at all",
+            "5",
+            "\"chat\"",
+            "[5]",
+            "[{\"chatId\":5}]",
+        ] {
+            assert!(
+                parse_target_chat_id(arguments).is_err(),
+                "expected rejection of {arguments:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn tolerates_extra_fields_like_spawn_parsing() {
+        assert_eq!(parse_target_chat_id(r#"{"chatId":42,"junk":true}"#), Ok(42));
     }
 }
