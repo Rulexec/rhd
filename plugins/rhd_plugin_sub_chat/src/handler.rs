@@ -9,14 +9,17 @@ use std::sync::Arc;
 use rhd_chat_api::{AssistantMessageWithToolCallsData, ToolCall};
 use rhd_chat_client::ChatClient;
 
+use crate::reply::AnswerGuards;
 use crate::spawn::{SpawnError, SpawnPlan};
+use crate::watcher::{Waiter, Watcher};
 use crate::{reply, spawn};
 
 /// Shared context for tool-call handlers.
 #[derive(Clone)]
 pub struct HandlerCtx {
     pub client: Arc<ChatClient>,
-    // Phase 4 adds: pub watcher: Arc<Watcher>,
+    pub watcher: Arc<Watcher>,
+    pub guards: Arc<AnswerGuards>,
 }
 
 /// Handle one `rhd_sub_chat` call inside an assistant message.
@@ -108,26 +111,44 @@ pub async fn handle_spawn(ctx: HandlerCtx, caller_chat_id: i64, tool_call: ToolC
         }
     };
 
-    // e. Answer per the Wire Contract.
+    // e. Answer per the Wire Contract. Every answer goes through the shared
+    // AnswerGuards, so overlapping events and recovery passes can never
+    // double-post for the same tool call.
     if plan.request.spawn_async {
         let notice = spawn::async_notice(sub_chat_id);
-        if let Err(e) =
-            reply::answer_tool_call(&ctx.client, caller_chat_id, &tool_call_id, notice).await
+        match ctx
+            .guards
+            .answer_once(&ctx.client, caller_chat_id, &tool_call_id, notice)
+            .await
         {
-            tracing::error!(
+            Ok(true) => {}
+            Ok(false) => tracing::debug!(
+                chat_id = caller_chat_id,
+                tool_call_id = %tool_call_id,
+                "async answer skipped as duplicate"
+            ),
+            Err(e) => tracing::error!(
                 chat_id = caller_chat_id,
                 tool_call_id = %tool_call_id,
                 error = %e,
                 "failed to answer async rhd_sub_chat"
-            );
+            ),
         }
     } else {
-        // Sync seam (this phase only): the call stays UNANSWERED, parking the
-        // parent's tool loop (AD-1). Phase 4 replaces this arm with watcher
-        // registration that answers with the subchat's final message.
-        tracing::warn!(
-            "sync rhd_sub_chat parked for subchat {sub_chat_id} — watcher lands in Phase 4"
-        );
+        // Sync mode (AD-1): park the parent's loop by registering a waiter on
+        // the subchat. The completion watcher answers it — either from the
+        // monitor state-change hook or from the immediate evaluate inside
+        // register_or_complete, which closes the race where the subchat
+        // finished while this handler was still converging.
+        ctx.watcher
+            .register_or_complete(
+                sub_chat_id,
+                Waiter {
+                    parent_chat_id: caller_chat_id,
+                    tool_call_id: tool_call_id.clone(),
+                },
+            )
+            .await;
     }
 }
 
@@ -159,21 +180,25 @@ fn prepare_failure_answer(sub_chat_id: Option<i64>, detail: &str) -> String {
 }
 
 /// Answer the tool call with a single-line `rhd_sub_chat error: ` message
-/// (validation / mid-spawn failures); a failed answer is only logged.
+/// (validation / mid-spawn failures) through the shared guards; a failed
+/// answer is only logged.
 async fn answer_error(ctx: &HandlerCtx, chat_id: i64, tool_call_id: &str, message: &str) {
-    if let Err(e) = reply::answer_tool_call(
-        ctx.client.as_ref(),
-        chat_id,
-        tool_call_id,
-        format!("rhd_sub_chat error: {message}"),
-    )
-    .await
+    match ctx
+        .guards
+        .answer_once(
+            ctx.client.as_ref(),
+            chat_id,
+            tool_call_id,
+            format!("rhd_sub_chat error: {message}"),
+        )
+        .await
     {
-        tracing::error!(
+        Ok(true) | Ok(false) => {}
+        Err(e) => tracing::error!(
             chat_id,
             tool_call_id = %tool_call_id,
             error = %e,
             "failed to answer rhd_sub_chat with an error"
-        );
+        ),
     }
 }

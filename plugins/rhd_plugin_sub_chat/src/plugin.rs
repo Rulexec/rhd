@@ -11,7 +11,9 @@ use rhd_chat_client::ChatClient;
 use tokio::sync::RwLock;
 
 use crate::handler::{self, HandlerCtx};
+use crate::reply::AnswerGuards;
 use crate::templates::Templates;
+use crate::watcher::{self, Watcher};
 
 /// Run the sub-chat plugin.
 ///
@@ -29,10 +31,14 @@ use crate::templates::Templates;
 /// 8. Subscribe to tool calls for the three tool names and handle
 ///    `rhd_sub_chat`: validate → two-phase activate the subchat (create
 ///    paused → reconcile queue → unpause) → async calls answer with the
-///    background notice; sync calls park unanswered until Phase 4's watcher.
-///    The status/await names are subscribed already but only dispatched from
-///    Phase 5 on — their events fall through in the handler meanwhile.
-/// 9. Main loop (keep alive)
+///    background notice; sync calls register a watcher waiter and stay
+///    parked until the subchat completes. All answers pass through the
+///    shared `AnswerGuards`. The status/await names are subscribed already
+///    but only dispatched from Phase 5 on — their events fall through in the
+///    handler meanwhile.
+/// 9. Install the completion watcher's state-change hook (single callback,
+///    fans out to every parked waiter of the completed subchat).
+/// 10. Main loop (keep alive)
 pub async fn run_plugin(server_url: &str, plugin_id: &str) -> Result<(), PluginError> {
     let templates = Arc::new(Templates::load().map_err(|e| PluginError::Template(e.to_string()))?);
     tracing::info!("Templates loaded");
@@ -142,13 +148,7 @@ pub async fn run_plugin(server_url: &str, plugin_id: &str) -> Result<(), PluginE
                 };
 
                 tracing::info!(chat_id = chat_id, "registering sub-chat tools");
-                if let Err(e) = client
-                    .add_tools(AddToolsParams {
-                        chat_id,
-                        tools,
-                    })
-                    .await
-                {
+                if let Err(e) = client.add_tools(AddToolsParams { chat_id, tools }).await {
                     tracing::error!(
                         chat_id = chat_id,
                         error = %e,
@@ -164,6 +164,12 @@ pub async fn run_plugin(server_url: &str, plugin_id: &str) -> Result<(), PluginE
         })
         .await;
 
+    // The shared answer-dedup guards and the completion watcher are built once
+    // here: every answer path (spawn handler, watcher drain, Phase 6 recovery)
+    // converges on them, which is exactly where duplicate answers die.
+    let guards = Arc::new(AnswerGuards::default());
+    let watcher = Arc::new(Watcher::new(Arc::clone(&client), Arc::clone(&guards)));
+
     // Subscribe once with ALL three tool names even though only rhd_sub_chat
     // is dispatched yet (Phase 5 adds the status/await arms without touching
     // this subscription). The client dispatcher runs callbacks in spawned
@@ -172,6 +178,8 @@ pub async fn run_plugin(server_url: &str, plugin_id: &str) -> Result<(), PluginE
     // the subscription.
     let ctx = HandlerCtx {
         client: Arc::clone(&client),
+        watcher: Arc::clone(&watcher),
+        guards,
     };
     let _tool_call_token = client.on_tool_call(
         0, // wildcard: all chats (subchats included — recursion is by design)
@@ -187,6 +195,14 @@ pub async fn run_plugin(server_url: &str, plugin_id: &str) -> Result<(), PluginE
             }
         },
     );
+
+    // Single ChatMonitor hook fanning into the watcher: when a watched
+    // subchat's state satisfies the completion predicate, all its parked
+    // waiters are answered with the final assistant content (AD-1/AD-2).
+    // Installed before the keep-alive loop; waiters registered earlier are
+    // covered by Watcher::register_or_complete's own immediate check.
+    watcher::install(&chat_monitor, Arc::clone(&watcher)).await;
+    tracing::info!("Completion watcher installed");
 
     tracing::info!("Plugin running in event-driven mode");
     loop {

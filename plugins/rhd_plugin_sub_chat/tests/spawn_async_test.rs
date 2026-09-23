@@ -13,7 +13,7 @@ use rhd_chat_api::{
     ListChatsParams, RegisterPluginParams, ToolCall,
 };
 use rhd_chat_client::ChatClient;
-use rhd_plugin_sub_chat::{handler, spawn, tags};
+use rhd_plugin_sub_chat::{handler, reply, spawn, tags, watcher};
 
 /// Start an ephemeral-port, in-memory chat server.
 async fn start_test_server() -> u16 {
@@ -43,6 +43,22 @@ async fn connect_test_client(url: &str) -> Arc<ChatClient> {
         .await
         .expect("plugin registration failed");
     client
+}
+
+/// Build a `HandlerCtx` with fresh guards and a watcher. These tests never
+/// drive a subchat to completion, so the watcher only ever accumulates
+/// parked waiters (sync calls stay unanswered here, as before Phase 4).
+fn make_ctx(client: &Arc<ChatClient>) -> handler::HandlerCtx {
+    let guards = Arc::new(reply::AnswerGuards::default());
+    let watcher = Arc::new(watcher::Watcher::new(
+        Arc::clone(client),
+        Arc::clone(&guards),
+    ));
+    handler::HandlerCtx {
+        client: Arc::clone(client),
+        watcher,
+        guards,
+    }
 }
 
 fn spawn_tool_call(tool_call_id: &str, arguments: &str) -> ToolCall {
@@ -103,9 +119,7 @@ async fn async_spawn_creates_activated_subchat_and_answers_notice() {
         .chat_id;
 
     let arguments = r#"{"messages":[{"role":"system","content":"You are a focused worker."},{"role":"user","content":"Count to three"}],"tags":["mcp:common"],"async":true}"#;
-    let ctx = handler::HandlerCtx {
-        client: Arc::clone(&client),
-    };
+    let ctx = make_ctx(&client);
     handler::handle_spawn(ctx, chat_a, spawn_tool_call("call_async_1", arguments)).await;
 
     // Exactly one subchat carries the link tag.
@@ -175,9 +189,7 @@ async fn async_spawn_rerun_is_idempotent() {
 
     let arguments = r#"{"messages":[{"role":"user","content":"Repeated spawn"}],"async":true}"#;
     handler::handle_spawn(
-        handler::HandlerCtx {
-            client: Arc::clone(&client),
-        },
+        make_ctx(&client),
         chat_a,
         spawn_tool_call("call_dup", arguments),
     )
@@ -188,9 +200,7 @@ async fn async_spawn_rerun_is_idempotent() {
 
     // Second run: the has_tool_result guard short-circuits before converge.
     handler::handle_spawn(
-        handler::HandlerCtx {
-            client: Arc::clone(&client),
-        },
+        make_ctx(&client),
         chat_a,
         spawn_tool_call("call_dup", arguments),
     )
@@ -245,9 +255,7 @@ async fn sync_spawn_parks_call_and_reuses_subchat_on_rerun() {
     let arguments =
         r#"{"messages":[{"role":"system","content":"ctx"},{"role":"user","content":"sync task"}]}"#;
     handler::handle_spawn(
-        handler::HandlerCtx {
-            client: Arc::clone(&client),
-        },
+        make_ctx(&client),
         chat_a,
         spawn_tool_call("call_sync_1", arguments),
     )
@@ -274,9 +282,7 @@ async fn sync_spawn_parks_call_and_reuses_subchat_on_rerun() {
     // Re-run while unanswered: converge finds the existing chat by link tag,
     // sees no `paused`, and must not re-enqueue or duplicate anything.
     handler::handle_spawn(
-        handler::HandlerCtx {
-            client: Arc::clone(&client),
-        },
+        make_ctx(&client),
         chat_a,
         spawn_tool_call("call_sync_1", arguments),
     )
@@ -310,9 +316,7 @@ async fn validation_error_answers_and_creates_nothing() {
 
     let arguments = r#"{"messages":[{"role":"assistant","content":"not allowed"}],"async":true}"#;
     handler::handle_spawn(
-        handler::HandlerCtx {
-            client: Arc::clone(&client),
-        },
+        make_ctx(&client),
         chat_a,
         spawn_tool_call("call_bad", arguments),
     )
