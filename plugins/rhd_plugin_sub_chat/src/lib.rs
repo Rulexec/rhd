@@ -5,6 +5,7 @@
 pub mod completion;
 pub mod handler;
 pub mod plugin;
+pub mod recovery;
 pub mod reply;
 pub mod spawn;
 pub mod tags;

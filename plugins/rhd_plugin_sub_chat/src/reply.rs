@@ -57,12 +57,58 @@ pub async fn answer_tool_call(
 /// both observe "no result yet" before either posts one, so the in-memory set
 /// closes the window, and removing the id again on any failure keeps retries
 /// possible after a transient error.
+///
+/// Beyond answer dedup, the `processing` claim set serializes **whole call
+/// handling** (Phase 6): answer dedup alone cannot stop two overlapping
+/// **spawns** (create/queue side effects), so every live entry point and the
+/// recovery scan claims the `tool_call_id` for the full duration of its
+/// processing — the loser of the claim returns silently, the owner answers
+/// or registers.
 #[derive(Default)]
 pub struct AnswerGuards {
     answered: tokio::sync::Mutex<HashSet<String>>,
+    /// tool_call_ids currently being processed by a live handler or the scan.
+    ///
+    /// A **std** mutex rather than `tokio::sync` (as the phase plan sketched):
+    /// the set is touched only by synchronous insert/remove — never across an
+    /// `await` — and the RAII [`ProcessingClaim`] must release in `Drop`,
+    /// which runs on a runtime worker thread where `tokio::sync::Mutex`'s
+    /// blocking lock panics. Poisoning cannot arise in practice (the tiny
+    /// critical sections never panic), but `into_inner` keeps a foreign panic
+    /// from bricking every later claim.
+    processing: std::sync::Mutex<HashSet<String>>,
 }
 
 impl AnswerGuards {
+    /// Try to own the processing of `tool_call_id`. `false` → someone else is
+    /// on it; skip the whole call (the owner will answer or register).
+    pub fn claim(&self, tool_call_id: &str) -> bool {
+        self.processing().insert(tool_call_id.to_string())
+    }
+
+    /// Give up processing ownership. Until this runs (or the process dies),
+    /// no other path — live event or recovery scan — touches the id.
+    pub fn release(&self, tool_call_id: &str) {
+        self.processing().remove(tool_call_id);
+    }
+
+    /// RAII [`claim`](Self::claim): releases on drop, so every early return
+    /// (and panic-unwind) path through a handler gives the id back. Entry
+    /// points take the claim **exactly once, outermost** — nested processing
+    /// (converge, flows called from the recovery scan) receives the claim
+    /// holder's context, never re-claims its own id (plan note 1).
+    /// `None` when the id is already owned elsewhere.
+    pub fn claim_guard(&self, tool_call_id: &str) -> Option<ProcessingClaim<'_>> {
+        self.claim(tool_call_id).then(|| ProcessingClaim {
+            guards: self,
+            tool_call_id: tool_call_id.to_string(),
+        })
+    }
+
+    fn processing(&self) -> std::sync::MutexGuard<'_, HashSet<String>> {
+        self.processing.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     /// Check the in-memory set + the persisted history, mark, answer, unmark
     /// on error.
     ///
@@ -100,5 +146,67 @@ impl AnswerGuards {
             self.answered.lock().await.remove(tool_call_id);
         }
         outcome
+    }
+}
+
+/// Borrowed claim on one `tool_call_id`; dropping releases it. See
+/// [`AnswerGuards::claim_guard`].
+#[must_use = "a claim guard must be held for the whole processing, not dropped immediately"]
+pub struct ProcessingClaim<'a> {
+    guards: &'a AnswerGuards,
+    tool_call_id: String,
+}
+
+impl Drop for ProcessingClaim<'_> {
+    fn drop(&mut self) {
+        self.guards.release(&self.tool_call_id);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::AnswerGuards;
+
+    /// The claim set serializes processing: first claim wins, the second
+    /// claimant is refused, and `release` opens the id up again.
+    #[test]
+    fn claim_is_exclusive_until_released() {
+        let guards = AnswerGuards::default();
+        assert!(guards.claim("tc1"));
+        assert!(!guards.claim("tc1"), "double claim of the same id refused");
+        assert!(guards.claim("tc2"), "other ids are unaffected");
+        guards.release("tc1");
+        assert!(guards.claim("tc1"), "released id is claimable again");
+    }
+
+    /// The RAII guard releases on scope exit — including the early returns
+    /// every handler is full of — and only touches its own id.
+    #[test]
+    fn claim_guard_releases_on_drop() {
+        let guards = AnswerGuards::default();
+        let claim = guards
+            .claim_guard("tcX")
+            .expect("fresh id claims");
+        assert!(!guards.claim("tcX"));
+        guards.release("tcY"); // releasing an unheld id is a no-op, not a panic
+        {
+            let nested = guards.claim_guard("tcZ");
+            assert!(nested.is_some(), "concurrent ids claim independently");
+        }
+        assert!(guards.claim("tcZ"), "nested guard released on drop");
+        guards.release("tcZ");
+        drop(claim);
+        assert!(guards.claim_guard("tcX").is_some(), "outer guard released");
+    }
+
+    /// A refused claim yields no guard, hence no phantom release of the
+    /// holder's claim.
+    #[test]
+    fn refused_claim_leaves_the_owner_untouched() {
+        let guards = AnswerGuards::default();
+        let owner = guards.claim_guard("tc1").expect("first claim wins");
+        assert!(guards.claim_guard("tc1").is_none());
+        drop(owner);
+        assert!(guards.claim("tc1"), "only the real release freed the id");
     }
 }

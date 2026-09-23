@@ -11,9 +11,12 @@
 //! watcher pristine for await assertions); status/await calls are driven
 //! through the production dispatch entry `handler::handle_tool_call_event`
 //! with synthetic events, exactly as the `on_tool_call` subscription would
-//! deliver them.
+//! deliver them. Phase 6 crash-state fixtures live in the [`crash_states`]
+//! submodule.
 
 #![allow(dead_code)]
+
+pub mod crash_states;
 
 use std::sync::Arc;
 use std::time::Duration;

@@ -11,6 +11,7 @@ use rhd_chat_client::ChatClient;
 use tokio::sync::RwLock;
 
 use crate::handler::{self, HandlerCtx};
+use crate::recovery;
 use crate::reply::AnswerGuards;
 use crate::templates::Templates;
 use crate::watcher::{self, Watcher};
@@ -38,7 +39,12 @@ use crate::watcher::{self, Watcher};
 ///    handler meanwhile.
 /// 9. Install the completion watcher's state-change hook (single callback,
 ///    fans out to every parked waiter of the completed subchat).
-/// 10. Main loop (keep alive)
+/// 10. Run the startup recovery pass (Phase 6, AD-7): re-drive every
+///    unfinished sub-chat tool call found in chat history through the very
+///    same flows the live handlers use, claims serialized via the shared
+///    `AnswerGuards`. A failed pass is logged, never fatal (idempotence
+///    gives the next restart the rest).
+/// 11. Main loop (keep alive)
 pub async fn run_plugin(server_url: &str, plugin_id: &str) -> Result<(), PluginError> {
     let templates = Arc::new(Templates::load().map_err(|e| PluginError::Template(e.to_string()))?);
     tracing::info!("Templates loaded");
@@ -181,6 +187,10 @@ pub async fn run_plugin(server_url: &str, plugin_id: &str) -> Result<(), PluginE
         watcher: Arc::clone(&watcher),
         guards,
     };
+    // Recovery runs with the same shared pieces (watcher + guards) as the
+    // live subscription; the Arcs make the two paths converge on exactly
+    // one set of dedup state.
+    let recovery_ctx = ctx.clone();
     let _tool_call_token = client.on_tool_call(
         0, // wildcard: all chats (subchats included — recursion is by design)
         vec![
@@ -203,6 +213,22 @@ pub async fn run_plugin(server_url: &str, plugin_id: &str) -> Result<(), PluginE
     // covered by Watcher::register_or_complete's own immediate check.
     watcher::install(&chat_monitor, Arc::clone(&watcher)).await;
     tracing::info!("Completion watcher installed");
+
+    // Startup recovery (AD-7, Phase 6): re-drive every unfinished sub-chat
+    // tool call from chat history alone. Deliberately AFTER the live
+    // subscriptions and the watcher hook: state changes it causes (unpause,
+    // queueing) flow through the live hooks, and a completion landing
+    // mid-scan is caught by `register_or_complete`'s evaluate-after-insert.
+    // Concurrent live handling is serialized by the AnswerGuards claim set.
+    // A failed pass must NEVER abort the plugin: parked calls simply stay
+    // parked and the next restart re-drives them (everything is idempotent).
+    match recovery::run(Arc::clone(&client), chat_monitor.as_ref(), recovery_ctx).await {
+        Ok(report) => tracing::info!(?report, "startup recovery complete"),
+        Err(e) => tracing::error!(
+            error = %e,
+            "startup recovery failed — some subchat calls may stay parked"
+        ),
+    }
 
     tracing::info!("Plugin running in event-driven mode");
     loop {
