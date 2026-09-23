@@ -10,6 +10,7 @@ use rhd_chat_api::{
 use rhd_chat_client::ChatClient;
 use tokio::sync::RwLock;
 
+use crate::handler::{self, HandlerCtx};
 use crate::templates::Templates;
 
 /// Run the sub-chat plugin.
@@ -25,10 +26,13 @@ use crate::templates::Templates;
 ///    which would then stall this plugin's own subchats)
 /// 6. Create chat monitor, subscribe to all chats
 /// 7. On every chat state change: register the three sub-chat tools once per chat
-/// 8. Main loop (keep alive)
-///
-/// Tool calls are deliberately not handled in this phase — the `on_tool_call`
-/// subscription and handlers arrive with the next phases.
+/// 8. Subscribe to tool calls for the three tool names and handle
+///    `rhd_sub_chat`: validate → two-phase activate the subchat (create
+///    paused → reconcile queue → unpause) → async calls answer with the
+///    background notice; sync calls park unanswered until Phase 4's watcher.
+///    The status/await names are subscribed already but only dispatched from
+///    Phase 5 on — their events fall through in the handler meanwhile.
+/// 9. Main loop (keep alive)
 pub async fn run_plugin(server_url: &str, plugin_id: &str) -> Result<(), PluginError> {
     let templates = Arc::new(Templates::load().map_err(|e| PluginError::Template(e.to_string()))?);
     tracing::info!("Templates loaded");
@@ -159,6 +163,30 @@ pub async fn run_plugin(server_url: &str, plugin_id: &str) -> Result<(), PluginE
             });
         })
         .await;
+
+    // Subscribe once with ALL three tool names even though only rhd_sub_chat
+    // is dispatched yet (Phase 5 adds the status/await arms without touching
+    // this subscription). The client dispatcher runs callbacks in spawned
+    // tasks, so awaiting client requests inside the handler is safe.
+    // Keep the token bound for the plugin's lifetime — dropping it cancels
+    // the subscription.
+    let ctx = HandlerCtx {
+        client: Arc::clone(&client),
+    };
+    let _tool_call_token = client.on_tool_call(
+        0, // wildcard: all chats (subchats included — recursion is by design)
+        vec![
+            "rhd_sub_chat".to_string(),
+            "rhd_sub_chat_status".to_string(),
+            "rhd_sub_chat_await".to_string(),
+        ],
+        move |event| {
+            let ctx = ctx.clone();
+            async move {
+                handler::handle_tool_call_event(ctx, event).await;
+            }
+        },
+    );
 
     tracing::info!("Plugin running in event-driven mode");
     loop {
