@@ -8,6 +8,14 @@ There is no global `rhd.yaml` daemon config anymore — each component takes its
 
 `packages/rhd_app/src/commands/start.rs`: `StartConfig { children: Vec<ChildConfig> }`, `ChildConfig { name, cmd, cwd?, args? }` (serde_yaml). Relative `cwd` resolves against the config file's directory. Child stdout/stderr are forwarded with `[name]` prefixes.
 
+A `children` entry for the sub-chat plugin (the binary takes CLI args only — no config file; full example list in [features/configuration.md](features/configuration.md)):
+
+```yaml
+- name: sub_chat
+  cmd: ./target/release/rhd_plugin_sub_chat
+  args: ["--server-url", "ws://127.0.0.1:8080/"]
+```
+
 ## Chat Server
 
 `packages/rhd_chat_server/src/config.rs`: clap `Config { host, port, db_path, clear_pending_acks }`. Defaults: `127.0.0.1:8080`, `./rhd_db` (creates `chats.db` inside). `--clear-pending-acks` deletes pending custom-event acknowledgments before startup (recovery utility).

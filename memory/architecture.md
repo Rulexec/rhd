@@ -44,6 +44,7 @@
 - **Plugin state handlers** (`handlers/plugin_state.rs`): implement the five state methods; broadcast `pluginStateChanged`/`pluginStateRemoved` to all plugin-state subscribers. Write operations require the connection's registered plugin id.
 - `SubscriptionManager.plugin_states_subscribers`: connection set subscribed to plugin state events. `subscribe_plugin_states` registers the connection under the write lock BEFORE reading the catch-up snapshot (register-before-snapshot atomicity): a change landing in between is either already in the snapshot or delivered as a live event; duplicates are made harmless by client-side version gating.
 - States survive plugin disconnect (rows persist; consumers treat them as "last known" for inactive plugins); FK cascade deletes them with the plugin on `removePlugin`.
+- Chat tags are free-form server-visible strings; one carries cross-plugin meaning: `paused` is honored by `rhd_plugin_ai_completions`, which skips triggering on paused chats (`trigger_detection` gate; see features/plugins.md "Sub Chat Plugin" for the product view).
 
 **rhd_chat_client**:
 - WebSocket client for connecting to `rhd_chat_server`

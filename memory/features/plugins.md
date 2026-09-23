@@ -179,6 +179,7 @@ The `rhd_plugin_ai_completions` plugin is event-driven: it reacts to chat state 
 **Chat Tags:**
 - `ai_completions:running` — an AI request is actively in progress (including between tool-loop iterations). Added right before the plugin acknowledges its own `preRequest` event; removed when the request completes without tool calls or when the chat transitions to `ai_completions:error`. Provides visibility so other plugins/UI can show processing state and avoid conflicting operations.
 - `ai_completions:error` — the chat is parked after a failure; removed manually by an operator.
+- `paused` — platform-level pause (not owned by this plugin): a chat carrying the exact tag never triggers, for either queued messages or tool-loop continuation; removing it resumes the normal flow on the chat's next state change. Requests already in flight are unaffected — the current one completes and only the next trigger is blocked. Any chat can be paused manually from the UI; the sub-chat plugin uses it to stage new subchats (see Sub Chat Plugin below).
 
 **Startup Reconciliation:** once at startup the plugin fixes chats left inconsistent by a crash:
 - Chat with `ai_completions:running` and an unfinished message → park with `ai_completions:error`, remove `running`
@@ -331,6 +332,27 @@ The `rhd_plugin_choice` plugin lets the assistant ask the user to choose between
 
 **Pausing the assistant:**
 - An unanswered choice intentionally pauses the assistant's tool loop: the conversation waits until the user decides. That is the point of the feature.
+
+### Sub Chat Plugin
+
+The `rhd_plugin_sub_chat` plugin lets the assistant delegate a self-contained task to a fresh **subchat** — a regular new chat that runs with its own history and the full pipeline (system prompts, MCP tools, todo contracts, AI completions) and finishes with a final assistant answer. Subchats appear in the UI as ordinary chats carrying tags; there is no special presentation.
+
+**Tools (registered in every chat, including subchats — so a subchat can spawn its own subchats):**
+- `rhd_sub_chat` — spawns a subchat from ordered seed `messages` (roles restricted to `system` and `user`) plus optional extra `tags` (e.g. `systemPrompt:<name>`, `worktree:<id>`). Sync mode (default) returns only when the subchat is done, with its final assistant message as the result; `async: true` returns immediately with the subchat id, to be inspected later with the other two tools.
+- `rhd_sub_chat_status` — answers exactly `pending` or `completed` for a direct-child subchat, evaluated fresh on every call (a completed-then-reactivated subchat correctly reads `pending` again).
+- `rhd_sub_chat_await` — holds until a direct-child subchat completes, then returns its final assistant message content verbatim; an already-completed target is answered immediately.
+
+**Answer contracts:**
+- "Completed" = the subchat is idle with a final answer: its last message is a finished, non-streaming assistant message with no tool calls, its queue is empty, and it carries neither `ai_completions:running` nor `ai_completions:error`.
+- A subchat parked on an error reads `pending` — and sync spawns/awaits on it stay parked — until an operator fixes the chat. There are no timeouts anywhere: un-sticking a hung subchat is deliberately an operator action, not a tool-side one.
+- Scope rule: status/await only work on chats this chat spawned itself — grandchildren, siblings, and unrelated chats are refused with a tool error. Malformed or invalid spawn arguments are answered as descriptive tool errors with no chat created, so the model can retry.
+- A mid-spawn failure is answered with an error naming the (still-paused) subchat id when one exists, leaving it intact for recovery or an operator to finish; nothing is silently half-started.
+
+**Lineage tags:** a subchat is created with `parent:<spawnerId>`, `root:<topAncestorId>`, and `sub_chat:call:<toolCallId>` binding it to the spawning tool call. The `root:` tag is inherited down the whole chain (in a tree spawned from A, every descendant carries `root:<A>`, so one tag scan finds the tree), and a first-time spawner tags itself with its own root. These shapes plus the exact tag `paused` are reserved — user-supplied spawn tags colliding with them are rejected.
+
+**Two-phase activation:** the subchat is created `paused` with its full tag set in one atomic step, its seed messages are queued in order only afterwards, and `paused` is removed last as the single activation point — the AI completions plugin never sees a half-populated subchat (see the `paused` tag in the AI Completions section).
+
+**Zero private state:** the plugin persists nothing of its own. After any restart, unfinished work is reconstructed at startup from chat history — unresolved sub-chat tool calls plus the link tags say what was spawned or parked, and each call is re-driven through the same logic as the live path. No work is lost and no subchat call is ever answered twice.
 
 ### Future Plugin Ideas
 

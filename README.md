@@ -124,6 +124,7 @@ To test `rhd_plugin_ai_completions`:
 - **rhd_app**: CLI tool for chat server interaction
 - **rhd_plugin_ai_completions**: AI completions plugin
 - **rhd_plugin_choice**: Choice tool plugin
+- **rhd_plugin_sub_chat**: Delegated subchat plugin (spawn/status/await)
 
 ## Plugins
 
