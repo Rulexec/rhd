@@ -11,7 +11,8 @@
 //! watcher pristine for await assertions); status/await calls are driven
 //! through the production dispatch entry `handler::handle_tool_call_event`
 //! with synthetic events, exactly as the `on_tool_call` subscription would
-//! deliver them. Phase 6 crash-state fixtures live in the [`crash_states`]
+//! deliver them. Phase 4 sync-spawn fixtures live in the [`sync_spawn`]
+//! submodule; Phase 6 crash-state fixtures live in the [`crash_states`]
 //! submodule; the Phase 7 full-pipeline harness (chat server + ai_completions
 //! + this plugin + content-routed mock AI) lives in [`routing`] (the
 //! `RoutingListener`), [`bootstrap`] (server/config/probe plumbing),
@@ -24,6 +25,7 @@ pub mod crash_states;
 pub mod full_env;
 pub mod polling;
 pub mod routing;
+pub mod sync_spawn;
 
 use std::sync::Arc;
 use std::time::Duration;
