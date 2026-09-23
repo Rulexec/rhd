@@ -308,17 +308,16 @@ async fn tampered_paused_queue_refuses_reconcile_and_stays_paused() {
     assert_eq!(report.answered, 1, "refusal is still an answer");
     assert_eq!(report.respawned, 0);
     assert_eq!(report.reconciled_paused, 0);
-    // Pinned verbatim against the live path's wording — including the
-    // pre-existing (since Phase 3) double `rhd_sub_chat error: ` prefix,
-    // because `prepare_failure_answer` embeds it and `answer_error` adds it
-    // again. Recovery REUSES that exact code, so an honest recovery test
-    // must expect it; normalizing the text is out of scope here.
+    // Pinned verbatim against the live path's wording: the Wire Contract
+    // mid-spawn failure answer with a single `rhd_sub_chat error: ` prefix
+    // (`prepare_failure_answer` supplies the body, `answer_error` applies
+    // the prefix). Recovery REUSES that exact code.
     assert_answer(
         &env.client,
         a,
         "tc_tamper",
         &format!(
-            "rhd_sub_chat error: rhd_sub_chat error: failed to prepare subchat {b}: queued starting messages no longer match the tool call arguments (subchat left paused for recovery)"
+            "rhd_sub_chat error: failed to prepare subchat {b}: queued starting messages no longer match the tool call arguments (subchat left paused for recovery)"
         ),
     )
     .await;

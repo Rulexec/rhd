@@ -289,16 +289,18 @@ fn is_not_found(error: &ClientError) -> bool {
     )
 }
 
-/// Mid-spawn failure answer (Wire Contract). The "(subchat left paused for
+/// Mid-spawn failure answer body (Wire Contract). Callers pass the result to
+/// [`answer_error`], which applies the single `rhd_sub_chat error: ` prefix —
+/// this function must NOT embed it itself. The "(subchat left paused for
 /// recovery)" suffix applies only when a subchat id exists — a failed create
 /// leaves nothing behind and uses the `new` fallback without the suffix
 /// (implementation note 5).
 fn prepare_failure_answer(sub_chat_id: Option<i64>, detail: &str) -> String {
     match sub_chat_id {
         Some(id) => format!(
-            "rhd_sub_chat error: failed to prepare subchat {id}: {detail} (subchat left paused for recovery)"
+            "failed to prepare subchat {id}: {detail} (subchat left paused for recovery)"
         ),
-        None => format!("rhd_sub_chat error: failed to prepare subchat new: {detail}"),
+        None => format!("failed to prepare subchat new: {detail}"),
     }
 }
 
