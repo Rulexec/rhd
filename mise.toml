@@ -37,7 +37,16 @@ run = ["cloc --vcs=git packages/ memory/ plans/"]
 run = ["cargo check"]
 
 [tasks.check]
-depends = ["check-cargo"]
+depends = ["check-cargo", "check-frontend-proxy"]
+
+[tasks.dev-frontend-proxy]
+run = ["npm --prefix frontend-proxy run dev"]
+
+[tasks.check-frontend-proxy]
+run = ["npm --prefix frontend-proxy run check"]
+
+[tasks.test-frontend-proxy]
+run = ["npm --prefix frontend-proxy run test"]
 
 [tasks.top-files-backend]
 run = ["find packages -name '*.rs' -type f -exec wc -l {} + | sort -rn | head -n 21"]
