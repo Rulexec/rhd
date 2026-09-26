@@ -1,7 +1,7 @@
 //! YAML configuration for the proxy.
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use reqwest::Url;
 use serde::Deserialize;
@@ -22,6 +22,18 @@ pub struct Proxy {
     /// Per-model overrides, keyed by the exact `model` string from the request body.
     #[serde(default)]
     pub models: HashMap<String, ModelConfig>,
+    /// Optional chat logging into a standalone SQLite database.
+    #[serde(default)]
+    pub logging: Option<Logging>,
+}
+
+/// Chat logging configuration (`proxy.logging`).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Logging {
+    /// Folder holding the logging SQLite database. Relative paths are resolved
+    /// against the config file location by [`Config::load`].
+    pub path: PathBuf,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -90,6 +102,8 @@ pub enum ConfigError {
     InvalidTargetPath(String),
     #[error("environment variable {env:?} referenced by apiKey is not set")]
     MissingEnvVar { env: String },
+    #[error("logging database error: {0}")]
+    Logging(#[from] crate::logging::LoggingError),
 }
 
 impl Config {
@@ -104,13 +118,37 @@ impl Config {
     }
 
     /// Read, parse, and validate configuration from a YAML file.
+    ///
+    /// A relative `proxy.logging.path` is rewritten in-place to an absolute path resolved
+    /// against the config file's directory (so the same config file works from any cwd).
     pub fn load(path: impl AsRef<Path>) -> Result<Self, ConfigError> {
         let path = path.as_ref();
         let contents = std::fs::read_to_string(path).map_err(|source| ConfigError::Io {
             path: path.display().to_string(),
             source,
         })?;
-        Self::from_yaml(&contents)
+        let mut config = Self::from_yaml(&contents)?;
+        config.resolve_logging_path(path)?;
+        Ok(config)
+    }
+
+    /// Rewrites a relative `logging.path` to absolute, relative to the config file location.
+    fn resolve_logging_path(&mut self, config_path: &Path) -> Result<(), ConfigError> {
+        let Some(logging) = &mut self.proxy.logging else {
+            return Ok(());
+        };
+        if logging.path.is_absolute() {
+            return Ok(());
+        }
+        let base = match config_path.parent() {
+            Some(parent) if !parent.as_os_str().is_empty() => parent.to_path_buf(),
+            _ => std::env::current_dir().map_err(|source| ConfigError::Io {
+                path: config_path.display().to_string(),
+                source,
+            })?,
+        };
+        logging.path = base.join(&logging.path);
+        Ok(())
     }
 }
 
@@ -308,5 +346,103 @@ proxy:
         )
         .unwrap();
         assert!(config.proxy.api_key().unwrap().is_none());
+    }
+
+    #[test]
+    fn parses_logging_section() {
+        let config = Config::from_yaml(
+            r#"
+proxy:
+  port: 1
+  target:
+    path: http://localhost:9000/v1
+  logging:
+    path: ./proxy-logs
+"#,
+        )
+        .unwrap();
+        let logging = config.proxy.logging.expect("logging should parse");
+        assert_eq!(logging.path, PathBuf::from("./proxy-logs"));
+    }
+
+    #[test]
+    fn logging_defaults_to_none() {
+        let config = Config::from_yaml(
+            r#"
+proxy:
+  port: 1
+  target:
+    path: http://localhost:9000/v1
+"#,
+        )
+        .unwrap();
+        assert!(config.proxy.logging.is_none());
+    }
+
+    #[test]
+    fn rejects_unknown_logging_field() {
+        let err = Config::from_yaml(
+            r#"
+proxy:
+  port: 1
+  target:
+    path: http://localhost:9000/v1
+  logging:
+    path: ./logs
+    extra: true
+"#,
+        )
+        .unwrap_err();
+        assert!(matches!(err, ConfigError::Parse(_)));
+    }
+
+    fn write_temp_config(name: &str, contents: &str) -> PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "rhd_ai_proxy_config_test_{name}_{}.yaml",
+            std::process::id()
+        ));
+        std::fs::write(&path, contents).unwrap();
+        path
+    }
+
+    #[test]
+    fn load_resolves_relative_logging_path_against_config_file() {
+        let config_path = write_temp_config(
+            "relative",
+            r#"
+proxy:
+  port: 1
+  target:
+    path: http://localhost:9000/v1
+  logging:
+    path: ./proxy-logs
+"#,
+        );
+        let config = Config::load(&config_path).unwrap();
+        let logging = config.proxy.logging.expect("logging should parse");
+        assert_eq!(
+            logging.path,
+            config_path.parent().unwrap().join("proxy-logs")
+        );
+        let _ = std::fs::remove_file(&config_path);
+    }
+
+    #[test]
+    fn load_keeps_absolute_logging_path() {
+        let config_path = write_temp_config(
+            "absolute",
+            r#"
+proxy:
+  port: 1
+  target:
+    path: http://localhost:9000/v1
+  logging:
+    path: /var/log/ai-proxy
+"#,
+        );
+        let config = Config::load(&config_path).unwrap();
+        let logging = config.proxy.logging.expect("logging should parse");
+        assert_eq!(logging.path, PathBuf::from("/var/log/ai-proxy"));
+        let _ = std::fs::remove_file(&config_path);
     }
 }

@@ -143,6 +143,7 @@ async fn spawn_proxy_with_key(
             api_key: api_key.map(ApiKey::Literal),
         },
         models,
+        logging: None,
     };
     let state = Arc::new(ProxyState::new(&config).unwrap());
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();

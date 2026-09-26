@@ -13,3 +13,7 @@ proxy:
         provider:
           sort: throughput
           max_price: {"prompt": 1, "completion": 2}
+  # Optional: record every completions chat into a SQLite database.
+  # Path is a folder, resolved relative to this config file.
+  logging:
+    path: ./proxy-logs

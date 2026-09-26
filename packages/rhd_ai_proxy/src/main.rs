@@ -7,6 +7,7 @@ use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
 
 use rhd_ai_proxy::config::Config;
+use rhd_ai_proxy::logging::DB_FILE_NAME;
 use rhd_ai_proxy::proxy::{build_router, ProxyState};
 
 #[derive(Parser)]
@@ -30,6 +31,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .init();
 
     let state = Arc::new(ProxyState::new(&config.proxy)?);
+    if let Some(logging) = &config.proxy.logging {
+        tracing::info!(
+            db = %logging.path.join(DB_FILE_NAME).display(),
+            "chat logging enabled"
+        );
+    }
     let app = build_router(state);
 
     let addr = format!("127.0.0.1:{}", config.proxy.port);

@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Instant;
 
 use axum::body::Body;
 use axum::extract::{Request, State};
@@ -12,7 +13,8 @@ use axum::Router;
 use reqwest::Url;
 
 use crate::config::{ConfigError, ModelConfig, Proxy as ProxyConfig};
-use crate::transform::{inject_extra_body, normalize_path};
+use crate::logging::{capture_body, fail_logging, start_logging, LoggingContext, LoggingDb};
+use crate::transform::{inject_extra_body, is_completions_path, normalize_path};
 
 const MAX_REQUEST_BODY_BYTES: usize = 50 * 1024 * 1024;
 
@@ -24,15 +26,22 @@ pub struct ProxyState {
     /// Resolved API key token, if configured. Sent as `Authorization: Bearer <token>`
     /// on every forwarded request, overriding any client-supplied `Authorization` header.
     api_key: Option<String>,
+    /// Chat logging database, when `proxy.logging` is configured.
+    logging: Option<Arc<LoggingDb>>,
 }
 
 impl ProxyState {
     pub fn new(config: &ProxyConfig) -> Result<Self, ConfigError> {
+        let logging = match &config.logging {
+            Some(logging) => Some(Arc::new(LoggingDb::open(&logging.path)?)),
+            None => None,
+        };
         Ok(Self {
             client: reqwest::Client::new(),
             target_base: config.target_url()?,
             models: config.models.clone(),
             api_key: config.api_key()?,
+            logging,
         })
     }
 }
@@ -62,6 +71,21 @@ async fn handle_proxy(State(state): State<Arc<ProxyState>>, request: Request) ->
                 .into_response()
         }
     };
+    // Start chat logging (completions paths only) before forwarding, so the harness's
+    // original request is recorded even when the upstream exchange never completes.
+    let logging = match &state.logging {
+        Some(db) if is_completions_path(&normalized_path) => {
+            start_logging(
+                Arc::clone(db),
+                parts.method.as_str(),
+                parts.uri.path(),
+                &raw_body,
+                Instant::now(),
+            )
+            .await
+        }
+        _ => None,
+    };
     let outcome = inject_extra_body(&normalized_path, &raw_body, &state.models);
     match &outcome.injected_model {
         Some(model) => tracing::info!(%model, %target_url, "applied model extraBody override"),
@@ -88,10 +112,13 @@ async fn handle_proxy(State(state): State<Arc<ProxyState>>, request: Request) ->
     match builder.body(outcome.body).send().await {
         Ok(upstream) => {
             tracing::info!(status = %upstream.status(), "upstream responded");
-            pipe_upstream_response(upstream).await
+            pipe_upstream_response(upstream, logging).await
         }
         Err(err) => {
             tracing::error!(%err, %target_url, "upstream request failed");
+            if let Some(ctx) = logging {
+                fail_logging(ctx, format!("upstream request failed: {err}")).await;
+            }
             (
                 StatusCode::BAD_GATEWAY,
                 format!("upstream request failed: {err}"),
@@ -125,7 +152,13 @@ fn build_target_url(
 }
 
 /// Pipes the upstream response (status, headers, raw byte stream) back to the client.
-async fn pipe_upstream_response(upstream: reqwest::Response) -> Response {
+///
+/// With logging active, the byte stream is teed: chunks pass through unchanged while
+/// being accumulated, and the exchange is persisted once the stream ends.
+async fn pipe_upstream_response(
+    upstream: reqwest::Response,
+    logging: Option<LoggingContext>,
+) -> Response {
     let status = upstream.status();
     let headers = upstream.headers().clone();
     let mut builder = Response::builder().status(status);
@@ -136,15 +169,27 @@ async fn pipe_upstream_response(upstream: reqwest::Response) -> Response {
             }
         }
     }
-    builder
-        .body(Body::from_stream(upstream.bytes_stream()))
-        .unwrap_or_else(|err| {
-            (
-                StatusCode::BAD_GATEWAY,
-                format!("invalid upstream response: {err}"),
-            )
-                .into_response()
-        })
+    let stream = upstream.bytes_stream();
+    let body = match logging {
+        Some(ctx) => {
+            // JSON responses (non-streaming) get `choices[0].message` extracted as the
+            // assembled message; anything else is treated as a streaming SSE body.
+            let response_is_json = headers
+                .get("content-type")
+                .and_then(|value| value.to_str().ok())
+                .map(|value| value.to_ascii_lowercase().contains("application/json"))
+                .unwrap_or(false);
+            capture_body(stream, ctx, status.as_u16(), response_is_json)
+        }
+        None => Body::from_stream(stream),
+    };
+    builder.body(body).unwrap_or_else(|err| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("invalid upstream response: {err}"),
+        )
+            .into_response()
+    })
 }
 
 fn is_hop_by_hop(name: &HeaderName) -> bool {
