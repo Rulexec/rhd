@@ -4,6 +4,7 @@
   import { ProxyLogsStore } from './stores/ProxyLogsStore.js';
   import { setProxyLogsStore } from './context.js';
   import ChatsList from './lib/components/ChatsList.svelte';
+  import ChatDetailView from './lib/components/ChatDetailView.svelte';
   import RefreshButton from './lib/components/RefreshButton.svelte';
   import commonStyles from './lib/styles/common.module.css';
 
@@ -41,10 +42,7 @@
             </span>
           </div>
         {:else}
-          <!-- ChatDetailView mounts here in Phase 5. -->
-          <div class="viewer-placeholder">
-            <span class={commonStyles['text-muted']}>Chat detail view arrives in Phase 5.</span>
-          </div>
+          <ChatDetailView />
         {/if}
       </section>
     </div>
