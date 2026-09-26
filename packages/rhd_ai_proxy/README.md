@@ -158,6 +158,10 @@ SELECT response_body FROM raw WHERE request_id = 7;
 SELECT * FROM requests WHERE status IS NULL OR error IS NOT NULL;
 ```
 
+There is also a small web viewer: [`frontend-proxy`](../../frontend-proxy/README.md) renders
+chats, reconstructed conversations, and raw request/response bodies in the browser. Point
+`VITE_PROXY_LOGS_PATH` at the same folder as `proxy.logging.path` and run its dev server.
+
 Notes:
 
 - Every request stores its full raw body, so a chat with *N* turns costs O(N²) storage —

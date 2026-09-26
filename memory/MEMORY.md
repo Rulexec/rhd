@@ -34,6 +34,7 @@ rhd/
 │   ├── rhd_plugin_todo_list/       # Todo list tool-tracking plugin
 │   └── rhd_plugin_choice/          # Choice-question tool plugin
 ├── frontend/               # Svelte + MobX web UI
+├── frontend-proxy/         # Dev-only Svelte viewer for rhd_ai_proxy chat-logging SQLite DB
 └── templates/              # Shared templates embedded via include_dir!
 ```
 
@@ -85,6 +86,7 @@ Detailed documentation is split into topic-specific files. Read the relevant fil
 | [backend-e2e.md](backend-e2e.md) | When working on backend tests, plugin E2E tests, or the mock AI provider |
 | [debugging.md](debugging.md) | When any test fails |
 | [frontend/MEMORY.md](frontend/MEMORY.md) | When working on frontend code, MobX stores, component patterns, or frontend architecture |
+| [frontend/proxy-logs-viewer.md](frontend/proxy-logs-viewer.md) | When working on frontend-proxy, the proxy-logs viewer, its vite middleware SQLite API, or VITE_PROXY_LOGS_PATH |
 
 ## Token Saving Guidelines
 

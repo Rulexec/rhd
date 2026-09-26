@@ -173,3 +173,4 @@ describe('StoreName', () => {
 - [Chat Feature](../features/chat.md)
 - [Plugins Feature](../features/plugins.md)
 - [Testing](../features/testing.md)
+- [Proxy Logs Viewer](proxy-logs-viewer.md)
