@@ -51,13 +51,27 @@ function chatDetail(chatId: number, requestIds: number[], overrides: Partial<Cha
     chat: chatSummary(chatId),
     requests: requestIds.map((id) => requestSummary(chatId, id)),
     conversation: [
-      { kind: 'message', role: 'user', content: 'hello' },
       {
-        kind: 'assistant',
-        requestId: requestIds.at(-1) ?? 0,
-        content: '{"role":"assistant","content":"hi"}',
-        error: null,
-        pending: false
+        kind: 'message',
+        seq: 0,
+        role: 'user',
+        source: 'history',
+        content: 'hello',
+        toolCalls: null,
+        toolCallId: null,
+        name: null,
+        requestId: requestIds[0] ?? 0
+      },
+      {
+        kind: 'message',
+        seq: 1,
+        role: 'assistant',
+        source: 'response',
+        content: 'hi',
+        toolCalls: null,
+        toolCallId: null,
+        name: null,
+        requestId: requestIds.at(-1) ?? 0
       }
     ],
     ...overrides

@@ -33,30 +33,51 @@ export const RequestSummarySchema = z.object({
 });
 export type RequestSummary = z.infer<typeof RequestSummarySchema>;
 
-/** A turn of the derived conversation view of a chat. */
+/**
+ * One turn of the derived conversation view of a chat: a normalized row of the
+ * logging `messages` table (schema v2). Projection columns parsed back into
+ * values: `content` and `toolCalls` arrive as parsed JSON, not stored text.
+ */
 export const MessageTurnSchema = z.object({
-  /** Harness message from the latest request's history (system/user/assistant/tool/...). */
   kind: z.literal('message'),
+  /** 0-based position in the chat's message sequence (messages.seq). */
+  seq: z.number().int().nonnegative(),
   role: z.string(),
+  /** Captured from a request history or assembled from a response. */
+  source: z.enum(['history', 'response']),
   /** OpenAI message content: string or array of parts — kept opaque, rendered client-side. */
-  content: z.unknown()
+  content: z.unknown(),
+  /** Parsed tool_calls array (assistant turns); null when the row has none. */
+  toolCalls: z.array(z.unknown()).nullable(),
+  /** role=tool rows: the tool_call_id they answer. */
+  toolCallId: z.string().nullable(),
+  /** Optional name field (tool results, named participants). */
+  name: z.string().nullable(),
+  /** Request whose exchange produced the row. */
+  requestId: z.number().int()
 });
 export type MessageTurn = z.infer<typeof MessageTurnSchema>;
 
-export const AssistantTurnSchema = z.object({
-  /** Outcome of the chat's latest request, always appended after the message turns. */
-  kind: z.literal('assistant'),
-  requestId: z.number().int(),
-  /** response_assembled as stored (JSON text of the assistant message), null when unparseable. */
-  content: z.string().nullable(),
-  /** Proxy-side failure text (requests.error), null when the exchange did not fail. */
-  error: z.string().nullable(),
-  /** True when status IS NULL and error IS NULL — response still in flight. */
-  pending: z.boolean()
+/** Tail state: the chat's latest request is still in flight (no response row yet). */
+export const PendingTurnSchema = z.object({
+  kind: z.literal('pending'),
+  requestId: z.number().int()
 });
-export type AssistantTurn = z.infer<typeof AssistantTurnSchema>;
+export type PendingTurn = z.infer<typeof PendingTurnSchema>;
 
-export const ConversationTurnSchema = z.union([MessageTurnSchema, AssistantTurnSchema]);
+/** Tail state: the chat's latest request failed proxy-side (requests.error). */
+export const ErrorTurnSchema = z.object({
+  kind: z.literal('error'),
+  requestId: z.number().int(),
+  error: z.string()
+});
+export type ErrorTurn = z.infer<typeof ErrorTurnSchema>;
+
+export const ConversationTurnSchema = z.union([
+  MessageTurnSchema,
+  PendingTurnSchema,
+  ErrorTurnSchema
+]);
 export type ConversationTurn = z.infer<typeof ConversationTurnSchema>;
 
 /** GET /api/chats/:id response. */
@@ -64,7 +85,8 @@ export const ChatDetailSchema = z.object({
   chat: ChatSummarySchema,
   /** Oldest first (ORDER BY id ASC). */
   requests: z.array(RequestSummarySchema),
-  /** Derived conversation: latest request's messages + one assistant turn (see queries.ts). */
+  /** Derived conversation: messages-table rows in seq order + a pending/error tail
+   * for the latest request (see queries.ts). */
   conversation: z.array(ConversationTurnSchema)
 });
 export type ChatDetail = z.infer<typeof ChatDetailSchema>;

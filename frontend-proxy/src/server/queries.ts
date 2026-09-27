@@ -72,6 +72,33 @@ function blobToText(bytes: Uint8Array | null): string | null {
   return bytes === null ? null : Buffer.from(bytes).toString('utf-8');
 }
 
+/**
+ * Parse a stored JSON-text column back into a value. The proxy always writes
+ * valid JSON (serde-produced), but a corrupt row must not take the API down:
+ * on parse failure the raw text passes through unchanged.
+ */
+function parseJsonText(text: string | null): unknown {
+  if (text === null) {
+    return null;
+  }
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return text;
+  }
+}
+
+interface MessageRow {
+  seq: number;
+  role: string;
+  content: string | null;
+  tool_calls: string | null;
+  tool_call_id: string | null;
+  name: string | null;
+  source: string;
+  request_id: number;
+}
+
 /** Chat summaries with request counts, most recently active first. */
 export function listChats(db: Database.Database): ChatSummary[] {
   const stmt = db.prepare(`
@@ -102,61 +129,53 @@ export function listRequests(db: Database.Database, chatId: number): RequestSumm
 }
 
 /**
- * Conversation view of a chat: the latest request's `messages` history as
- * message turns, followed by one assistant turn describing that request's
- * outcome.
- *
- * Rationale (avoids duplicated assistant turns): append-only harnesses embed
- * earlier assistant replies in each request's history, so the latest history
- * already IS the full conversation; only the final reply must come from the
- * log. Per-request assembled replies stay reachable via RequestDetailView.
+ * Conversation view of a chat: the normalized `messages` rows in seq order
+ * (request histories diff-appended by the proxy, plus assembled responses),
+ * followed by a tail state for the latest request when it is still in flight
+ * (pending) or failed proxy-side (error). A completed latest request adds no
+ * tail — its response row already ends the conversation, and a completion
+ * without a parseable assembly stays visible via the timeline drill-down.
  */
 export function buildConversation(
   db: Database.Database,
   chatId: number
 ): ConversationTurn[] {
+  const rows = db.prepare(`
+    SELECT seq, role, content, tool_calls, tool_call_id, name, source, request_id
+    FROM messages
+    WHERE chat_id = ?
+    ORDER BY seq ASC
+  `).all(chatId) as MessageRow[];
+
+  const turns: ConversationTurn[] = rows.map((row) => {
+    const toolCalls = parseJsonText(row.tool_calls);
+    return {
+      kind: 'message' as const,
+      seq: row.seq,
+      role: row.role,
+      source: row.source === 'response' ? ('response' as const) : ('history' as const),
+      content: parseJsonText(row.content),
+      toolCalls: Array.isArray(toolCalls) ? toolCalls : null,
+      toolCallId: row.tool_call_id,
+      name: row.name,
+      requestId: row.request_id
+    };
+  });
+
   const latest = db.prepare(`
-    SELECT r.id, r.status, r.error, r.response_assembled, raw.request_body
-    FROM requests r
-    JOIN raw ON raw.request_id = r.id
-    WHERE r.chat_id = ?
-    ORDER BY r.id DESC
+    SELECT id, status, error FROM requests
+    WHERE chat_id = ?
+    ORDER BY id DESC
     LIMIT 1
   `).get(chatId) as
-    | { id: number; status: number | null; error: string | null;
-        response_assembled: string | null; request_body: Uint8Array }
+    | { id: number; status: number | null; error: string | null }
     | undefined;
 
-  if (!latest) {
-    return [];
+  if (latest && latest.status === null && latest.error === null) {
+    turns.push({ kind: 'pending', requestId: latest.id });
+  } else if (latest && latest.error !== null) {
+    turns.push({ kind: 'error', requestId: latest.id, error: latest.error });
   }
-
-  const turns: ConversationTurn[] = [];
-
-  // Message spine: parse the latest request body and map its messages array.
-  try {
-    const body: unknown = JSON.parse(blobToText(latest.request_body) ?? '');
-    if (body !== null && typeof body === 'object' && Array.isArray((body as { messages?: unknown }).messages)) {
-      for (const message of (body as { messages: unknown[] }).messages) {
-        if (message !== null && typeof message === 'object' && 'role' in message) {
-          const record = message as { role: unknown; content?: unknown };
-          if (typeof record.role === 'string') {
-            turns.push({ kind: 'message', role: record.role, content: record.content ?? null });
-          }
-        }
-      }
-    }
-  } catch {
-    // Not JSON (or not an object): spine stays empty, assistant turn still shown.
-  }
-
-  turns.push({
-    kind: 'assistant',
-    requestId: latest.id,
-    content: latest.response_assembled,
-    error: latest.error,
-    pending: latest.status === null && latest.error === null
-  });
 
   return turns;
 }

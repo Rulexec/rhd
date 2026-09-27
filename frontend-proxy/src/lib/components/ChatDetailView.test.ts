@@ -36,14 +36,38 @@ const chatDetail: ChatDetail = {
   chat,
   requests: [request(11, 'req-model-a'), request(12, 'req-model-b')],
   conversation: [
-    { kind: 'message', role: 'system', content: 'You are helpful.' },
-    { kind: 'message', role: 'user', content: 'Ping' },
     {
-      kind: 'assistant',
-      requestId: 12,
-      content: JSON.stringify({ role: 'assistant', content: 'Pong **done**' }),
-      error: null,
-      pending: false
+      kind: 'message',
+      seq: 0,
+      role: 'system',
+      source: 'history',
+      content: 'You are helpful.',
+      toolCalls: null,
+      toolCallId: null,
+      name: null,
+      requestId: 11
+    },
+    {
+      kind: 'message',
+      seq: 1,
+      role: 'user',
+      source: 'history',
+      content: 'Ping',
+      toolCalls: null,
+      toolCallId: null,
+      name: null,
+      requestId: 11
+    },
+    {
+      kind: 'message',
+      seq: 2,
+      role: 'assistant',
+      source: 'response',
+      content: 'Pong **done**',
+      toolCalls: null,
+      toolCallId: null,
+      name: null,
+      requestId: 12
     }
   ]
 };

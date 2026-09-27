@@ -199,9 +199,7 @@ SELECT response_body FROM raw WHERE request_id = 7;
 SELECT * FROM requests WHERE status IS NULL OR error IS NOT NULL;
 ```
 
-There is a small web viewer: [`frontend-proxy`](../../frontend-proxy/README.md). **Note:** it
-predates schema version 2 and does not yet understand the `messages` table or the new chat
-grouping — expect it to need an update before it works against current databases.
+There is a small web viewer: [`frontend-proxy`](../../frontend-proxy/README.md).
 
 Notes:
 

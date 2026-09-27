@@ -17,7 +17,9 @@ build story. The viewer never writes to the logging database.
 `VITE_PROXY_LOGS_PATH` must point at the directory containing `chats.sqlite3` — the same folder
 as `proxy.logging.path` in the proxy YAML. The dev server refuses to start without it (the error
 names the variable and what it must point at); it also aborts with a hint when the directory
-exists but holds no `chats.sqlite3` yet (run the proxy once with logging enabled first).
+exists but holds no `chats.sqlite3` yet (run the proxy once with logging enabled first), and
+when the database's schema version (`PRAGMA user_version`) is anything other than 2 (delete or
+move the file — the proxy recreates it fresh on its next logged request).
 
 ```sh
 npm install
@@ -37,10 +39,12 @@ Relative paths resolve against `frontend-proxy/` (npm runs the dev script there)
 
 - Chats sidebar lists logged chats (title, model, relative time, request count), most recently
   active first.
-- Click a chat: the conversation view — the latest request's message history plus one final
-  assistant turn (markdown-rendered; ⏳ while the response is in flight, an error note when the
-  exchange failed) — and the request timeline (time, model, SSE badge, status — HTTP code,
-  ⏳ in-flight, ERR — and duration).
+- Click a chat: the conversation view — the chat's normalized message sequence from the proxy's
+  `messages` table (system/user/assistant/tool turns; assistant content markdown-rendered; tool
+  calls with pretty-printed arguments and their results; a history/response source badge per
+  turn) plus a tail state for the latest request (⏳ while the response is in flight, an error
+  note when the exchange failed) — and the request timeline (time, model, SSE badge, status —
+  HTTP code, ⏳ in-flight, ERR — and duration).
 - Click a request row: inline drill-down with three tabs — **Raw Request** (original bytes
   before `extraBody` injection), **Raw Response** (verbatim SSE for streams), and **Assembled
   Reply** (the reconstructed assistant message).
@@ -61,10 +65,15 @@ contract shared by the middleware and the browser client.
 
 ## Notes
 
-- Conversation reconstruction: each logged request body carries the harness's full message
-  history, so the conversation view renders the **latest** request's history plus only the
-  final assistant turn — append-only harnesses already embed earlier replies in that history.
-  Per-request assembled replies stay reachable via each timeline row's drill-down.
+- Conversation reconstruction: the view renders the proxy's normalized `messages` table
+  (logging schema v2) — request histories diff-appended by the proxy plus assembled responses,
+  in seq order. The projection columns (`content`, `tool_calls`, `tool_call_id`, `name`) are
+  parsed server-side, so tool calls and tool results render as first-class turns without
+  touching raw bodies. Per-request assembled replies stay reachable via each timeline row's
+  drill-down.
+- Tail states: the chat's latest request appends ⏳ while in flight or ✗ with the proxy error
+  when it failed; a completed request appends nothing (its response row already ends the
+  conversation — a completion without a parseable assembly is visible via the drill-down).
 - Raw bodies cross the API as UTF-8 text (lossy on invalid bytes) and can be large — the O(N²)
   storage note in the proxy README applies; the views render them as plain preformatted text.
 - The database is opened in normal mode, not `readonly` (a WAL database cannot be opened
@@ -72,9 +81,9 @@ contract shared by the middleware and the browser client.
   timeout so concurrent proxy writes don't fail viewer reads. Read-only behavior is enforced by
   the query layer, which contains only `SELECT` statements; see
   [src/server/queries.ts](src/server/queries.ts).
-- Assistant markdown is rendered with `marked` without a sanitizer — non-string assembled
-  payloads fall back to HTML-escaped preformatted text. The tool trusts its own local logging
-  database; do not point it at untrusted databases.
+- Assistant markdown is rendered with `marked` without a sanitizer — every assistant row with
+  string content is rendered as markdown; non-string content falls back to plain text or pretty
+  JSON. The tool trusts its own local logging database; do not point it at untrusted databases.
 
 ## Development
 

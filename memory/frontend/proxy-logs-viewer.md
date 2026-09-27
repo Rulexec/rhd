@@ -4,19 +4,15 @@ Read-only Svelte 5 + MobX web app that visualizes the chat-logging SQLite databa
 `rhd_ai_proxy`'s `proxy.logging` feature. Dev-only tool run via vite dev on port 5174
 (`strictPort`). Sibling of `frontend/`, not a route inside it.
 
-**Status: incompatible with logging schema v2.** `rhd_ai_proxy` logging was reworked
-(branch-aware chat classification, `prefix_hashes.len`, new `messages` table,
-`PRAGMA user_version = 2`) — the viewer's queries, fixture DDL, and Zod schemas predate it and
-must be updated before it works against current databases. See the proxy README's Chat logging
-section for the current schema.
-
 ## What it does
 
 - Chats sidebar: logged chats (title, model, relative time, request count), most recently
   active first.
-- Chat detail: reconstructed conversation (latest request's message history + one final
-  assistant turn) and a request timeline (HTTP status, ⏳ in-flight, ERR failed, SSE badge,
-  duration).
+- Chat detail: the chat's normalized conversation from the logging `messages` table (schema v2)
+  — system/user/assistant/tool turns in seq order, assistant content markdown-rendered, tool
+  calls with pretty-printed arguments, tool results with name/`tool_call_id`, a
+  history/response source badge per turn — plus a tail state for the latest request (⏳
+  in-flight, ERR failed) and a request timeline (HTTP status, duration, SSE badge).
 - Request drill-down (timeline row click): raw request body (pre-`extraBody`-injection), raw
   response body (verbatim SSE for streams), assembled assistant reply.
 - Refresh button (header): re-fetches everything visible, preserving the selection; a selection
@@ -27,8 +23,10 @@ section for the current schema.
 
 - `VITE_PROXY_LOGS_PATH` env var → directory containing `chats.sqlite3` (same semantics as
   `proxy.logging.path` in the proxy YAML). Relative paths resolve against `frontend-proxy/`.
-- Fail-fast: dev server aborts at config load when the variable is unset (error names it) and
-  when the database file is missing (error says to run the proxy with logging enabled first).
+- Fail-fast: dev server aborts at config load when the variable is unset (error names it),
+  when the database file is missing (error says to run the proxy with logging enabled first),
+  and when `PRAGMA user_version` ≠ 2 (error names the file and the delete-or-move remedy —
+  matches the proxy's own schema guard).
 - `mise run dev-frontend-proxy`, `mise run check-frontend-proxy`, `mise run test-frontend-proxy`
   (the check task is part of the repo-wide `mise run check` group).
 
@@ -54,10 +52,14 @@ section for the current schema.
 
 - Separate sibling app, no shared npm package — small utils (`mobxObservable`, `yieldPromise`)
   are duplicated; extract only if a third consumer appears.
-- Conversation = the latest request's message history + **one** final assistant turn.
-  Append-only harnesses embed earlier assistant replies in each request's history, so the
-  latest history already is the full conversation; interleaving all assembled replies would
-  duplicate them. Per-request replies stay reachable via the timeline drill-down.
+- Conversation = the `messages` table, not raw-body parsing. The proxy diff-appends request
+  histories and appends assembled responses into normalized rows; the viewer maps them to turns
+  in seq order and parses the projection columns (`content`, `tool_calls`) server-side, so tool
+  calls/results are first-class without parsing raw blobs. A pending/error tail is appended for
+  the latest request; a completed request adds no tail (its response row ends the conversation).
+- Every assistant row with string content renders as markdown (not just the newest reply);
+  non-string content renders as pretty JSON. Per-request assembled replies stay reachable via
+  the timeline drill-down.
 - Row classification: in-flight = `status NULL` **and** `error NULL`; check `error` first — a
   failed exchange also has `status NULL`.
 - Raw bodies cross the API as UTF-8 text (lossy on invalid bytes); JSON is pretty-printed
@@ -69,7 +71,8 @@ section for the current schema.
 ## Where things live
 
 - Server: `frontend-proxy/src/server/{index,plugin,db,queries,routes,fixture}.ts` (`fixture.ts`
-  duplicates the proxy's schema DDL for tests — the viewer must not depend on the Rust crate)
+  duplicates the proxy's schema DDL — provenance: `packages/rhd_ai_proxy/src/logging/schema.rs`
+  — and stamps the same `user_version`; the viewer must not depend on the Rust crate)
 - Contract: `frontend-proxy/src/lib/api/schemas.ts`
 - Client API: `frontend-proxy/src/lib/api/{ProxyLogsApi,proxyLogsApiImpl}.ts`
 - Store: `frontend-proxy/src/stores/ProxyLogsStore.ts`

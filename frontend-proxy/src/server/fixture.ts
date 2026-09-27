@@ -2,11 +2,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import Database from 'better-sqlite3';
-import { DB_FILE_NAME } from './db.js';
+import { DB_FILE_NAME, EXPECTED_LOGGING_SCHEMA_VERSION } from './db.js';
 
-// COPIED from packages/rhd_ai_proxy/src/logging/db.rs (SCHEMA). Keep in sync.
-// The schema is frozen there (CREATE TABLE IF NOT EXISTS); the viewer must not
-// depend on the Rust crate, so the DDL is deliberately duplicated here.
+// COPIED from packages/rhd_ai_proxy/src/logging/schema.rs (SCHEMA). Keep in sync.
+// The viewer must not depend on the Rust crate, so the DDL is deliberately
+// duplicated here. Stamp the same user_version the proxy writes so the open-time
+// version guard in db.ts accepts fixture databases.
 export const LOGGING_SCHEMA = `
 CREATE TABLE IF NOT EXISTS chats (
     id         INTEGER PRIMARY KEY,
@@ -17,8 +18,10 @@ CREATE TABLE IF NOT EXISTS chats (
 );
 CREATE TABLE IF NOT EXISTS prefix_hashes (
     hash    BLOB PRIMARY KEY,
-    chat_id INTEGER NOT NULL REFERENCES chats(id)
+    chat_id INTEGER NOT NULL REFERENCES chats(id),
+    len     INTEGER NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_prefix_hashes_chat ON prefix_hashes(chat_id, len);
 CREATE TABLE IF NOT EXISTS requests (
     id                 INTEGER PRIMARY KEY,
     chat_id            INTEGER NOT NULL REFERENCES chats(id),
@@ -37,6 +40,20 @@ CREATE TABLE IF NOT EXISTS raw (
     request_body  BLOB NOT NULL,
     response_body BLOB
 );
+CREATE TABLE IF NOT EXISTS messages (
+    id           INTEGER PRIMARY KEY,
+    chat_id      INTEGER NOT NULL REFERENCES chats(id),
+    seq          INTEGER NOT NULL,
+    role         TEXT NOT NULL,
+    message_json TEXT NOT NULL,
+    content      TEXT,
+    tool_calls   TEXT,
+    tool_call_id TEXT,
+    name         TEXT,
+    source       TEXT NOT NULL CHECK (source IN ('history', 'response')),
+    request_id   INTEGER NOT NULL REFERENCES requests(id),
+    UNIQUE (chat_id, seq)
+);
 CREATE INDEX IF NOT EXISTS idx_requests_chat ON requests(chat_id, id);
 `;
 
@@ -51,6 +68,7 @@ export function createFixtureDb(): FixtureDb {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'frontend-proxy-logs-'));
   const db = new Database(path.join(dir, DB_FILE_NAME));
   db.exec(LOGGING_SCHEMA);
+  db.pragma(`user_version = ${EXPECTED_LOGGING_SCHEMA_VERSION}`);
   return {
     db,
     dir,
@@ -107,4 +125,59 @@ export function seedRequest(db: Database.Database, seed: SeedRequest): number {
       : Buffer.from(seed.responseBody, 'utf-8')
   );
   return requestId;
+}
+
+/** One seeded message row: the full message object plus row metadata. */
+export interface SeedMessage {
+  /** Full OpenAI-style message object (role, content, tool_calls?, tool_call_id?, name?). */
+  message: Record<string, unknown>;
+  /** Whether the proxy captured it from a request history or an assembled response. */
+  source?: 'history' | 'response';
+}
+
+/**
+ * Insert message rows for a chat, deriving the projection columns the way the
+ * proxy's extract_fields does (packages/rhd_ai_proxy/src/logging/messages.rs):
+ * content as verbatim JSON text unless null, tool_calls as JSON text unless an
+ * empty array. Seq continues after the chat's current MAX(seq).
+ */
+export function seedMessages(
+  db: Database.Database,
+  chatId: number,
+  requestId: number,
+  seeds: SeedMessage[]
+): void {
+  const insert = db.prepare(
+    `INSERT INTO messages
+       (chat_id, seq, role, message_json, content, tool_calls, tool_call_id, name, source, request_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+  let seq = (
+    db.prepare('SELECT COALESCE(MAX(seq), -1) AS max FROM messages WHERE chat_id = ?')
+      .get(chatId) as { max: number }
+  ).max + 1;
+  for (const seed of seeds) {
+    const message = seed.message;
+    const role = typeof message.role === 'string' ? message.role : 'unknown';
+    const content =
+      message.content === undefined || message.content === null
+        ? null
+        : JSON.stringify(message.content);
+    const toolCalls = Array.isArray(message.tool_calls) && message.tool_calls.length > 0
+      ? JSON.stringify(message.tool_calls)
+      : null;
+    insert.run(
+      chatId,
+      seq,
+      role,
+      JSON.stringify(message),
+      content,
+      toolCalls,
+      typeof message.tool_call_id === 'string' ? message.tool_call_id : null,
+      typeof message.name === 'string' ? message.name : null,
+      seed.source ?? 'history',
+      requestId
+    );
+    seq += 1;
+  }
 }
