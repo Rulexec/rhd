@@ -127,17 +127,26 @@ describe('ChatDetailView', () => {
     expect(getByText('failed to load chat')).toBeTruthy();
   });
 
-  it('should render header, conversation turns, and timeline for a loaded chat', () => {
+  it('should render header, conversation turns, collapsed timeline, and index panel', () => {
     const { store } = createMockStore({ chatDetail });
 
-    const { getByText, getByTestId } = render(ChatDetailViewHarness, { props: { store } });
+    const { getByText, getByTestId, container } = render(ChatDetailViewHarness, {
+      props: { store }
+    });
 
     expect(getByText('Debug chat')).toBeTruthy();
     expect(getByText(/z-ai\/glm-5\.3/)).toBeTruthy();
     expect(getByTestId('turn-system')).toBeTruthy();
     expect(getByTestId('turn-user')).toBeTruthy();
     expect(getByTestId('turn-assistant').textContent).toContain('Pong');
-    expect(getByText('Requests (2)')).toBeTruthy();
+    // Timeline header visible but rows collapsed by default (the index panel
+    // also uses role=option, so assert on the timeline's own listbox).
+    expect(getByTestId('requests-toggle').textContent).toContain('Requests (2)');
+    expect(container.querySelector('ul[aria-label="Requests"]')).toBeNull();
+    // Index panel lists user messages and tool-less assistant responses.
+    const index = getByTestId('conversation-index');
+    expect(index.textContent).toContain('Ping');
+    expect(index.textContent).toContain('Pong');
   });
 
   it('should render the request drill-down and call closeRequest on close', async () => {
@@ -159,10 +168,23 @@ describe('ChatDetailView', () => {
   it('should call openRequest with the row id when a timeline row is clicked', async () => {
     const { store, openRequest } = createMockStore({ chatDetail });
 
-    const { getByText } = render(ChatDetailViewHarness, { props: { store } });
+    const { getByTestId, getByText } = render(ChatDetailViewHarness, { props: { store } });
 
+    await fireEvent.click(getByTestId('requests-toggle'));
     await fireEvent.click(getByText('req-model-a'));
 
     expect(openRequest).toHaveBeenCalledWith(11);
+  });
+
+  it('should call openRequest with the turn requestId when a raw button is clicked', async () => {
+    const { store, openRequest } = createMockStore({ chatDetail });
+
+    const { getAllByTestId } = render(ChatDetailViewHarness, { props: { store } });
+
+    const buttons = getAllByTestId('turn-request-button');
+    expect(buttons).toHaveLength(3);
+    await fireEvent.click(buttons[2]!);
+
+    expect(openRequest).toHaveBeenCalledWith(12);
   });
 });

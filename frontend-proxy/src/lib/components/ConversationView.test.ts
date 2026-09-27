@@ -1,6 +1,7 @@
-import { describe, it, expect, afterEach } from 'vitest';
-import { render, cleanup } from '@testing-library/svelte';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, cleanup, fireEvent } from '@testing-library/svelte';
 import ConversationView from './ConversationView.svelte';
+import ConversationViewHarness from './ConversationViewHarness.svelte';
 import type { ConversationTurn, MessageTurn } from '../api/schemas.js';
 
 const messageTurn = (overrides: Partial<MessageTurn> = {}): MessageTurn => ({
@@ -134,26 +135,61 @@ describe('ConversationView', () => {
     expect(turn.textContent).toContain('"temp": 20');
   });
 
-  it('should show a source badge on message turns', () => {
+  it('should not render source badges on message turns', () => {
     const conversation = [
       messageTurn({ seq: 0, source: 'history', content: 'hi' }),
       messageTurn({ seq: 1, role: 'assistant', source: 'response', content: 'hello' })
     ];
 
-    const { getAllByTestId } = render(ConversationView, { props: { conversation } });
+    const { queryAllByTestId } = render(ConversationView, { props: { conversation } });
 
-    const badges = getAllByTestId('source-badge');
-    expect(badges.map((badge) => badge.textContent)).toEqual(['history', 'response']);
+    expect(queryAllByTestId('source-badge')).toHaveLength(0);
   });
 
-  it('should render a pending tail turn with its request id', () => {
+  it('should anchor message turns with their seq for scroll targeting', () => {
+    const conversation = [
+      messageTurn({ seq: 0, role: 'system', content: 'sys' }),
+      messageTurn({ seq: 1, role: 'user', content: 'hi' })
+    ];
+
+    const { container } = render(ConversationView, { props: { conversation } });
+
+    expect(container.querySelector('[data-turn-seq="1"]')).toBeTruthy();
+    expect(container.querySelector('[data-turn-seq="42"]')).toBeNull();
+  });
+
+  it('should render a raw-request button on every turn and dispatch requestSelect on click', async () => {
+    const conversation = [
+      messageTurn({ seq: 0, role: 'system', content: 'sys', requestId: 5 }),
+      messageTurn({ seq: 1, role: 'user', content: 'hi', requestId: 5 }),
+      pendingTurn(7),
+      errorTurn(8)
+    ];
+    const onRequestSelect = vi.fn();
+
+    const { getAllByTestId } = render(ConversationViewHarness, {
+      props: { conversation, onRequestSelect }
+    });
+
+    const buttons = getAllByTestId('turn-request-button');
+    expect(buttons).toHaveLength(4);
+    expect(buttons[0]?.textContent).toContain('raw #5');
+    expect(buttons[2]?.textContent).toContain('raw #7');
+    expect(buttons[3]?.textContent).toContain('raw #8');
+
+    await fireEvent.click(buttons[1]!);
+
+    expect(onRequestSelect).toHaveBeenCalledWith({ requestId: 5 });
+  });
+
+  it('should render a pending tail turn with a raw-request button', () => {
     const conversation = [pendingTurn(7)];
 
     const { getByTestId } = render(ConversationView, { props: { conversation } });
 
     const turn = getByTestId('turn-pending');
     expect(turn.textContent).toContain('⏳');
-    expect(turn.textContent).toContain('7');
+    expect(getByTestId('turn-request-button').textContent).toContain('raw #7');
   });
 
   it('should render an error tail turn with the error text', () => {

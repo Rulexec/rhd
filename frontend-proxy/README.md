@@ -41,13 +41,22 @@ Relative paths resolve against `frontend-proxy/` (npm runs the dev script there)
   active first.
 - Click a chat: the conversation view — the chat's normalized message sequence from the proxy's
   `messages` table (system/user/assistant/tool turns; assistant content markdown-rendered; tool
-  calls with pretty-printed arguments and their results; a history/response source badge per
-  turn) plus a tail state for the latest request (⏳ while the response is in flight, an error
-  note when the exchange failed) — and the request timeline (time, model, SSE badge, status —
-  HTTP code, ⏳ in-flight, ERR — and duration).
-- Click a request row: inline drill-down with three tabs — **Raw Request** (original bytes
-  before `extraBody` injection), **Raw Response** (verbatim SSE for streams), and **Assembled
-  Reply** (the reconstructed assistant message).
+  calls with pretty-printed arguments and their results) plus a tail state for the latest
+  request (⏳ while the response is in flight, an error note when the exchange failed). Every
+  turn carries a `raw #N` button that opens the drill-down of the exchange it is attributed to:
+  for history-sourced turns the request whose payload **first carried** the message (its raw
+  request body is the history that was used), for responses the request that produced the
+  reply.
+- Index panel (right side, always shown next to the conversation): one-line entries for user
+  messages and assistant responses that made no tool calls. Click an entry to scroll the
+  conversation to that turn (it flashes briefly).
+- Request timeline (below the conversation, **collapsed by default** — expand via its header):
+  time, model, SSE badge, status — HTTP code, ⏳ in-flight, ERR — and duration per request.
+  While collapsed with a request open, the header shows a `#N selected` hint.
+- Click a request row or a turn's `raw #N` button: inline drill-down with three tabs —
+  **Raw Request** (original bytes before `extraBody` injection), **Raw Response** (verbatim
+  SSE for streams), and **Assembled Reply** (the reconstructed assistant message). The
+  drill-down scrolls into view when opened; the timeline keeps its collapse state.
 - Refresh (header): re-fetches chats and the open selection; the selection is preserved and
   cleared only if it no longer exists after the refresh.
 
@@ -70,7 +79,9 @@ contract shared by the middleware and the browser client.
   in seq order. The projection columns (`content`, `tool_calls`, `tool_call_id`, `name`) are
   parsed server-side, so tool calls and tool results render as first-class turns without
   touching raw bodies. Per-request assembled replies stay reachable via each timeline row's
-  drill-down.
+  drill-down. The `source` field (history/response) is still served by the API but no longer
+  rendered — it is constant for non-assistant rows, and the per-turn `raw #N` button now
+  carries the useful attribution (which exchange the turn belongs to).
 - Tail states: the chat's latest request appends ⏳ while in flight or ✗ with the proxy error
   when it failed; a completed request appends nothing (its response row already ends the
   conversation — a completion without a parseable assembly is visible via the drill-down).

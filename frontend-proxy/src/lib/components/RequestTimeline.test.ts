@@ -23,26 +23,75 @@ afterEach(() => {
   cleanup();
 });
 
+/** The timeline starts collapsed; row-level tests expand it via the header. */
+async function expand(getByTestId: (id: string) => HTMLElement): Promise<void> {
+  await fireEvent.click(getByTestId('requests-toggle'));
+}
+
 describe('RequestTimeline', () => {
-  it('should render one row per request with model and count header', () => {
+  it('should be collapsed by default and toggle via the header', async () => {
     const requests = [request(1), request(2, { model: 'gpt-4o' })];
 
-    const { getByText, getAllByRole } = render(RequestTimeline, { props: { requests } });
+    const { getByTestId, queryAllByRole } = render(RequestTimeline, {
+      props: { requests }
+    });
 
-    expect(getByText('Requests (2)')).toBeTruthy();
+    // Collapsed: header with count, no rows.
+    const toggle = getByTestId('requests-toggle');
+    expect(toggle.textContent).toContain('Requests (2)');
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(queryAllByRole('option')).toHaveLength(0);
+
+    // Expand: rows appear.
+    await expand(getByTestId);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(queryAllByRole('option')).toHaveLength(2);
+
+    // Collapse again: rows disappear.
+    await fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(queryAllByRole('option')).toHaveLength(0);
+  });
+
+  it('should show the selected request in the collapsed header', () => {
+    const requests = [request(1), request(2)];
+
+    const { getByTestId } = render(RequestTimeline, {
+      props: { requests, selectedRequestId: 2 }
+    });
+
+    const toggle = getByTestId('requests-toggle');
+    expect(toggle.textContent).toContain('Requests (2)');
+    expect(toggle.textContent).toContain('#2 selected');
+  });
+
+  it('should render one row per request with model and count header once expanded', async () => {
+    const requests = [request(1), request(2, { model: 'gpt-4o' })];
+
+    const { getByTestId, getByText, getAllByRole } = render(RequestTimeline, {
+      props: { requests }
+    });
+
+    await expand(getByTestId);
+
+    expect(getByTestId('requests-toggle').textContent).toContain('Requests (2)');
     expect(getByText('z-ai/glm-5.3')).toBeTruthy();
     expect(getByText('gpt-4o')).toBeTruthy();
     expect(getAllByRole('option')).toHaveLength(2);
   });
 
-  it('should render completed, in-flight, and errored statuses distinctly', () => {
+  it('should render completed, in-flight, and errored statuses distinctly', async () => {
     const requests = [
       request(1, { status: 200, durationMs: 50 }),
       request(2, { status: null, error: null }),
       request(3, { status: null, error: 'upstream connect refused' })
     ];
 
-    const { getByText, container } = render(RequestTimeline, { props: { requests } });
+    const { getByTestId, getByText, container } = render(RequestTimeline, {
+      props: { requests }
+    });
+
+    await expand(getByTestId);
 
     const ok = getByText('200');
     expect(ok.className).toContain('st-ok');
@@ -59,18 +108,22 @@ describe('RequestTimeline', () => {
     expect(errorRow?.textContent).toContain('ERR');
   });
 
-  it('should render the SSE badge only for streaming requests', () => {
+  it('should render the SSE badge only for streaming requests', async () => {
     const requests = [request(1, { stream: true }), request(2, { stream: false })];
 
-    const { queryAllByText } = render(RequestTimeline, { props: { requests } });
+    const { getByTestId, queryAllByText } = render(RequestTimeline, { props: { requests } });
+
+    await expand(getByTestId);
 
     expect(queryAllByText('SSE')).toHaveLength(1);
   });
 
-  it('should render durations with ms suffix and a dash when null', () => {
+  it('should render durations with ms suffix and a dash when null', async () => {
     const requests = [request(1, { durationMs: 1234 }), request(2, { durationMs: null })];
 
-    const { getByText } = render(RequestTimeline, { props: { requests } });
+    const { getByTestId, getByText } = render(RequestTimeline, { props: { requests } });
+
+    await expand(getByTestId);
 
     expect(getByText('1234ms')).toBeTruthy();
     expect(getByText('—')).toBeTruthy();
@@ -80,9 +133,11 @@ describe('RequestTimeline', () => {
     const requests = [request(1), request(2, { model: 'gpt-4o' })];
     const onRequestSelect = vi.fn();
 
-    const { getByText, container } = render(RequestTimelineHarness, {
+    const { getByTestId, getByText, container } = render(RequestTimelineHarness, {
       props: { requests, selectedRequestId: 2, onRequestSelect }
     });
+
+    await expand(getByTestId);
 
     const selected = container.querySelectorAll('[aria-selected="true"]');
     expect(selected).toHaveLength(1);

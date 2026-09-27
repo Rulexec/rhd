@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { createEventDispatcher } from 'svelte';
   import { marked } from 'marked';
   import type { ConversationTurn, MessageTurn } from '../api/schemas.js';
   import commonStyles from '../styles/common.module.css';
@@ -8,6 +9,14 @@
   }
 
   let { conversation }: Props = $props();
+
+  const dispatch = createEventDispatcher<{
+    requestSelect: { requestId: number };
+  }>();
+
+  function handleRequestClick(requestId: number): void {
+    dispatch('requestSelect', { requestId });
+  }
 
   /** Display metadata of one tool_calls entry (navigated defensively). */
   function toolCallMeta(call: unknown): {
@@ -68,14 +77,21 @@
 <div class="conversation">
   {#each conversation as turn, index (index)}
     {#if turn.kind === 'message'}
-      <div class="turn turn-{turn.role}" data-testid="turn-{turn.role}">
+      <div class="turn turn-{turn.role}" data-testid="turn-{turn.role}" data-turn-seq={turn.seq}>
         <div class="turn-role {commonStyles['text-muted']}">
           {#if turn.role === 'tool'}
             tool: {turn.name ?? turn.toolCallId ?? 'unknown'}
           {:else}
             {turn.role}
           {/if}
-          <span class="source-badge" data-testid="source-badge">{turn.source}</span>
+          <button
+            class="turn-request-button"
+            onclick={() => handleRequestClick(turn.requestId)}
+            data-testid="turn-request-button"
+            title="Open the raw exchange behind this turn — the request whose payload first carried it (history) or produced it (response)"
+          >
+            raw #{turn.requestId}
+          </button>
         </div>
         {#if turn.role === 'assistant' && typeof turn.content === 'string'}
           <div class="turn-body">{@html renderAssistantMarkdown(turn.content)}</div>
@@ -106,12 +122,32 @@
       </div>
     {:else if turn.kind === 'pending'}
       <div class="turn turn-assistant turn-pending" data-testid="turn-pending">
-        <div class="turn-role {commonStyles['text-muted']}">assistant</div>
-        <div class="turn-body {commonStyles['text-muted']}">⏳ response in flight (request {turn.requestId})…</div>
+        <div class="turn-role {commonStyles['text-muted']}">
+          assistant
+          <button
+            class="turn-request-button"
+            onclick={() => handleRequestClick(turn.requestId)}
+            data-testid="turn-request-button"
+            title="Open the raw exchange behind this turn — the request whose payload first carried it (history) or produced it (response)"
+          >
+            raw #{turn.requestId}
+          </button>
+        </div>
+        <div class="turn-body {commonStyles['text-muted']}">⏳ response in flight…</div>
       </div>
     {:else if turn.kind === 'error'}
       <div class="turn turn-assistant turn-error" data-testid="turn-error">
-        <div class="turn-role {commonStyles['text-error']}">assistant</div>
+        <div class="turn-role {commonStyles['text-error']}">
+          assistant
+          <button
+            class="turn-request-button"
+            onclick={() => handleRequestClick(turn.requestId)}
+            data-testid="turn-request-button"
+            title="Open the raw exchange behind this turn — the request whose payload first carried it (history) or produced it (response)"
+          >
+            raw #{turn.requestId}
+          </button>
+        </div>
         <div class="turn-body {commonStyles['text-error']}">✗ {turn.error}</div>
       </div>
     {/if}
@@ -155,13 +191,36 @@
     gap: var(--spacing-xs);
   }
 
-  .source-badge {
-    font-size: var(--font-size-xs);
-    text-transform: none;
-    letter-spacing: normal;
+  .turn-request-button {
+    margin-left: auto;
     border: 1px solid var(--color-border);
     border-radius: var(--radius-sm);
+    background: none;
     padding: 0 var(--spacing-xs);
+    font-size: var(--font-size-xs);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .turn-request-button:hover {
+    border-color: var(--color-primary);
+    color: var(--color-text);
+  }
+
+  /* Applied imperatively by ChatDetailView when an index entry jumps to a turn. */
+  :global(.turn-flash) {
+    animation: turn-flash 1.2s ease-out;
+  }
+
+  @keyframes turn-flash {
+    0% {
+      background: var(--color-primary);
+    }
+    100% {
+      background: transparent;
+    }
   }
 
   .turn-body {

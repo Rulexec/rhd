@@ -10,6 +10,10 @@
 
   let { requests, selectedRequestId = null }: Props = $props();
 
+  // UI-local collapse state: the raw-requests list is long, so it starts
+  // collapsed; the user expands it via the header when interested.
+  let collapsed = $state(true);
+
   const dispatch = createEventDispatcher<{
     requestSelect: { requestId: number };
   }>();
@@ -42,32 +46,48 @@
 </script>
 
 <div class="timeline">
-  <div class="timeline-header {commonStyles['text-muted']}">Requests ({requests.length})</div>
-  <ul class="{commonStyles['list']} timeline-items" role="listbox" aria-label="Requests">
-    {#each requests as request (request.id)}
-      {@const status = statusView(request)}
-      {@const selected = selectedRequestId === request.id}
-      <li
-        class="{commonStyles['list-item']} timeline-row {selected ? commonStyles['active'] : ''}"
-        onclick={() => handleRowClick(request.id)}
-        onkeydown={(e) => e.key === 'Enter' && handleRowClick(request.id)}
-        role="option"
-        tabindex="0"
-        aria-selected={selected}
-        title={status.title}
-      >
-        <span class="timeline-time {commonStyles['text-muted']}">{formatClock(request.ts)}</span>
-        <span class="timeline-model {commonStyles['truncate']}">{request.model ?? '—'}</span>
-        {#if request.stream}
-          <span class="{commonStyles['tag']} timeline-badge">SSE</span>
-        {/if}
-        <span class="timeline-status {status.className}">{status.text}</span>
-        <span class="timeline-duration {commonStyles['text-muted']}">
-          {request.durationMs === null ? '—' : `${request.durationMs}ms`}
+  <button
+    class="timeline-header"
+    onclick={() => (collapsed = !collapsed)}
+    aria-expanded={!collapsed}
+    data-testid="requests-toggle"
+  >
+    <span class="timeline-header-text {commonStyles['text-muted']}">
+      {collapsed ? '▸' : '▾'} Requests ({requests.length})
+      {#if collapsed && selectedRequestId !== null}
+        <span class="timeline-selected-hint {commonStyles['text-muted']}">
+          · #{selectedRequestId} selected
         </span>
-      </li>
-    {/each}
-  </ul>
+      {/if}
+    </span>
+  </button>
+  {#if !collapsed}
+    <ul class="{commonStyles['list']} timeline-items" role="listbox" aria-label="Requests">
+      {#each requests as request (request.id)}
+        {@const status = statusView(request)}
+        {@const selected = selectedRequestId === request.id}
+        <li
+          class="{commonStyles['list-item']} timeline-row {selected ? commonStyles['active'] : ''}"
+          onclick={() => handleRowClick(request.id)}
+          onkeydown={(e) => e.key === 'Enter' && handleRowClick(request.id)}
+          role="option"
+          tabindex="0"
+          aria-selected={selected}
+          title={status.title}
+        >
+          <span class="timeline-time {commonStyles['text-muted']}">{formatClock(request.ts)}</span>
+          <span class="timeline-model {commonStyles['truncate']}">{request.model ?? '—'}</span>
+          {#if request.stream}
+            <span class="{commonStyles['tag']} timeline-badge">SSE</span>
+          {/if}
+          <span class="timeline-status {status.className}">{status.text}</span>
+          <span class="timeline-duration {commonStyles['text-muted']}">
+            {request.durationMs === null ? '—' : `${request.durationMs}ms`}
+          </span>
+        </li>
+      {/each}
+    </ul>
+  {/if}
 </div>
 
 <style>
@@ -78,10 +98,25 @@
   }
 
   .timeline-header {
+    display: flex;
+    width: 100%;
     padding: var(--spacing-sm) var(--spacing-md);
+    border: none;
+    background: none;
     font-size: var(--font-size-xs);
     text-transform: uppercase;
     letter-spacing: 0.04em;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .timeline-header-text {
+    font-size: var(--font-size-xs);
+  }
+
+  .timeline-selected-hint {
+    text-transform: none;
+    letter-spacing: normal;
   }
 
   .timeline-items {

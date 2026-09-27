@@ -10,11 +10,18 @@ Read-only Svelte 5 + MobX web app that visualizes the chat-logging SQLite databa
   active first.
 - Chat detail: the chat's normalized conversation from the logging `messages` table (schema v2)
   — system/user/assistant/tool turns in seq order, assistant content markdown-rendered, tool
-  calls with pretty-printed arguments, tool results with name/`tool_call_id`, a
-  history/response source badge per turn — plus a tail state for the latest request (⏳
-  in-flight, ERR failed) and a request timeline (HTTP status, duration, SSE badge).
-- Request drill-down (timeline row click): raw request body (pre-`extraBody`-injection), raw
-  response body (verbatim SSE for streams), assembled assistant reply.
+  calls with pretty-printed arguments, tool results with name/`tool_call_id` — plus a tail
+  state for the latest request (⏳ in-flight, ERR failed). Every turn (including the tail) has a
+  `raw #N` button opening the drill-down of its attributed exchange: the request whose history
+  first carried the message, or that produced the response — so "what history was used" is one
+  click away without scanning the raw-requests list.
+- Index panel (right, always shown with a loaded chat): one-line entries for user messages and
+  tool-less assistant responses; clicking scrolls the conversation to the turn and flashes it.
+- Request timeline (below the conversation): HTTP status, duration, SSE badge — **collapsed by
+  default** (toggle header; a `#N selected` hint appears while collapsed with a request open).
+- Request drill-down (timeline row click or a turn's `raw #N` button): raw request body
+  (pre-`extraBody`-injection), raw response body (verbatim SSE for streams), assembled
+  assistant reply. Scrolls into view when opened; the timeline keeps its collapse state.
 - Refresh button (header): re-fetches everything visible, preserving the selection; a selection
   that vanished after the refresh is cleared (a 404 mid-refresh counts as vanished, not as an
   error).
@@ -62,6 +69,16 @@ Read-only Svelte 5 + MobX web app that visualizes the chat-logging SQLite databa
   the timeline drill-down.
 - Row classification: in-flight = `status NULL` **and** `error NULL`; check `error` first — a
   failed exchange also has `status NULL`.
+- The `source` field (history/response) is served by the API but not rendered: it is constant
+  (`history`) for system/user/tool rows and near-default (`response`) for assistant rows; the
+  per-turn `raw #N` button carries the useful attribution instead.
+- Timeline collapse is UI-local `$state` inside `RequestTimeline` (no props/events); opening a
+  request from a turn button deliberately leaves it collapsed — the drill-down section below
+  auto-scrolls into view.
+- Index panel + scroll orchestration live in `ChatDetailView`: turn anchors are
+  `data-turn-seq` attributes, the flash is a `:global(.turn-flash)` class toggled imperatively
+  (defined in `ConversationView` so it travels with turn styles), and all `scrollIntoView` calls
+  go through a jsdom guard (`scrollIntoViewSafe`) so component tests exercise the wiring.
 - Raw bodies cross the API as UTF-8 text (lossy on invalid bytes); JSON is pretty-printed
   client-side, SSE shown verbatim, both in height-capped `<pre>` blocks (bodies can be huge —
   O(N²) storage per chat by proxy design).
