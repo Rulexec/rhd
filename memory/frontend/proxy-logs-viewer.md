@@ -19,9 +19,11 @@ Read-only Svelte 5 + MobX web app that visualizes the chat-logging SQLite databa
   tool-less assistant responses; clicking scrolls the conversation to the turn and flashes it.
 - Request timeline (below the conversation): HTTP status, duration, SSE badge — **collapsed by
   default** (toggle header; a `#N selected` hint appears while collapsed with a request open).
-- Request drill-down (timeline row click or a turn's `raw #N` button): raw request body
-  (pre-`extraBody`-injection), raw response body (verbatim SSE for streams), assembled
-  assistant reply. Scrolls into view when opened; the timeline keeps its collapse state.
+- Request drill-down: raw request body (pre-`extraBody`-injection), raw response body
+  (verbatim SSE for streams), assembled assistant reply. A turn's `raw #N` button renders it
+  inline right after that message (or after the pending/error tail) and auto-scrolls it into
+  view; a second click on the same button or its × Close dismisses it. Timeline row clicks
+  render it below the timeline (bottom placement); the timeline keeps its collapse state.
 - Refresh button (header): re-fetches everything visible, preserving the selection; a selection
   that vanished after the refresh is cleared (a 404 mid-refresh counts as vanished, not as an
   error).
@@ -73,8 +75,17 @@ Read-only Svelte 5 + MobX web app that visualizes the chat-logging SQLite databa
   (`history`) for system/user/tool rows and near-default (`response`) for assistant rows; the
   per-turn `raw #N` button carries the useful attribution instead.
 - Timeline collapse is UI-local `$state` inside `RequestTimeline` (no props/events); opening a
-  request from a turn button deliberately leaves it collapsed — the drill-down section below
+  request from a turn button deliberately leaves it collapsed — the inline drill-down
   auto-scrolls into view.
+- Drill-down placement uses an anchor model: the store keeps `openRequestAnchor` — the
+  anchored turn's `seq`, `'tail'`, or `null` (bottom section below the timeline, used by
+  timeline rows). Exactly one drill-down exists at a time; turn buttons toggle (same request
+  already open at the same anchor closes it), and toggle identity is the turn, not the
+  requestId — sibling turns sharing a requestId re-anchor instead of closing. If the anchored
+  turn no longer exists after a refresh (e.g. the tail completed into a response row), the
+  drill-down falls back to the bottom placement instead of vanishing. `openRequest` applies
+  its fetched detail only when the selection still targets that request (stale-apply guard),
+  so closing or re-targeting mid-flight cannot resurrect a zombie detail.
 - Index panel + scroll orchestration live in `ChatDetailView`: turn anchors are
   `data-turn-seq` attributes, the flash is a `:global(.turn-flash)` class toggled imperatively
   (defined in `ConversationView` so it travels with turn styles), and all `scrollIntoView` calls

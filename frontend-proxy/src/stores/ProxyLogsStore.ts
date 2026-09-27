@@ -34,6 +34,12 @@ export class ProxyLogsStore {
   // ---- request detail area ---------------------------------------------
   selectedRequestId: number | null = null;
   requestDetail: RequestDetail | null = null;
+  /**
+   * Where the drill-down renders: the seq of the message turn it follows
+   * inline, 'tail' to follow the pending/error tail, or null for the bottom
+   * section below the timeline (timeline-row placement / refresh fallback).
+   */
+  openRequestAnchor: number | 'tail' | null = null;
 
   // ---- refresh ----------------------------------------------------------
   refreshing: boolean = false;
@@ -75,6 +81,7 @@ export class ProxyLogsStore {
     this.selectedChatId = chatId;
     this.selectedRequestId = null;
     this.requestDetail = null;
+    this.openRequestAnchor = null;
     this.chatDetail = null;
     this.detailError = null;
     this.detailLoading = true;
@@ -88,13 +95,27 @@ export class ProxyLogsStore {
     }
   }
 
-  /** Open one request's raw detail (timeline row click). */
-  *openRequest(requestId: number): Generator<unknown, void, unknown> {
+  /**
+   * Open one request's raw detail. `anchor` records where the drill-down
+   * renders (turn seq / 'tail' for inline, null for the bottom section); see
+   * openRequestAnchor. The fetched detail is applied only if the selection
+   * still targets this request — a close or re-target mid-flight must not
+   * resurrect a zombie detail.
+   */
+  *openRequest(
+    requestId: number,
+    anchor: number | 'tail' | null = null
+  ): Generator<unknown, void, unknown> {
     this.selectedRequestId = requestId;
+    this.openRequestAnchor = anchor;
     this.requestDetail = null;
     try {
       const detail = yield* yieldPromise(this.#api.getRequestDetail(requestId));
-      this.requestDetail = detail;
+      // Stale-apply guard: the user may have closed (or re-targeted) the
+      // drill-down while the fetch was in flight.
+      if (this.selectedRequestId === requestId) {
+        this.requestDetail = detail;
+      }
     } catch (error) {
       // Surface in the detail area; the timeline stays usable.
       this.detailError = errorMessage(error);
@@ -105,6 +126,7 @@ export class ProxyLogsStore {
   closeRequest(): void {
     this.selectedRequestId = null;
     this.requestDetail = null;
+    this.openRequestAnchor = null;
   }
 
   /**

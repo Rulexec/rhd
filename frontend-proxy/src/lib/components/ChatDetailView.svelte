@@ -18,24 +18,45 @@
   const detailErrorGetter = mobxObservable(() => store.detailError);
   const requestDetailGetter = mobxObservable(() => store.requestDetail);
   const selectedRequestIdGetter = mobxObservable(() => store.selectedRequestId);
+  const openRequestAnchorGetter = mobxObservable(() => store.openRequestAnchor);
 
   let detail = $derived(detailGetter());
   let detailLoading = $derived(detailLoadingGetter());
   let detailError = $derived(detailErrorGetter());
   let requestDetail = $derived(requestDetailGetter());
   let selectedRequestId = $derived(selectedRequestIdGetter());
+  let openRequestAnchor = $derived(openRequestAnchorGetter());
+
+  /**
+   * Whether the open drill-down still anchors inside the conversation (its
+   * turn exists / the tail is still pending or errored). False → render at
+   * the bottom section below the timeline; this is also the refresh
+   * fallback when the anchored turn no longer exists.
+   */
+  let anchoredInConversation = $derived.by(() => {
+    if (!detail || openRequestAnchor === null) {
+      return false;
+    }
+    if (openRequestAnchor === 'tail') {
+      const last = detail.conversation.at(-1);
+      return last !== undefined && (last.kind === 'pending' || last.kind === 'error');
+    }
+    return detail.conversation.some(
+      (turn) => turn.kind === 'message' && turn.seq === openRequestAnchor
+    );
+  });
 
   // The scrolling column — turn/section scroll targets are queried inside it.
   let scrollContainer: HTMLDivElement | null = $state(null);
 
   /**
-   * Timeline rows and per-turn `raw #N` buttons both open the drill-down; the
-   * timeline keeps its own collapse state (stays collapsed when opened via a
-   * turn button). After the detail loads, bring it into view.
+   * Open a request and scroll its drill-down into view once rendered. The
+   * `[data-testid="request-detail"]` selector matches wherever the drill-down
+   * landed (inline after the anchored turn or the bottom section).
    */
-  async function handleRequestSelect(event: CustomEvent<{ requestId: number }>) {
+  async function openAndScroll(requestId: number, anchor: number | 'tail' | null): Promise<void> {
     try {
-      await flowResult(store.openRequest(event.detail.requestId));
+      await flowResult(store.openRequest(requestId, anchor));
     } catch {
       // The store surfaces load errors in the detail area.
     }
@@ -44,6 +65,27 @@
     if (detailEl) {
       scrollIntoViewSafe(detailEl);
     }
+  }
+
+  /**
+   * Turn `raw #N` buttons toggle: clicking the request that is already open
+   * at that same anchor closes it; any other click opens (and re-anchors)
+   * the drill-down inline after the clicked turn. Toggle identity is the
+   * turn (anchor), not the request — sibling turns sharing a requestId
+   * re-anchor instead of closing.
+   */
+  function handleTurnRequestSelect(event: CustomEvent<{ requestId: number; anchor: number | 'tail' }>) {
+    const { requestId, anchor } = event.detail;
+    if (requestDetail?.summary.id === requestId && openRequestAnchor === anchor) {
+      store.closeRequest();
+      return;
+    }
+    void openAndScroll(requestId, anchor);
+  }
+
+  /** Timeline rows keep the bottom placement (the user is already there). */
+  function handleTimelineRequestSelect(event: CustomEvent<{ requestId: number }>) {
+    void openAndScroll(event.detail.requestId, null);
   }
 
   function handleCloseRequest() {
@@ -88,7 +130,10 @@
         <section class="chat-detail-section">
           <ConversationView
             conversation={detail.conversation}
-            on:requestSelect={handleRequestSelect}
+            requestDetail={anchoredInConversation ? requestDetail : null}
+            openAnchor={openRequestAnchor}
+            onCloseRequest={handleCloseRequest}
+            on:requestSelect={handleTurnRequestSelect}
           />
         </section>
 
@@ -96,11 +141,11 @@
           <RequestTimeline
             requests={detail.requests}
             {selectedRequestId}
-            on:requestSelect={handleRequestSelect}
+            on:requestSelect={handleTimelineRequestSelect}
           />
         </section>
 
-        {#if requestDetail}
+        {#if requestDetail && !anchoredInConversation}
           <section class="chat-detail-section">
             <RequestDetailView {requestDetail} onClose={handleCloseRequest} />
           </section>

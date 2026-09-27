@@ -91,6 +91,7 @@ function createMockStore(options: {
   detailError?: string | null;
   requestDetail?: RequestDetail | null;
   selectedRequestId?: number | null;
+  openRequestAnchor?: number | 'tail' | null;
 }) {
   const openRequest = vi.fn().mockResolvedValue(undefined);
   const closeRequest = vi.fn();
@@ -100,6 +101,7 @@ function createMockStore(options: {
     detailError: options.detailError ?? null,
     requestDetail: options.requestDetail ?? null,
     selectedRequestId: options.selectedRequestId ?? null,
+    openRequestAnchor: options.openRequestAnchor ?? null,
     openRequest,
     closeRequest
   };
@@ -165,7 +167,7 @@ describe('ChatDetailView', () => {
     expect(closeRequest).toHaveBeenCalledTimes(1);
   });
 
-  it('should call openRequest with the row id when a timeline row is clicked', async () => {
+  it('should call openRequest with the row id and a null anchor when a timeline row is clicked', async () => {
     const { store, openRequest } = createMockStore({ chatDetail });
 
     const { getByTestId, getByText } = render(ChatDetailViewHarness, { props: { store } });
@@ -173,10 +175,11 @@ describe('ChatDetailView', () => {
     await fireEvent.click(getByTestId('requests-toggle'));
     await fireEvent.click(getByText('req-model-a'));
 
-    expect(openRequest).toHaveBeenCalledWith(11);
+    // Always two arguments, so assertions are uniform across placements.
+    expect(openRequest).toHaveBeenCalledWith(11, null);
   });
 
-  it('should call openRequest with the turn requestId when a raw button is clicked', async () => {
+  it('should call openRequest with the turn requestId and seq when a raw button is clicked', async () => {
     const { store, openRequest } = createMockStore({ chatDetail });
 
     const { getAllByTestId } = render(ChatDetailViewHarness, { props: { store } });
@@ -185,6 +188,102 @@ describe('ChatDetailView', () => {
     expect(buttons).toHaveLength(3);
     await fireEvent.click(buttons[2]!);
 
-    expect(openRequest).toHaveBeenCalledWith(12);
+    expect(openRequest).toHaveBeenCalledWith(12, 2);
+  });
+
+  it('should close instead of re-open when the same request is already open at the same anchor', async () => {
+    const { store, openRequest, closeRequest } = createMockStore({
+      chatDetail,
+      requestDetail,
+      selectedRequestId: 11,
+      openRequestAnchor: 1
+    });
+
+    const { getAllByTestId } = render(ChatDetailViewHarness, { props: { store } });
+
+    // The user turn (seq 1, requestId 11) is the current anchor.
+    await fireEvent.click(getAllByTestId('turn-request-button')[1]!);
+
+    expect(closeRequest).toHaveBeenCalledTimes(1);
+    expect(openRequest).not.toHaveBeenCalled();
+  });
+
+  it('should re-anchor (not close) when a sibling turn of the same request is clicked', async () => {
+    const { store, openRequest, closeRequest } = createMockStore({
+      chatDetail,
+      requestDetail,
+      selectedRequestId: 11,
+      openRequestAnchor: 1
+    });
+
+    const { getAllByTestId } = render(ChatDetailViewHarness, { props: { store } });
+
+    // The system turn carries the same requestId 11 but a different seq.
+    await fireEvent.click(getAllByTestId('turn-request-button')[0]!);
+
+    expect(closeRequest).not.toHaveBeenCalled();
+    expect(openRequest).toHaveBeenCalledTimes(1);
+    expect(openRequest).toHaveBeenCalledWith(11, 0);
+  });
+
+  it('should render an anchored detail inline in the conversation, not in the bottom section', () => {
+    const { store } = createMockStore({
+      chatDetail,
+      requestDetail,
+      selectedRequestId: 11,
+      openRequestAnchor: 1
+    });
+
+    const { getByTestId, container } = render(ChatDetailViewHarness, { props: { store } });
+
+    const detailEl = getByTestId('request-detail');
+    const conversation = container.querySelector('.conversation')!;
+    // Exactly one drill-down exists, and it lives inside the conversation.
+    expect(container.querySelectorAll('[data-testid="request-detail"]')).toHaveLength(1);
+    expect(conversation.contains(detailEl)).toBe(true);
+    // Between the anchored turn and the following turns.
+    const children = Array.from(conversation.children);
+    expect(children.indexOf(container.querySelector('[data-turn-seq="0"]')!)).toBeLessThan(
+      children.indexOf(detailEl)
+    );
+    expect(children.indexOf(container.querySelector('[data-turn-seq="1"]')!)).toBe(
+      children.indexOf(detailEl) - 1
+    );
+    expect(children.indexOf(container.querySelector('[data-turn-seq="2"]')!)).toBe(
+      children.indexOf(detailEl) + 1
+    );
+  });
+
+  it('should render an un-anchored detail in the bottom section', () => {
+    const { store } = createMockStore({
+      chatDetail,
+      requestDetail,
+      selectedRequestId: 11,
+      openRequestAnchor: null
+    });
+
+    const { getByTestId, container } = render(ChatDetailViewHarness, { props: { store } });
+
+    const detailEl = getByTestId('request-detail');
+    expect(container.querySelector('.conversation')?.contains(detailEl)).toBe(false);
+    // It is the last section of the scroll column, below the timeline.
+    const sections = Array.from(container.querySelectorAll('.chat-detail-section'));
+    expect(sections.at(-1)?.contains(detailEl)).toBe(true);
+  });
+
+  it('should fall back to the bottom section when the anchored turn no longer exists', () => {
+    const { store } = createMockStore({
+      chatDetail,
+      requestDetail,
+      selectedRequestId: 11,
+      openRequestAnchor: 99
+    });
+
+    const { getByTestId, container } = render(ChatDetailViewHarness, { props: { store } });
+
+    const detailEl = getByTestId('request-detail');
+    expect(container.querySelector('.conversation')?.contains(detailEl)).toBe(false);
+    const sections = Array.from(container.querySelectorAll('.chat-detail-section'));
+    expect(sections.at(-1)?.contains(detailEl)).toBe(true);
   });
 });

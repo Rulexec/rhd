@@ -53,10 +53,15 @@ Relative paths resolve against `frontend-proxy/` (npm runs the dev script there)
 - Request timeline (below the conversation, **collapsed by default** — expand via its header):
   time, model, SSE badge, status — HTTP code, ⏳ in-flight, ERR — and duration per request.
   While collapsed with a request open, the header shows a `#N selected` hint.
-- Click a request row or a turn's `raw #N` button: inline drill-down with three tabs —
-  **Raw Request** (original bytes before `extraBody` injection), **Raw Response** (verbatim
-  SSE for streams), and **Assembled Reply** (the reconstructed assistant message). The
-  drill-down scrolls into view when opened; the timeline keeps its collapse state.
+- Click a turn's `raw #N` button: the drill-down opens **inline right after that message**
+  (or right after the ⏳/✗ tail) with three tabs — **Raw Request** (original bytes before
+  `extraBody` injection), **Raw Response** (verbatim SSE for streams), and **Assembled
+  Reply** (the reconstructed assistant message) — and auto-scrolls into view. Click the
+  same button again or its × Close to dismiss it; exactly one drill-down exists at a time.
+- Click a request row in the timeline: the same drill-down, but placed below the timeline
+  (you are already at the bottom when clicking there). The timeline keeps its collapse
+  state either way; after a refresh, a drill-down whose anchored turn vanished falls back
+  to this bottom placement.
 - Refresh (header): re-fetches chats and the open selection; the selection is preserved and
   cleared only if it no longer exists after the refresh.
 

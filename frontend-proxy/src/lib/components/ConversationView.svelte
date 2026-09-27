@@ -1,21 +1,41 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   import { marked } from 'marked';
-  import type { ConversationTurn, MessageTurn } from '../api/schemas.js';
+  import type { ConversationTurn, MessageTurn, RequestDetail } from '../api/schemas.js';
+  import RequestDetailView from './RequestDetailView.svelte';
   import commonStyles from '../styles/common.module.css';
 
   interface Props {
     conversation: ConversationTurn[];
+    /** Detail of the open request, rendered inline when it anchors to a turn. */
+    requestDetail?: RequestDetail | null;
+    /** Turn the drill-down follows: message seq, 'tail', or null (bottom section). */
+    openAnchor?: number | 'tail' | null;
+    /** Invoked by the inline drill-down's × Close button. */
+    onCloseRequest?: () => void;
   }
 
-  let { conversation }: Props = $props();
+  let {
+    conversation,
+    requestDetail = null,
+    openAnchor = null,
+    onCloseRequest
+  }: Props = $props();
 
   const dispatch = createEventDispatcher<{
-    requestSelect: { requestId: number };
+    requestSelect: { requestId: number; anchor: number | 'tail' };
   }>();
 
-  function handleRequestClick(requestId: number): void {
-    dispatch('requestSelect', { requestId });
+  function handleRequestClick(requestId: number, anchor: number | 'tail'): void {
+    dispatch('requestSelect', { requestId, anchor });
+  }
+
+  /** Whether the inline drill-down anchors right after this turn. */
+  function isAnchoredAfter(turn: ConversationTurn): boolean {
+    if (requestDetail === null || openAnchor === null) {
+      return false;
+    }
+    return turn.kind === 'message' ? turn.seq === openAnchor : openAnchor === 'tail';
   }
 
   /** Display metadata of one tool_calls entry (navigated defensively). */
@@ -86,7 +106,7 @@
           {/if}
           <button
             class="turn-request-button"
-            onclick={() => handleRequestClick(turn.requestId)}
+            onclick={() => handleRequestClick(turn.requestId, turn.seq)}
             data-testid="turn-request-button"
             title="Open the raw exchange behind this turn — the request whose payload first carried it (history) or produced it (response)"
           >
@@ -126,7 +146,7 @@
           assistant
           <button
             class="turn-request-button"
-            onclick={() => handleRequestClick(turn.requestId)}
+            onclick={() => handleRequestClick(turn.requestId, 'tail')}
             data-testid="turn-request-button"
             title="Open the raw exchange behind this turn — the request whose payload first carried it (history) or produced it (response)"
           >
@@ -141,7 +161,7 @@
           assistant
           <button
             class="turn-request-button"
-            onclick={() => handleRequestClick(turn.requestId)}
+            onclick={() => handleRequestClick(turn.requestId, 'tail')}
             data-testid="turn-request-button"
             title="Open the raw exchange behind this turn — the request whose payload first carried it (history) or produced it (response)"
           >
@@ -150,6 +170,9 @@
         </div>
         <div class="turn-body {commonStyles['text-error']}">✗ {turn.error}</div>
       </div>
+    {/if}
+    {#if requestDetail !== null && isAnchoredAfter(turn)}
+      <RequestDetailView {requestDetail} onClose={() => onCloseRequest?.()} />
     {/if}
   {/each}
 </div>

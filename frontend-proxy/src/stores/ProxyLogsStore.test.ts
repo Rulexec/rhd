@@ -125,6 +125,7 @@ describe('ProxyLogsStore', () => {
     expect(store.detailError).toBe(null);
     expect(store.selectedRequestId).toBe(null);
     expect(store.requestDetail).toBe(null);
+    expect(store.openRequestAnchor).toBe(null);
     expect(store.refreshing).toBe(false);
   });
 
@@ -171,14 +172,16 @@ describe('ProxyLogsStore', () => {
     it('should drop an open request when opening another chat', async () => {
       await store.loadChats();
       await store.openChat(1);
-      await store.openRequest(10);
+      await store.openRequest(10, 1);
       expect(store.selectedRequestId).toBe(10);
+      expect(store.openRequestAnchor).toBe(1);
 
       await store.openChat(2);
 
       expect(store.selectedChatId).toBe(2);
       expect(store.selectedRequestId).toBe(null);
       expect(store.requestDetail).toBe(null);
+      expect(store.openRequestAnchor).toBe(null);
     });
 
     it('should set detailError and keep chatDetail null on failure', async () => {
@@ -209,6 +212,39 @@ describe('ProxyLogsStore', () => {
 
       expect(store.detailError).toBe('req boom');
       expect(store.requestDetail).toBe(null);
+    });
+
+    it('should track the anchor: null by default, set while open, cleared by closeRequest', async () => {
+      await store.openChat(1);
+      expect(store.openRequestAnchor).toBe(null);
+
+      await store.openRequest(10, 3);
+      expect(store.selectedRequestId).toBe(10);
+      expect(store.openRequestAnchor).toBe(3);
+
+      await store.openRequest(11, 'tail');
+      expect(store.selectedRequestId).toBe(11);
+      expect(store.openRequestAnchor).toBe('tail');
+
+      store.closeRequest();
+      expect(store.openRequestAnchor).toBe(null);
+    });
+
+    it('should not apply a fetch result that resolved after closeRequest (stale-apply guard)', async () => {
+      await store.openChat(1);
+      const pending = deferred<RequestDetail>();
+      vi.mocked(mockApi.getRequestDetail).mockReturnValueOnce(pending.promise);
+
+      const flow = store.openRequest(10, 3);
+      expect(store.selectedRequestId).toBe(10);
+
+      store.closeRequest();
+      pending.resolve(requestDetail(10));
+      await flow;
+
+      expect(store.selectedRequestId).toBe(null);
+      expect(store.requestDetail).toBe(null);
+      expect(store.openRequestAnchor).toBe(null);
     });
   });
 
