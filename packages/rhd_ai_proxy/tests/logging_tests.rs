@@ -18,6 +18,7 @@ use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 
 use rhd_ai_proxy::config::{Logging, ModelConfig, Proxy as ProxyConfig, Target};
+use rhd_ai_proxy::logging::{LoggingDb, LoggingError};
 use rhd_ai_proxy::proxy::{build_router, ProxyState};
 
 // ─── Upstreams ───
@@ -443,6 +444,296 @@ async fn skips_non_completions_and_unparseable_requests() {
     let conn = Connection::open(&db_path).unwrap();
     assert_eq!(scalar_i64(&conn, "SELECT COUNT(*) FROM requests"), 0);
     assert_eq!(scalar_i64(&conn, "SELECT COUNT(*) FROM chats"), 0);
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+// ─── Branch-aware classification ───
+
+#[tokio::test]
+async fn subset_history_creates_separate_chat() {
+    let dir = temp_logging_dir("subset");
+    let upstream = ChatUpstream {
+        received: Arc::new(Mutex::new(None)),
+    };
+    let addr = spawn_upstream(
+        Router::new()
+            .fallback(chat_json_handler)
+            .with_state(upstream.clone()),
+    )
+    .await;
+    let (port, db_path) = spawn_proxy(target_base(addr), HashMap::new(), dir.clone()).await;
+
+    // Parent chat A: seed request, then a continuation that advances its frontier.
+    let parent_seed = json!({"model": "gpt-4o", "messages": [
+        {"role": "system", "content": "s1"},
+        {"role": "user", "content": "first"}
+    ]});
+    let parent_next = json!({"model": "gpt-4o", "messages": [
+        {"role": "system", "content": "s1"},
+        {"role": "user", "content": "first"},
+        {"role": "assistant", "content": "reply"},
+        {"role": "user", "content": "second"}
+    ]});
+    // Sub-chat B spawned with a subset of A's messages plus its own task message.
+    let sub_seed = json!({"model": "gpt-4o", "messages": [
+        {"role": "system", "content": "s1"},
+        {"role": "user", "content": "first"},
+        {"role": "user", "content": "sub task"}
+    ]});
+    let sub_next = json!({"model": "gpt-4o", "messages": [
+        {"role": "system", "content": "s1"},
+        {"role": "user", "content": "first"},
+        {"role": "user", "content": "sub task"},
+        {"role": "assistant", "content": "sub reply"}
+    ]});
+
+    for body in [&parent_seed, &parent_next, &sub_seed, &sub_next] {
+        let response = post_json(
+            port,
+            "/v1/chat/completions",
+            &serde_json::to_vec(body).unwrap(),
+        )
+        .await;
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        let _ = response.text().await.unwrap();
+    }
+
+    let conn = wait_for(&db_path, |conn| {
+        scalar_i64(conn, "SELECT COUNT(*) FROM requests") == 4
+            && scalar_i64(conn, "SELECT COUNT(*) FROM chats") == 2
+    })
+    .await;
+
+    // Request order: parent seed, parent continuation, sub seed, sub continuation.
+    let chat_ids: Vec<i64> = conn
+        .prepare("SELECT chat_id FROM requests ORDER BY id")
+        .unwrap()
+        .query_map([], |row| row.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(chat_ids.len(), 4);
+    assert_eq!(chat_ids[0], chat_ids[1], "parent requests share a chat");
+    assert_eq!(chat_ids[2], chat_ids[3], "sub-chat requests share a chat");
+    assert_ne!(
+        chat_ids[0], chat_ids[2],
+        "the sub-chat must not be merged into the parent"
+    );
+
+    // Each chat has its own full message sequence (the sub-chat duplicated the seed
+    // messages it was spawned with): four history rows plus one assembled response.
+    let count_for = |conn: &Connection, chat_id: i64| -> i64 {
+        conn.query_row(
+            "SELECT COUNT(*) FROM messages WHERE chat_id = ?1",
+            [chat_id],
+            |row| row.get(0),
+        )
+        .unwrap()
+    };
+    let history_count_for = |conn: &Connection, chat_id: i64| -> i64 {
+        conn.query_row(
+            "SELECT COUNT(*) FROM messages WHERE chat_id = ?1 AND source = 'history'",
+            [chat_id],
+            |row| row.get(0),
+        )
+        .unwrap()
+    };
+    for chat_id in [chat_ids[0], chat_ids[2]] {
+        assert_eq!(count_for(&conn, chat_id), 5);
+        assert_eq!(history_count_for(&conn, chat_id), 4);
+    }
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn edited_history_forks_new_chat() {
+    let dir = temp_logging_dir("edit_fork");
+    let upstream = ChatUpstream {
+        received: Arc::new(Mutex::new(None)),
+    };
+    let addr = spawn_upstream(
+        Router::new()
+            .fallback(chat_json_handler)
+            .with_state(upstream.clone()),
+    )
+    .await;
+    let (port, db_path) = spawn_proxy(target_base(addr), HashMap::new(), dir.clone()).await;
+
+    let original = json!({"model": "gpt-4o", "messages": [
+        {"role": "system", "content": "s1"},
+        {"role": "user", "content": "original"}
+    ]});
+    let advanced = json!({"model": "gpt-4o", "messages": [
+        {"role": "system", "content": "s1"},
+        {"role": "user", "content": "original"},
+        {"role": "user", "content": "more"}
+    ]});
+    let edited = json!({"model": "gpt-4o", "messages": [
+        {"role": "system", "content": "s1"},
+        {"role": "user", "content": "edited"}
+    ]});
+
+    for body in [&original, &advanced, &edited] {
+        let response = post_json(
+            port,
+            "/v1/chat/completions",
+            &serde_json::to_vec(body).unwrap(),
+        )
+        .await;
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        let _ = response.text().await.unwrap();
+    }
+
+    let conn = wait_for(&db_path, |conn| {
+        scalar_i64(conn, "SELECT COUNT(*) FROM requests") == 3
+            && scalar_i64(conn, "SELECT COUNT(*) FROM chats") == 2
+    })
+    .await;
+
+    let chat_ids: Vec<i64> = conn
+        .prepare("SELECT chat_id FROM requests ORDER BY id")
+        .unwrap()
+        .query_map([], |row| row.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(chat_ids[0], chat_ids[1]);
+    assert_ne!(chat_ids[0], chat_ids[2]);
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+// ─── Tool calls in the messages table ───
+
+const TOOL_SSE_BODY: &str = concat!(
+    "data: {\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"get_weather\",\"arguments\":\"\"}}]}}]}\n\n",
+    "data: {\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"city\\\":\\\"Oslo\\\"}\"}}]}}]}\n\n",
+    "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n",
+    "data: [DONE]\n\n",
+);
+
+async fn chat_tool_sse_handler() -> Response {
+    let stream = async_stream::stream! {
+        yield Ok::<_, std::io::Error>(Bytes::from_static(TOOL_SSE_BODY.as_bytes()));
+    };
+    Response::builder()
+        .header("content-type", "text/event-stream")
+        .body(Body::from_stream(stream))
+        .unwrap()
+}
+
+#[tokio::test]
+async fn tool_calls_and_results_persisted_to_messages() {
+    let dir = temp_logging_dir("tool_calls");
+    let addr = spawn_upstream(Router::new().fallback(chat_tool_sse_handler)).await;
+    let (port, db_path) = spawn_proxy(target_base(addr), HashMap::new(), dir.clone()).await;
+
+    // First request: the model streams a tool call.
+    let first = json!({"model": "gpt-4o", "stream": true, "messages": [
+        {"role": "user", "content": "weather in Oslo?"}
+    ]});
+    let response = post_json(port, "/v1/chat/completions", &serde_json::to_vec(&first).unwrap())
+        .await;
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let _ = response.text().await.unwrap();
+
+    let conn = wait_for(&db_path, |conn| {
+        scalar_i64(
+            conn,
+            "SELECT COUNT(*) FROM messages WHERE source = 'response'",
+        ) == 1
+    })
+    .await;
+
+    // The assembled tool call is queryable in its own column.
+    let (role, tool_calls, source): (String, String, String) = conn
+        .query_row(
+            "SELECT role, tool_calls, source FROM messages WHERE seq = 1",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(role, "assistant");
+    assert_eq!(source, "response");
+    let tool_calls: Value = serde_json::from_str(&tool_calls).unwrap();
+    assert_eq!(tool_calls[0]["id"], "call_1");
+    assert_eq!(tool_calls[0]["function"]["name"], "get_weather");
+    assert_eq!(
+        tool_calls[0]["function"]["arguments"],
+        serde_json::json!({"city": "Oslo"}).to_string()
+    );
+
+    // Second request: the harness re-delivers the assistant tool call and the result.
+    let second = json!({"model": "gpt-4o", "stream": true, "messages": [
+        {"role": "user", "content": "weather in Oslo?"},
+        {"role": "assistant", "content": null, "tool_calls": [
+            {"id": "call_1", "type": "function",
+             "function": {"name": "get_weather", "arguments": "{\"city\":\"Oslo\"}"}}
+        ]},
+        {"role": "tool", "tool_call_id": "call_1", "content": "{\"temp\": 20}"}
+    ]});
+    let response = post_json(port, "/v1/chat/completions", &serde_json::to_vec(&second).unwrap())
+        .await;
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let _ = response.text().await.unwrap();
+
+    let conn = wait_for(&db_path, |conn| {
+        scalar_i64(conn, "SELECT COUNT(*) FROM messages WHERE role = 'tool'") == 1
+    })
+    .await;
+
+    let (role, content, tool_call_id, source): (String, String, String, String) = conn
+        .query_row(
+            "SELECT role, content, tool_call_id, source FROM messages WHERE seq = 2",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .unwrap();
+    assert_eq!(role, "tool");
+    assert_eq!(content, serde_json::to_string("{\"temp\": 20}").unwrap());
+    assert_eq!(tool_call_id, "call_1");
+    assert_eq!(source, "history");
+
+    // The re-delivered assistant turn matched the stored response row (finish_reason
+    // is stripped for comparison), so it was not rewritten.
+    let (source, message_json): (String, String) = conn
+        .query_row(
+            "SELECT source, message_json FROM messages WHERE seq = 1",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(source, "response");
+    assert!(!message_json.contains("finish_reason"));
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+// ─── Schema lifecycle ───
+
+#[test]
+fn old_schema_database_fails_fast() {
+    let dir = temp_logging_dir("old_schema");
+    std::fs::create_dir_all(&dir).unwrap();
+    let conn = Connection::open(dir.join("chats.sqlite3")).unwrap();
+    // Minimal v1-era shape: chats table, no user_version stamp.
+    conn.execute_batch(
+        "CREATE TABLE chats (id INTEGER PRIMARY KEY, title TEXT NOT NULL, model TEXT,
+                             created_at TEXT NOT NULL, updated_at TEXT NOT NULL);",
+    )
+    .unwrap();
+    drop(conn);
+
+    match LoggingDb::open(&dir) {
+        Err(LoggingError::IncompatibleSchema { path, found, .. }) => {
+            assert!(path.ends_with("chats.sqlite3"));
+            assert_eq!(found, 0);
+        }
+        Err(other) => panic!("expected IncompatibleSchema, got {other}"),
+        Ok(_) => panic!("expected IncompatibleSchema, open succeeded"),
+    }
 
     let _ = std::fs::remove_dir_all(&dir);
 }

@@ -97,30 +97,57 @@ and received. Non-completions traffic (e.g. `GET /v1/models`, embeddings) is not
 ### Chat identity
 
 The OpenAI-compatible API is stateless — requests carry no chat identifier, only the full
-`messages` history. Continuations are therefore detected by hashing that history: every request
-computes a rolling hash chain over its messages (`h_i = blake3(h_{i-1} || message_i)`), and a
-request whose history starts with a previously seen prefix continues that chat (longest prefix
-wins).
+`messages` history. Chats are therefore identified by content: every request computes a rolling
+hash chain over its messages (`h_i = blake3(h_{i-1} || message_i)`), and the chain is classified
+against each chat's **frontier** — the longest history that chat has ever registered:
 
-- Append-only harnesses chain all turns of a conversation into one chat; an identical retry
-  also maps to the same chat.
-- An edited/branched history starts a new chat from the edit point.
+| Incoming history | Classification |
+|------------------|----------------|
+| identical to any registered history | **retry** — same chat |
+| extends a chat's frontier (append-only) | **continuation** — same chat |
+| forks from an earlier point of a chat (subset, sub-chat, edited/regenerated resend) | **branch** — a new, independent chat row |
+| shares no prefix with any chat | **new chat** |
+
+Each prefix hash has a single owner (first registrant) and is never re-pointed, so chats cannot
+steal each other's identity. Branches intentionally have **no lineage columns** — the
+parent/child relationship remains derivable from `prefix_hashes` if ever needed.
+
+Content-only identification has inherent limits:
+
+- Two clients extending byte-identical histories concurrently are indistinguishable — the first
+  extension claims the chat, the later diverger becomes a branch.
+- A sub-chat's seed request that exactly matches its parent's registered history is attributed
+  to the parent as a retry; all of the sub-chat's subsequent traffic lands in its own branched
+  chat.
 - A harness that **mutates earlier messages mid-chat** (e.g. rewrites the system prompt with
-  changing context) breaks the chain and starts a new chat — an inherent limitation of the
-  stateless API.
+  changing context) breaks the chain and forks a new chat.
 
 ### Schema
+
+Schema version 2 (stamped in `PRAGMA user_version`). Opening a database with a different version
+fails at startup with instructions to delete or move the file — there is no in-place migration.
 
 | Table | Contents |
 |-------|----------|
 | `chats` | `id`, `title` (first user message, truncated to 100 chars), `model`, `created_at`, `updated_at` |
-| `prefix_hashes` | `hash` → `chat_id` map used for continuation detection |
+| `prefix_hashes` | `hash` → `chat_id`, `len` (message count the hash covers); a chat's frontier is its `MAX(len)` row |
 | `requests` | one row per logged request: `chat_id`, `ts`, `method`, `path`, `model`, `stream`, `status`, `duration_ms`, `error`, `response_assembled` |
 | `raw` | `request_body` (original bytes **before** `extraBody` injection) and `response_body` (full raw response; for streaming, the concatenated SSE bytes) |
+| `messages` | normalized per-chat conversation, one row per message: `seq`, `role`, `message_json` (full canonical message), `content`, `tool_calls`, `tool_call_id`, `name`, `source` (`history`/`response`), `request_id` |
 
 `response_assembled` holds the assistant message reconstructed from the exchange: parsed SSE
 deltas (content, tool calls, finish reason) for streams, or `choices[0].message` for JSON
 responses. `NULL` when the response could not be parsed.
+
+The `messages` table mirrors each chat's conversation. Request histories are diff-appended in
+first-seen order (this is how tool **results** — `role=tool` messages — are captured, since they
+only ever appear inside subsequent histories); assembled responses append the assistant turn at
+its own sequence position. The request history is authoritative: when a resent history disagrees
+with stored rows, everything from the divergence point is replaced. `message_json` stores the
+canonical message with top-level `finish_reason` stripped (so SSE-assembled and history-delivered
+forms of the same turn compare equal); the other columns are extracted projections — `tool_calls`
+as a JSON array on assistant turns, `tool_call_id` on tool-result turns — so the tool pipeline is
+queryable without parsing raw bodies.
 
 `status` is `NULL` while a response is still in flight; `error` is set when the proxy itself
 failed to complete the exchange (e.g. upstream unreachable). If the client disconnects
@@ -137,6 +164,20 @@ SELECT id, title, model, updated_at FROM chats ORDER BY updated_at DESC;
 -- All requests of one chat, newest last
 SELECT id, ts, model, stream, status, duration_ms, error
 FROM requests WHERE chat_id = 42 ORDER BY id;
+
+-- The chat's conversation with tool calls and results
+SELECT seq, role, content, tool_calls, tool_call_id, source
+FROM messages WHERE chat_id = 42 ORDER BY seq;
+
+-- Assistant tool calls with their results, joined
+SELECT a.seq, json_extract(c.value, '$.function.name') AS tool,
+       json_extract(c.value, '$.function.arguments') AS arguments,
+       t.content AS result
+FROM messages a,
+     json_each(a.tool_calls) c
+LEFT JOIN messages t ON t.chat_id = a.chat_id AND t.tool_call_id = json_extract(c.value, '$.id')
+WHERE a.chat_id = 42 AND a.tool_calls IS NOT NULL
+ORDER BY a.seq, c.key;
 
 -- What the harness sent in the latest exchange of a chat (raw JSON)
 SELECT request_body FROM raw
@@ -158,9 +199,9 @@ SELECT response_body FROM raw WHERE request_id = 7;
 SELECT * FROM requests WHERE status IS NULL OR error IS NOT NULL;
 ```
 
-There is also a small web viewer: [`frontend-proxy`](../../frontend-proxy/README.md) renders
-chats, reconstructed conversations, and raw request/response bodies in the browser. Point
-`VITE_PROXY_LOGS_PATH` at the same folder as `proxy.logging.path` and run its dev server.
+There is a small web viewer: [`frontend-proxy`](../../frontend-proxy/README.md). **Note:** it
+predates schema version 2 and does not yet understand the `messages` table or the new chat
+grouping — expect it to need an update before it works against current databases.
 
 Notes:
 
@@ -168,12 +209,14 @@ Notes:
   fine for a debug tool; delete the database file to reset.
 - Logging is best-effort: database failures are logged via `tracing` and never affect proxied
   requests.
+- Classification, hash registration, request insertion, and history diffing happen in one
+  transaction per request, so interleaved requests from parallel chats cannot misattribute.
 - The logging database is fully independent of the main `rhd_db` chat storage.
 - Multiple proxy processes may share one `logging.path`: connections use WAL with a busy
   timeout, so concurrent writers queue instead of failing, and chat grouping is shared across
   the proxies. Caveat: if two proxies receive the first message of the same new chat at the
-  same instant, each may create its own chat row (the last prefix registration wins from then
-  on). The database must be on a local filesystem — WAL does not work over network mounts.
+  same instant, each may create its own chat row. The database must be on a local filesystem —
+  WAL does not work over network mounts.
 
 ## Logging
 
@@ -194,6 +237,7 @@ cargo test -p rhd_ai_proxy
 Integration tests run the proxy against local echo/SSE upstreams and cover path mapping, `Host`
 rewrite, `extraBody` injection, header passthrough, query preservation, incremental SSE streaming,
 error passthrough, and `502` on unreachable upstream. Logging integration tests
-(`tests/logging_tests.rs`) cover chat grouping by continuation, raw + assembled storage for
-streaming and non-streaming responses, upstream failure capture, and pre-injection request
-bodies.
+(`tests/logging_tests.rs`) cover chat classification (continuations, retries, sub-chat subsets
+branching into separate chats, edited-history forks), raw + assembled storage for streaming and
+non-streaming responses, tool-call and tool-result persistence to `messages`, upstream failure
+capture, pre-injection request bodies, and the schema-version guard.

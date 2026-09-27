@@ -2,11 +2,20 @@
 //!
 //! Follows the project's `Mutex<Connection>` pattern. All methods are synchronous and
 //! must be called from `spawn_blocking` in async contexts.
+//!
+//! Chat attribution is content-based (see [`crate::logging::classify`]); one
+//! [`LoggingDb::record_request`] transaction classifies the history, registers prefix
+//! hashes, inserts the request row, and appends the history's messages atomically.
 
 use std::path::Path;
 use std::sync::Mutex;
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
+
+use crate::logging::chat_match::{chat_title, prefix_hashes, CHAT_TITLE_MAX_CHARS};
+use crate::logging::classify::{classify_and_register, Classification};
+use crate::logging::messages::{append_history, append_response};
+use crate::logging::schema::apply_schema;
 
 /// File name of the logging database inside the configured `logging.path` folder.
 pub const DB_FILE_NAME: &str = "chats.sqlite3";
@@ -14,43 +23,6 @@ pub const DB_FILE_NAME: &str = "chats.sqlite3";
 /// How long a writer waits for the database lock before failing. Long enough for
 /// concurrent proxy processes sharing the database to queue their writes.
 const BUSY_TIMEOUT: u64 = 5;
-
-const SCHEMA: &str = "
-CREATE TABLE IF NOT EXISTS chats (
-    id         INTEGER PRIMARY KEY,
-    title      TEXT NOT NULL,
-    model      TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS prefix_hashes (
-    hash    BLOB PRIMARY KEY,
-    chat_id INTEGER NOT NULL REFERENCES chats(id)
-);
-
-CREATE TABLE IF NOT EXISTS requests (
-    id                 INTEGER PRIMARY KEY,
-    chat_id            INTEGER NOT NULL REFERENCES chats(id),
-    ts                 TEXT NOT NULL,
-    method             TEXT NOT NULL,
-    path               TEXT NOT NULL,
-    model              TEXT,
-    stream             INTEGER NOT NULL DEFAULT 0,
-    status             INTEGER,
-    duration_ms        INTEGER,
-    error              TEXT,
-    response_assembled TEXT
-);
-
-CREATE TABLE IF NOT EXISTS raw (
-    request_id    INTEGER PRIMARY KEY REFERENCES requests(id),
-    request_body  BLOB NOT NULL,
-    response_body BLOB
-);
-
-CREATE INDEX IF NOT EXISTS idx_requests_chat ON requests(chat_id, id);
-";
 
 /// Errors from opening or writing the logging database.
 #[derive(Debug, thiserror::Error)]
@@ -63,6 +35,15 @@ pub enum LoggingError {
     },
     #[error("logging database error: {0}")]
     Sqlite(#[from] rusqlite::Error),
+    #[error(
+        "logging database {path} has schema version {found}, this build writes \
+         version {expected}; delete or move the file to start fresh"
+    )]
+    IncompatibleSchema {
+        path: String,
+        found: i64,
+        expected: i64,
+    },
 }
 
 /// Handle to the logging database. Cheap to share via `Arc`.
@@ -70,15 +51,22 @@ pub struct LoggingDb {
     conn: Mutex<Connection>,
 }
 
-/// A request being logged, inserted when the request arrives (before forwarding).
+/// A request being logged, recorded when the request arrives (before forwarding).
 pub struct NewRequest {
-    pub chat_id: i64,
     pub ts: String,
     pub method: String,
     pub path: String,
     pub model: Option<String>,
     pub stream: bool,
     pub request_body: Vec<u8>,
+}
+
+/// Outcome of recording a request: where it landed and how it was classified.
+#[derive(Debug)]
+pub struct RecordOutcome {
+    pub request_id: i64,
+    pub chat_id: i64,
+    pub classification: Classification,
 }
 
 /// The recorded outcome of a logged request, persisted when its response finishes.
@@ -102,6 +90,9 @@ impl LoggingDb {
     /// the schema idempotently. Multiple proxy processes may share one database:
     /// WAL permits concurrent readers plus serialized writers, and the busy timeout
     /// makes concurrent writers queue instead of failing with `SQLITE_BUSY`.
+    ///
+    /// Fails fast on databases with an unknown schema version (see
+    /// [`LoggingError::IncompatibleSchema`]).
     pub fn open(dir: &Path) -> Result<Self, LoggingError> {
         std::fs::create_dir_all(dir).map_err(|source| LoggingError::DirCreate {
             path: dir.display().to_string(),
@@ -110,69 +101,35 @@ impl LoggingDb {
         let conn = Connection::open(dir.join(DB_FILE_NAME))?;
         conn.busy_timeout(std::time::Duration::from_secs(BUSY_TIMEOUT))?;
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
-        conn.execute_batch(SCHEMA)?;
+        apply_schema(&conn, &dir.join(DB_FILE_NAME))?;
         Ok(Self {
             conn: Mutex::new(conn),
         })
     }
 
-    /// Finds the chat for the longest known prefix hash, checking longest-first.
-    ///
-    /// Returns `None` when no prefix of the request's history was seen before
-    /// (the request starts a new chat).
-    pub fn find_chat_id(&self, prefix_hashes: &[[u8; 32]]) -> Result<Option<i64>, LoggingError> {
-        let conn = self.conn.lock().unwrap();
-        for hash in prefix_hashes.iter().rev() {
-            let mut stmt =
-                conn.prepare_cached("SELECT chat_id FROM prefix_hashes WHERE hash = ?1")?;
-            let chat_id = stmt
-                .query_row(params![hash.as_slice()], |row| row.get::<_, i64>(0))
-                .optional()?;
-            if let Some(chat_id) = chat_id {
-                return Ok(Some(chat_id));
-            }
-        }
-        Ok(None)
-    }
-
-    /// Creates a new chat and returns its id.
-    pub fn create_chat(&self, title: &str, model: Option<&str>) -> Result<i64, LoggingError> {
-        let conn = self.conn.lock().unwrap();
-        let now = now_rfc3339();
-        conn.execute(
-            "INSERT INTO chats (title, model, created_at, updated_at) VALUES (?1, ?2, ?3, ?3)",
-            params![title, model, now],
-        )?;
-        Ok(conn.last_insert_rowid())
-    }
-
-    /// Registers prefix hashes → `chat_id`. Hashes shared with an earlier chat are
-    /// re-pointed to `chat_id` (`INSERT OR REPLACE`), so the most recently registered
-    /// chat wins on shared prefixes.
-    pub fn register_prefixes(&self, chat_id: i64, hashes: &[[u8; 32]]) -> Result<(), LoggingError> {
+    /// Records an incoming request in one transaction: classifies its history
+    /// (retry / continuation / branch / new chat), registers new prefix hashes,
+    /// inserts the request row with its raw original body, and diff-appends the
+    /// history's messages.
+    pub fn record_request(
+        &self,
+        request: &NewRequest,
+        messages: &[serde_json::Value],
+    ) -> Result<RecordOutcome, LoggingError> {
+        let hashes = prefix_hashes(messages);
+        let title = chat_title(messages, CHAT_TITLE_MAX_CHARS);
         let mut conn = self.conn.lock().unwrap();
-        let tx = conn.transaction()?;
-        {
-            let mut stmt = tx.prepare_cached(
-                "INSERT OR REPLACE INTO prefix_hashes (hash, chat_id) VALUES (?1, ?2)",
-            )?;
-            for hash in hashes {
-                stmt.execute(params![hash.as_slice(), chat_id])?;
-            }
-        }
-        tx.commit()?;
-        Ok(())
-    }
-
-    /// Inserts a request row together with its raw original request body.
-    pub fn insert_request(&self, request: &NewRequest) -> Result<i64, LoggingError> {
-        let mut conn = self.conn.lock().unwrap();
-        let tx = conn.transaction()?;
+        // IMMEDIATE takes the write lock up front so concurrent proxy processes queue
+        // before reading, keeping classification race-free.
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let classification =
+            classify_and_register(&tx, &hashes, &title, request.model.as_deref())?;
+        let chat_id = classification.chat_id();
         tx.execute(
             "INSERT INTO requests (chat_id, ts, method, path, model, stream)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![
-                request.chat_id,
+                chat_id,
                 request.ts,
                 request.method,
                 request.path,
@@ -185,19 +142,27 @@ impl LoggingDb {
             "INSERT INTO raw (request_id, request_body) VALUES (?1, ?2)",
             params![request_id, request.request_body],
         )?;
+        append_history(&tx, chat_id, request_id, messages)?;
         tx.commit()?;
-        Ok(request_id)
+        Ok(RecordOutcome {
+            request_id,
+            chat_id,
+            classification,
+        })
     }
 
     /// Persists the outcome of a request: status, timing, raw response bytes, and the
-    /// assembled assistant message. Also touches the chat's `updated_at` and `model`.
+    /// assembled assistant message — which is also appended to the chat's `messages`
+    /// sequence at `response_seq` (the originating request's history length). Also
+    /// touches the chat's `updated_at` and `model`.
     pub fn complete_request(
         &self,
         request_id: i64,
+        response_seq: i64,
         completion: &RequestCompletion,
     ) -> Result<(), LoggingError> {
         let mut conn = self.conn.lock().unwrap();
-        let tx = conn.transaction()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         tx.execute(
             "UPDATE requests SET status = ?1, duration_ms = ?2, error = ?3, response_assembled = ?4
              WHERE id = ?5",
@@ -220,14 +185,37 @@ impl LoggingDb {
              WHERE id = (SELECT chat_id FROM requests WHERE id = ?1)",
             params![request_id, now_rfc3339()],
         )?;
+        let chat_id: Option<i64> = tx
+            .query_row(
+                "SELECT chat_id FROM requests WHERE id = ?1",
+                params![request_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if let (Some(chat_id), Some(assembled)) = (
+            chat_id,
+            completion
+                .response_assembled
+                .as_deref()
+                .and_then(|assembled| serde_json::from_str::<serde_json::Value>(assembled).ok()),
+        ) {
+            append_response(&tx, chat_id, request_id, response_seq, &assembled)?;
+        }
         tx.commit()?;
         Ok(())
+    }
+
+    /// Direct connection access for unit tests within this crate.
+    #[cfg(test)]
+    pub(crate) fn conn_for_tests(&self) -> std::sync::MutexGuard<'_, Connection> {
+        self.conn.lock().unwrap()
     }
 }
 
 #[cfg(test)]
-mod tests {
+ mod tests {
     use super::*;
+    use crate::logging::schema::SCHEMA_VERSION;
     use serde_json::json;
     use std::path::PathBuf;
 
@@ -240,149 +228,59 @@ mod tests {
         dir
     }
 
-    fn hashes_for(messages: &[serde_json::Value]) -> Vec<[u8; 32]> {
-        crate::logging::chat_match::prefix_hashes(messages)
+    fn new_request(model: Option<&str>, body: &[u8]) -> NewRequest {
+        NewRequest {
+            ts: now_rfc3339(),
+            method: "POST".to_string(),
+            path: "/v1/chat/completions".to_string(),
+            model: model.map(str::to_string),
+            stream: false,
+            request_body: body.to_vec(),
+        }
     }
 
-    fn messages(short: &str) -> Vec<serde_json::Value> {
-        vec![json!({"role": "system", "content": "sys"}), json!({"role": "user", "content": short})]
+    fn messages(turns: &[&str]) -> Vec<serde_json::Value> {
+        let mut messages = vec![json!({"role": "system", "content": "sys"})];
+        for turn in turns {
+            messages.push(json!({"role": "user", "content": turn}));
+        }
+        messages
     }
 
     #[test]
-    fn open_creates_database_file_and_is_idempotent() {
+    fn open_creates_versioned_database_and_is_idempotent() {
         let dir = temp_dir("open");
         LoggingDb::open(&dir).unwrap();
-        assert!(dir.join(DB_FILE_NAME).exists());
+        let version: i64 = Connection::open(dir.join(DB_FILE_NAME))
+            .unwrap()
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, SCHEMA_VERSION);
         // Re-open applies schema idempotently.
         LoggingDb::open(&dir).unwrap();
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
-    fn find_chat_id_matches_longest_prefix() {
-        let dir = temp_dir("longest");
-        let db = LoggingDb::open(&dir).unwrap();
-
-        let first = hashes_for(&messages("first"));
-        let chat_a = db.create_chat("a", Some("m1")).unwrap();
-        db.register_prefixes(chat_a, &first).unwrap();
-
-        let mut extended = messages("first");
-        extended.push(json!({"role": "user", "content": "second turn"}));
-        let extended_hashes = hashes_for(&extended);
-
-        // Longest match: the extended history still matches on the shared prefix.
-        assert_eq!(db.find_chat_id(&extended_hashes).unwrap(), Some(chat_a));
-
-        // But a different history only shares the system message prefix.
-        let other = hashes_for(&messages("other"));
-        let chat_b = db.create_chat("b", None).unwrap();
-        db.register_prefixes(chat_b, &other).unwrap();
-        assert_eq!(db.find_chat_id(&other).unwrap(), Some(chat_b));
-
-        // Unrelated history (new system message) matches nothing.
-        let mut unrelated = messages("whatever");
-        unrelated[0] = json!({"role": "system", "content": "different"});
-        assert_eq!(db.find_chat_id(&hashes_for(&unrelated)).unwrap(), None);
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn shared_prefix_repoints_to_latest_chat() {
-        let dir = temp_dir("repoint");
-        let db = LoggingDb::open(&dir).unwrap();
-
-        let hashes = hashes_for(&messages("same start"));
-        let chat_a = db.create_chat("a", None).unwrap();
-        db.register_prefixes(chat_a, &hashes).unwrap();
-        let chat_b = db.create_chat("b", None).unwrap();
-        db.register_prefixes(chat_b, &hashes).unwrap();
-
-        assert_eq!(db.find_chat_id(&hashes).unwrap(), Some(chat_b));
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn multiple_handles_share_one_database() {
-        // Two handles on the same file model two proxy processes: writes from one
-        // are visible to the other, and interleaved writes queue instead of failing.
-        let dir = temp_dir("shared");
-        let first = LoggingDb::open(&dir).unwrap();
-        let second = LoggingDb::open(&dir).unwrap();
-
-        let hashes = hashes_for(&messages("shared chat"));
-        let chat_id = first.create_chat("shared chat", Some("gpt-4o")).unwrap();
-        first.register_prefixes(chat_id, &hashes).unwrap();
-
-        // The other handle continues the same chat and records a request.
-        assert_eq!(second.find_chat_id(&hashes).unwrap(), Some(chat_id));
-        let request_id = second
-            .insert_request(&NewRequest {
-                chat_id,
-                ts: now_rfc3339(),
-                method: "POST".to_string(),
-                path: "/v1/chat/completions".to_string(),
-                model: Some("gpt-4o".to_string()),
-                stream: false,
-                request_body: b"body".to_vec(),
-            })
-            .unwrap();
-
-        // And the first handle completes it.
-        first.complete_request(
-            request_id,
-            &RequestCompletion {
-                status: Some(200),
-                duration_ms: 1,
-                error: None,
-                response_body: b"ok".to_vec(),
-                response_assembled: None,
-            },
-        )
-        .unwrap();
-
-        let conn = Connection::open(dir.join(DB_FILE_NAME)).unwrap();
-        let status: i64 = conn
-            .query_row(
-                "SELECT status FROM requests WHERE id = ?1",
-                params![request_id],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(status, 200);
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn request_lifecycle_insert_then_complete() {
+    fn record_request_lifecycle_inserts_then_completes() {
         let dir = temp_dir("lifecycle");
         let db = LoggingDb::open(&dir).unwrap();
 
-        let hashes = hashes_for(&messages("hello"));
-        let chat_id = db.create_chat("hello", Some("gpt-4o")).unwrap();
-        db.register_prefixes(chat_id, &hashes).unwrap();
-
-        let request_id = db
-            .insert_request(&NewRequest {
-                chat_id,
-                ts: now_rfc3339(),
-                method: "POST".to_string(),
-                path: "/v1/chat/completions".to_string(),
-                model: Some("gpt-4o".to_string()),
-                stream: false,
-                request_body: b"original-bytes".to_vec(),
-            })
+        let history = messages(&["hello"]);
+        let outcome = db
+            .record_request(&new_request(Some("gpt-4o"), b"original-bytes"), &history)
             .unwrap();
+        assert!(matches!(
+            outcome.classification,
+            Classification::NewChat { .. }
+        ));
 
         {
-            let conn = db.conn.lock().unwrap();
+            let conn = db.conn_for_tests();
             let (status, error): (Option<i64>, Option<String>) = conn
                 .query_row(
                     "SELECT status, error FROM requests WHERE id = ?1",
-                    params![request_id],
+                    params![outcome.request_id],
                     |row| Ok((row.get(0)?, row.get(1)?)),
                 )
                 .unwrap();
@@ -391,33 +289,44 @@ mod tests {
             let body: Vec<u8> = conn
                 .query_row(
                     "SELECT request_body FROM raw WHERE request_id = ?1",
-                    params![request_id],
+                    params![outcome.request_id],
                     |row| row.get(0),
                 )
                 .unwrap();
             assert_eq!(body, b"original-bytes");
+            let history_rows: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM messages WHERE chat_id = ?1",
+                    params![outcome.chat_id],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(history_rows, 2);
         }
 
         db.complete_request(
-            request_id,
+            outcome.request_id,
+            2,
             &RequestCompletion {
                 status: Some(200),
                 duration_ms: 42,
                 error: None,
                 response_body: b"response-bytes".to_vec(),
-                response_assembled: Some(r#"{"role":"assistant"}"#.to_string()),
+                response_assembled: Some(
+                    r#"{"role":"assistant","content":"hi","finish_reason":"stop"}"#.to_string(),
+                ),
             },
         )
         .unwrap();
 
         {
-            let conn = db.conn.lock().unwrap();
+            let conn = db.conn_for_tests();
             let (status, duration, assembled, response): (i64, i64, String, Vec<u8>) = conn
                 .query_row(
                     "SELECT status, duration_ms, response_assembled,
                             (SELECT response_body FROM raw WHERE request_id = requests.id)
                      FROM requests WHERE id = ?1",
-                    params![request_id],
+                    params![outcome.request_id],
                     |row| {
                         Ok((
                             row.get(0)?,
@@ -432,7 +341,73 @@ mod tests {
             assert_eq!(duration, 42);
             assert!(assembled.contains("assistant"));
             assert_eq!(response, b"response-bytes");
+            // The assembled response became a response-sourced message row.
+            let (role, source, message_json): (String, String, String) = conn
+                .query_row(
+                    "SELECT role, source, message_json FROM messages
+                     WHERE chat_id = ?1 AND seq = 2",
+                    params![outcome.chat_id],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )
+                .unwrap();
+            assert_eq!(role, "assistant");
+            assert_eq!(source, "response");
+            assert!(!message_json.contains("finish_reason"));
         }
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn multiple_handles_share_one_database() {
+        // Two handles on the same file model two proxy processes: writes from one
+        // are visible to the other, and interleaved writes queue instead of failing.
+        let dir = temp_dir("shared");
+        let first = LoggingDb::open(&dir).unwrap();
+        let second = LoggingDb::open(&dir).unwrap();
+
+        let history = messages(&["shared chat"]);
+        let outcome = first
+            .record_request(&new_request(Some("gpt-4o"), b"body"), &history)
+            .unwrap();
+
+        // The other handle continues the same chat.
+        let mut extended = history.clone();
+        extended.push(json!({"role": "user", "content": "more"}));
+        let continuation = second
+            .record_request(&new_request(Some("gpt-4o"), b"body2"), &extended)
+            .unwrap();
+        assert_eq!(
+            continuation.classification,
+            Classification::Continuation {
+                chat_id: outcome.chat_id
+            }
+        );
+
+        // And the first handle completes it.
+        first
+            .complete_request(
+                continuation.request_id,
+                3,
+                &RequestCompletion {
+                    status: Some(200),
+                    duration_ms: 1,
+                    error: None,
+                    response_body: b"ok".to_vec(),
+                    response_assembled: None,
+                },
+            )
+            .unwrap();
+
+        let conn = Connection::open(dir.join(DB_FILE_NAME)).unwrap();
+        let status: i64 = conn
+            .query_row(
+                "SELECT status FROM requests WHERE id = ?1",
+                params![continuation.request_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(status, 200);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

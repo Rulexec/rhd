@@ -4,6 +4,12 @@ Read-only Svelte 5 + MobX web app that visualizes the chat-logging SQLite databa
 `rhd_ai_proxy`'s `proxy.logging` feature. Dev-only tool run via vite dev on port 5174
 (`strictPort`). Sibling of `frontend/`, not a route inside it.
 
+**Status: incompatible with logging schema v2.** `rhd_ai_proxy` logging was reworked
+(branch-aware chat classification, `prefix_hashes.len`, new `messages` table,
+`PRAGMA user_version = 2`) — the viewer's queries, fixture DDL, and Zod schemas predate it and
+must be updated before it works against current databases. See the proxy README's Chat logging
+section for the current schema.
+
 ## What it does
 
 - Chats sidebar: logged chats (title, model, relative time, request count), most recently

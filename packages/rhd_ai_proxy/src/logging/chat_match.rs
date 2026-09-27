@@ -1,10 +1,11 @@
-//! Chat identity for a stateless API: canonical message forms and rolling prefix hashes.
+//! Chat identity primitives for a stateless API: canonical message forms and rolling
+//! prefix hashes.
 //!
 //! The OpenAI-compatible completions API carries no chat identifier — every request
-//! contains the full `messages` history. Continuations are detected by hashing prefixes
-//! of that history: `h_i = blake3(h_{i-1} || canonical(messages[i]))`. A request whose
-//! history starts with a previously registered prefix continues that chat; the longest
-//! matching prefix wins.
+//! contains the full `messages` history. Histories are fingerprinted by hashing
+//! prefixes of that history: `h_i = blake3(h_{i-1} || canonical(messages[i]))`. How a
+//! request's chain is matched against known chats (retry, continuation, branch, new
+//! chat — the frontier model) is decided in [`crate::logging::classify`].
 
 use serde_json::Value;
 

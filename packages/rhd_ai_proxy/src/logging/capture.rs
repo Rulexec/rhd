@@ -1,4 +1,4 @@
-//! Request lifecycle logging: start a log record when a completions request arrives,
+//! Request lifecycle logging: record a log record when a completions request arrives,
 //! tee the response stream to capture raw bytes, and persist everything when the
 //! exchange finishes.
 //!
@@ -12,20 +12,24 @@ use axum::body::Body;
 use bytes::Bytes;
 use futures_util::{Stream, StreamExt};
 
-use crate::logging::chat_match::{chat_title, extract_candidate, prefix_hashes, CHAT_TITLE_MAX_CHARS};
-use crate::logging::db::{now_rfc3339, LoggingDb, LoggingError, NewRequest, RequestCompletion};
+use crate::logging::chat_match::extract_candidate;
+use crate::logging::db::{now_rfc3339, LoggingDb, NewRequest, RequestCompletion};
 use crate::logging::sse::{assemble_sse_message, extract_message_json};
 
 /// In-flight logging state for one proxied request.
 pub struct LoggingContext {
     db: Arc<LoggingDb>,
     request_id: i64,
+    chat_id: i64,
+    /// Message count of the request's history; the assembled response belongs at this
+    /// sequence position in the chat's `messages`.
+    response_seq: i64,
     started: Instant,
 }
 
-/// Starts logging a completions request: extracts the chat candidate, matches or creates
-/// its chat, registers prefix hashes, and inserts the request row with the original
-/// (pre-injection) raw body.
+/// Starts logging a completions request: extracts the chat candidate, records the
+/// request (classifying its history into a retry / continuation / branch / new chat),
+/// and stores the original (pre-injection) raw body.
 ///
 /// Returns `None` when the body is not a loggable chat-completions request or when
 /// logging fails (already reported via `tracing`).
@@ -37,41 +41,39 @@ pub async fn start_logging(
     started: Instant,
 ) -> Option<LoggingContext> {
     let candidate = extract_candidate(raw_body)?;
-    let hashes = prefix_hashes(&candidate.messages);
-    let title = chat_title(&candidate.messages, CHAT_TITLE_MAX_CHARS);
-    let model = candidate.model.clone();
-    let method = method.to_string();
-    let path = path.to_string();
-    let request_body = raw_body.to_vec();
-    let stream = candidate.stream;
+    let request = NewRequest {
+        ts: now_rfc3339(),
+        method: method.to_string(),
+        path: path.to_string(),
+        model: candidate.model.clone(),
+        stream: candidate.stream,
+        request_body: raw_body.to_vec(),
+    };
+    let response_seq = candidate.messages.len() as i64;
+    let messages = candidate.messages;
 
     let result = tokio::task::spawn_blocking({
         let db = Arc::clone(&db);
-        move || -> Result<i64, LoggingError> {
-            let chat_id = match db.find_chat_id(&hashes)? {
-                Some(chat_id) => chat_id,
-                None => db.create_chat(&title, model.as_deref())?,
-            };
-            db.register_prefixes(chat_id, &hashes)?;
-            db.insert_request(&NewRequest {
-                chat_id,
-                ts: now_rfc3339(),
-                method,
-                path,
-                model,
-                stream,
-                request_body,
-            })
-        }
+        move || db.record_request(&request, &messages)
     })
     .await;
 
     match result {
-        Ok(Ok(request_id)) => Some(LoggingContext {
-            db,
-            request_id,
-            started,
-        }),
+        Ok(Ok(outcome)) => {
+            tracing::debug!(
+                chat_id = outcome.chat_id,
+                request_id = outcome.request_id,
+                classification = ?outcome.classification,
+                "logged incoming request"
+            );
+            Some(LoggingContext {
+                db,
+                request_id: outcome.request_id,
+                chat_id: outcome.chat_id,
+                response_seq,
+                started,
+            })
+        }
         Ok(Err(err)) => {
             tracing::warn!(%err, "failed to log incoming request");
             None
@@ -146,9 +148,12 @@ async fn finish_logging(
     let duration_ms = ctx.started.elapsed().as_millis() as i64;
     let db = ctx.db;
     let request_id = ctx.request_id;
+    let chat_id = ctx.chat_id;
+    let response_seq = ctx.response_seq;
     let result = tokio::task::spawn_blocking(move || {
         db.complete_request(
             request_id,
+            response_seq,
             &RequestCompletion {
                 status,
                 duration_ms,
@@ -162,10 +167,10 @@ async fn finish_logging(
     match result {
         Ok(Ok(())) => {}
         Ok(Err(err)) => {
-            tracing::warn!(%err, request_id, "failed to log response");
+            tracing::warn!(%err, request_id, chat_id, "failed to log response");
         }
         Err(err) => {
-            tracing::warn!(%err, request_id, "response logging task panicked");
+            tracing::warn!(%err, request_id, chat_id, "response logging task panicked");
         }
     }
 }
@@ -221,6 +226,14 @@ mod tests {
             .unwrap();
         assert_eq!(requests, 1);
         assert_eq!(stored_body, raw);
+        let history_rows: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM messages WHERE chat_id = ?1",
+                rusqlite::params![ctx.chat_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(history_rows, 2);
         assert!(ctx.request_id > 0);
 
         let _ = std::fs::remove_dir_all(&dir);
